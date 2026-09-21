@@ -1,0 +1,25 @@
+# Secrets — never upload these
+.env
+*.env
+.env.local
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+venv/
+env/
+.venv/
+
+# Node / Electron
+node_modules/
+dist/
+build/
+
+# Databases (local data, not code)
+*.db
+*.sqlite3
+
+# OS junk
+.DS_Store
+Thumbs.db
