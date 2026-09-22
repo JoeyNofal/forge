@@ -15,9 +15,11 @@ real fallback tier is actually built and tested.
 """
 import os
 from datetime import datetime
+from dotenv import load_dotenv
 from google import genai
 from google.genai import types
 
+load_dotenv(override=True)  # Lesson #12: .env must win over a stale system env var
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 GEMINI_MODEL = "gemini-2.5-flash"
 
@@ -26,6 +28,12 @@ _client = None
 def get_gemini_client():
     global _client
     if _client is None:
+        if not GEMINI_API_KEY:
+            raise ValueError(
+                "GEMINI_API_KEY is not set. Check your .env file — "
+                "this must be loaded explicitly, never silently picked up "
+                "by an SDK's own fallback behavior."
+            )
         _client = genai.Client(api_key=GEMINI_API_KEY)
     return _client
 

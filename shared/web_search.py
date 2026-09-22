@@ -8,8 +8,10 @@ the direct fix for Lesson #2's "phantom search" bug (NEXUS once fabricated
 a refusal reason from a search that never actually ran).
 """
 import os
+from dotenv import load_dotenv
 from serpapi import GoogleSearch
 
+load_dotenv(override=True)  # Lesson #12: .env must win over a stale system env var
 SERPAPI_KEY = os.getenv("SERPAPI_API_KEY")
 WEB_SEARCH_FAILED_PREFIX = "[WEB_SEARCH_FAILED]"
 
