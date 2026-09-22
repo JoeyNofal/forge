@@ -1349,8 +1349,7 @@ def call_agent_bridge(command: str, task: str, chat_id: str = "bridge", location
             return _collect_stream(stream_flame, task, chat_id, location, file_ids)
 
         elif command == "ASK_STOCK":
-            from nexus_stock_bridge import send_stock_request
-            return send_stock_request(task)
+            return _collect_stream(stream_stock, task, chat_id, location, file_ids)
 
         elif command == "ASK_CASE":
             return _collect_stream(stream_case, task, chat_id, location, file_ids)

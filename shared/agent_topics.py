@@ -44,3 +44,13 @@ CASE_NON_TOPIC = ["weather", "fitness", "workout", "car", "vehicle",
 CASE_INTENT = ["legal", "law", "lawyer", "attorney", "contract",
                 "lawsuit", "rights", "court", "statute", "regulation",
                 "compliance"]
+
+# Words that suggest a question needs CURRENT/live information, not
+# just general programming knowledge — this is what makes CIPHER's
+# web search conditional instead of firing on every message (old bug,
+# same shape as Lesson #8's unconditional search call).
+CIPHER_SEARCH_TRIGGERS = [
+    "latest", "newest", "current version", "just released", "changelog",
+    "recently released", "new release", "this year", "today", "right now",
+    "new feature", "deprecated", "breaking change", "up to date", "up-to-date",
+]
