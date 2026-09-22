@@ -7,12 +7,11 @@ system, not built yet here).
 Web search only fires when the question actually needs current info.
 """
 import re
-from forge.shared.keyword_gate import should_refuse
-from forge.shared.agent_topics import CIPHER_NON_TOPIC, CIPHER_INTENT, CIPHER_SEARCH_TRIGGERS
-from forge.shared.keyword_gate import contains_keyword
-from forge.shared.web_search import web_search, WEB_SEARCH_FAILED_PREFIX
-from forge.shared.model_client import stream_gemini
-from forge.agents.cipher.prompt import CIPHER_PROMPT
+from shared.keyword_gate import should_refuse, contains_keyword
+from shared.agent_topics import CIPHER_NON_TOPIC, CIPHER_INTENT, CIPHER_SEARCH_TRIGGERS
+from shared.web_search import web_search, WEB_SEARCH_FAILED_PREFIX
+from shared.model_client import stream_gemini
+from agents.cipher.prompt import CIPHER_PROMPT
 
 REFUSAL_MESSAGE = "I'm C.I.P.H.E.R. — I handle programming tasks only. For that, please consult the appropriate NEXUS agent."
 
