@@ -33,7 +33,7 @@ def format_memory_context(memory_items: list[str], label: str = "memory") -> str
 # saving" actually means in code, not "save literally everything."
 MEMORY_WORTHY_CATEGORIES = {
     "decision", "preference", "correction", "goal",
-    "workout_log", "plan", "financial_fact",
+    "workout_log", "plan", "financial_fact", "project_fact",
 }
 
 def is_memory_worthy(category: str) -> bool:

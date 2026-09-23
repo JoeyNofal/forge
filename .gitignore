@@ -20,6 +20,9 @@ build/
 *.db
 *.sqlite3
 
+# Agent memory (personal data — never belongs in a public repo)
+memory/
+
 # OS junk
 .DS_Store
 Thumbs.db

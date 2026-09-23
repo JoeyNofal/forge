@@ -54,3 +54,14 @@ CIPHER_SEARCH_TRIGGERS = [
     "recently released", "new release", "this year", "today", "right now",
     "new feature", "deprecated", "breaking change", "up to date", "up-to-date",
 ]
+
+# Words that suggest the message is referencing something from a past
+# session, not just the live conversation — this is what makes CIPHER's
+# memory search conditional instead of firing on every message (same
+# shape as the CIPHER_SEARCH_TRIGGERS fix, applied to memory retrieval).
+CIPHER_MEMORY_TRIGGERS = [
+    "remember", "recall", "we discussed", "we decided", "you said",
+    "i said", "i told you", "last time", "before", "earlier",
+    "previously", "like i mentioned", "as i mentioned", "what did i",
+    "what did we", "we talked about", "we agreed",
+]
