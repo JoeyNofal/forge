@@ -64,20 +64,19 @@ try:
 except Exception as e:
     check("unicode/emoji content saves without crashing", False, f"raised {type(e).__name__}: {e}")
 
-print("\n--- Test 5: None as content is rejected, not crashed on ---")
+print("--- Test 5: None as content is rejected, not crashed on ---")
 try:
-    ok = cipher_memory.save_memory("decision", None)
+    ok = cipher_memory.save_memory("decision", None)  # type: ignore[arg-type]
     check("None content is safely rejected (not saved, no crash)", ok is False)
 except Exception as e:
     check("None content is safely rejected (not saved, no crash)", False, f"raised {type(e).__name__}: {e}")
 
 print("\n--- Test 6: None as category is rejected, not crashed on ---")
 try:
-    ok = cipher_memory.save_memory(None, "some real content here")
+    ok = cipher_memory.save_memory(None, "some real content here")  # type: ignore[arg-type]
     check("None category is safely rejected (not saved, no crash)", ok is False)
 except Exception as e:
     check("None category is safely rejected (not saved, no crash)", False, f"raised {type(e).__name__}: {e}")
-
 print("\n--- Test 7: empty-string search query doesn't crash ---")
 try:
     result = cipher_memory.search_memory("")
