@@ -27,12 +27,12 @@ for f in ["shared/cipher_memory.py", "agents/cipher/chat.py", "shared/memory_con
 
 # Mock only the model - ChromaDB and search-labeling logic run for real
 fake_model_client = types.ModuleType("shared.model_client")
-fake_model_client.stream_gemini = lambda system_prompt, messages, location="": iter(["mocked response chunk"])
+fake_model_client.stream_gemini = lambda system_prompt, messages, location="": iter(["mocked response chunk"])  # type: ignore[attr-defined]
 sys.modules["shared.model_client"] = fake_model_client
 
 fake_web_search = types.ModuleType("shared.web_search")
-fake_web_search.WEB_SEARCH_FAILED_PREFIX = "[WEB_SEARCH_FAILED]"
-fake_web_search.web_search = lambda query, num_results=3: f"Web search results:\n\n1. Fake result for {query}"
+fake_web_search.WEB_SEARCH_FAILED_PREFIX = "[WEB_SEARCH_FAILED]"  # type: ignore[attr-defined]
+fake_web_search.web_search = lambda query, num_results=3: f"Web search results:\n\n1. Fake result for {query}"  # type: ignore[attr-defined]
 sys.modules["shared.web_search"] = fake_web_search
 
 from agents.cipher import chat
@@ -45,11 +45,11 @@ from shared.memory_context import MEMORY_WORTHY_CATEGORIES
 # patch does NOT touch shared/cipher_memory.py itself.
 import hashlib
 import chromadb
-from chromadb import EmbeddingFunction
+from chromadb import Documents, EmbeddingFunction, Embeddings
 
 class _FakeEmbeddingFunction(EmbeddingFunction):
-    def __call__(self, input):
-        return [[b / 255.0 for b in hashlib.sha256(t.encode()).digest()[:16]] for t in input]
+    def __call__(self, input: Documents) -> Embeddings:
+        return [[b / 255.0 for b in hashlib.sha256(t.encode()).digest()[:16]] for t in input]  # type: ignore[return-value]
 
 def _fake_get_collection():
     if cipher_memory._collection is None:

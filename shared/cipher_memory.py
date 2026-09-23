@@ -16,11 +16,44 @@ import uuid
 from datetime import datetime
 
 import chromadb
+from chromadb import Documents, EmbeddingFunction, Embeddings
+import requests
 
 from shared.memory_context import is_memory_worthy
 
 # D:\Projects\forge\memory\cipher on Youssef's machine.
 CIPHER_MEMORY_PATH = os.getenv("CIPHER_MEMORY_PATH", r"D:\Projects\forge\memory\cipher")
+
+# Embeddings run through Ollama (already installed/used for local chat
+# models) instead of ChromaDB's default — keeps memory fully under the
+# one local runtime, no separate model-download mechanism (Decision,
+# Session 4: option 2 — local-first over convenience).
+OLLAMA_EMBED_URL = os.getenv("OLLAMA_EMBED_URL", "http://localhost:11434/api/embeddings")
+OLLAMA_EMBED_MODEL = os.getenv("OLLAMA_EMBED_MODEL", "nomic-embed-text")
+
+
+class OllamaEmbeddingFunction(EmbeddingFunction):
+    """Embeds text via a local Ollama server. Requires `ollama pull nomic-embed-text` once."""
+
+    def __call__(self, input: Documents) -> Embeddings:
+        embeddings = []
+        for text in input:
+            try:
+                response = requests.post(
+                    OLLAMA_EMBED_URL,
+                    json={"model": OLLAMA_EMBED_MODEL, "prompt": text},
+                    timeout=30,
+                )
+                response.raise_for_status()
+            except requests.exceptions.ConnectionError as e:
+                raise RuntimeError(
+                    "CIPHER's memory needs Ollama running locally to create embeddings "
+                    f"(tried {OLLAMA_EMBED_URL}). Start Ollama and make sure "
+                    f"`ollama pull {OLLAMA_EMBED_MODEL}` has been run."
+                ) from e
+            embeddings.append(response.json()["embedding"])
+        return embeddings
+
 
 _client = None
 _collection = None
@@ -32,7 +65,9 @@ def _get_collection():
     if _collection is None:
         os.makedirs(CIPHER_MEMORY_PATH, exist_ok=True)
         _client = chromadb.PersistentClient(path=CIPHER_MEMORY_PATH)
-        _collection = _client.get_or_create_collection(name="cipher_memory")
+        _collection = _client.get_or_create_collection(
+            name="cipher_memory", embedding_function=OllamaEmbeddingFunction()
+        )
     return _collection
 
 
