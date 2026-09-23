@@ -31,6 +31,13 @@ CIPHER_MEMORY_PATH = os.getenv("CIPHER_MEMORY_PATH", r"D:\Projects\forge\memory\
 OLLAMA_EMBED_URL = os.getenv("OLLAMA_EMBED_URL", "http://localhost:11434/api/embeddings")
 OLLAMA_EMBED_MODEL = os.getenv("OLLAMA_EMBED_MODEL", "nomic-embed-text")
 
+# Memory items are meant to be short, standalone facts (per CIPHER's own
+# prompt instructions) — this also protects against nomic-embed-text's
+# context limit, which a raw ~50,000-char save blew straight past
+# (found in L5 testing, Session 4: Ollama returned a 500 rather than a
+# usable error).
+MAX_MEMORY_CONTENT_CHARS = 2000
+
 
 class OllamaEmbeddingFunction(EmbeddingFunction):
     """Embeds text via a local Ollama server. Requires `ollama pull nomic-embed-text` once."""
@@ -50,6 +57,12 @@ class OllamaEmbeddingFunction(EmbeddingFunction):
                     "CIPHER's memory needs Ollama running locally to create embeddings "
                     f"(tried {OLLAMA_EMBED_URL}). Start Ollama and make sure "
                     f"`ollama pull {OLLAMA_EMBED_MODEL}` has been run."
+                ) from e
+            except requests.exceptions.HTTPError as e:
+                raise RuntimeError(
+                    f"Ollama rejected an embedding request ({e}). This usually means "
+                    f"the content was too long — keep memory content under "
+                    f"{MAX_MEMORY_CONTENT_CHARS} characters."
                 ) from e
             embeddings.append(response.json()["embedding"])
         return embeddings
@@ -85,13 +98,17 @@ def save_memory(category: str, content: str, metadata: dict | None = None) -> bo
     if not content or not content.strip():
         return False
 
+    content = content.strip()
+    if len(content) > MAX_MEMORY_CONTENT_CHARS:
+        content = content[:MAX_MEMORY_CONTENT_CHARS] + " ... (truncated - memory items should be concise facts)"
+
     meta = dict(metadata or {})
     meta["category"] = category
     meta["saved_at"] = datetime.now().isoformat()
 
     collection = _get_collection()
     collection.add(
-        documents=[content.strip()],
+        documents=[content],
         metadatas=[meta],
         ids=[str(uuid.uuid4())],
     )
@@ -106,6 +123,9 @@ def search_memory(query: str, n_results: int = 3) -> list[str]:
     format_memory_context() before it goes anywhere near the model
     prompt.
     """
+    if not query or not query.strip():
+        return []
+
     collection = _get_collection()
     count = collection.count()
     if count == 0:
