@@ -88,19 +88,31 @@ from typing import Optional
 def stream_cipher(message: str, history: Optional[list] = None, location: str = ""):
     """
     history: list of {"role": "user"|"assistant", "content": str}, or None
-    Yields text chunks. Caller owns history persistence (no memory here).
+    Yields text chunks. Caller still owns conversation-history persistence.
+    Permanent memory (decision/correction/preference/project_fact) is
+    saved automatically inside this function when CIPHER's response
+    carries a MEMORY_SAVE marker — the caller doesn't need to do
+    anything extra for that part.
     """
     if should_refuse(message, CIPHER_NON_TOPIC, CIPHER_INTENT):
         yield REFUSAL_MESSAGE
         return
 
-    full_message = message
+    context_blocks = []
+
     if needs_search(message):
         search_result = web_search(message)
         if search_result.startswith(WEB_SEARCH_FAILED_PREFIX):
-            full_message = f"{search_result}\n\nUser says: {message}"
+            context_blocks.append(search_result)
         else:
-            full_message = f"{search_result}\n\nUser says: {message}"
+            context_blocks.append(format_memory_context([search_result], label="web search results"))
+
+    if needs_memory_search(message):
+        retrieved = search_memory(message)
+        if retrieved:
+            context_blocks.append(format_memory_context(retrieved, label="memory"))
+
+    full_message = "\n\n".join(context_blocks + [f"User says: {message}"]) if context_blocks else message
 
     messages = list(history) if history else []
     messages.append({"role": "user", "content": full_message})
@@ -110,5 +122,10 @@ def stream_cipher(message: str, history: Optional[list] = None, location: str = 
         full_response += chunk
         yield chunk
 
-    # (caller is responsible for saving `strip_unexecuted_action_markers(full_response)`
-    # to its own history — this function doesn't persist anything itself)
+    for category, content in extract_memory_saves(full_response):
+        save_memory(category, content)
+
+    # (caller is still responsible for saving
+    # `strip_unexecuted_action_markers(strip_memory_markers(full_response))`
+    # to its own conversation history — this function persists MEMORY_SAVE
+    # items but does not persist the turn itself)
