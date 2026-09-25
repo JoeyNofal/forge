@@ -27,7 +27,7 @@ for f in ["shared/cipher_memory.py", "agents/cipher/chat.py", "shared/memory_con
 
 # Mock only the model - ChromaDB and search-labeling logic run for real
 fake_model_client = types.ModuleType("shared.model_client")
-fake_model_client.stream_gemini = lambda system_prompt, messages, location="": iter(["mocked response chunk"])  # type: ignore[attr-defined]
+fake_model_client.stream_by_tier = lambda agent, tier, system_prompt, messages, location="": iter(["mocked response chunk"])  # type: ignore[attr-defined]
 sys.modules["shared.model_client"] = fake_model_client
 
 fake_web_search = types.ModuleType("shared.web_search")
@@ -96,53 +96,53 @@ check("search_memory retrieves a relevant saved item", any("FastAPI" in item for
 
 # --- Lesson #2 fix: web search results get the background label ---
 captured = {}
-def capturing_stream_gemini(system_prompt, messages, location=""):
+def capturing_stream_by_tier(agent, tier, system_prompt, messages, location=""):
     captured["messages"] = messages
     return iter(["mocked response chunk"])
-original_stream_gemini = chat.stream_gemini
-chat.stream_gemini = capturing_stream_gemini
+original_stream_by_tier = chat.stream_by_tier
+chat.stream_by_tier = capturing_stream_by_tier
 list(chat.stream_cipher("what's the latest version of FastAPI"))
 sent = captured["messages"][-1]["content"]
 check("web search results are wrapped in the 'Background ... may be outdated' label (Lesson #2 fix)",
       "Background web search results" in sent and "may be outdated or unrelated" in sent)
-chat.stream_gemini = original_stream_gemini
+chat.stream_by_tier = original_stream_by_tier
 
 # --- memory retrieval gets wired into the prompt when triggered ---
 chat.search_memory = lambda query, n_results=3: ["We are using FastAPI for the backend, not Flask"]
 captured2 = {}
-def capturing_stream_gemini2(system_prompt, messages, location=""):
+def capturing_stream_by_tier2(agent, tier, system_prompt, messages, location=""):
     captured2["messages"] = messages
     return iter(["mocked response chunk"])
-chat.stream_gemini = capturing_stream_gemini2
+chat.stream_by_tier = capturing_stream_by_tier2
 list(chat.stream_cipher("remember what backend framework we picked?"))
 sent2 = captured2["messages"][-1]["content"]
 check("triggered memory retrieval gets wrapped in the background-memory label",
       "Background memory" in sent2 and "FastAPI" in sent2)
-chat.stream_gemini = original_stream_gemini
+chat.stream_by_tier = original_stream_by_tier
 
 # --- memory retrieval is NOT triggered on an unrelated message ---
 captured3 = {}
-def capturing_stream_gemini3(system_prompt, messages, location=""):
+def capturing_stream_by_tier3(agent, tier, system_prompt, messages, location=""):
     captured3["messages"] = messages
     return iter(["mocked response chunk"])
-chat.stream_gemini = capturing_stream_gemini3
+chat.stream_by_tier = capturing_stream_by_tier3
 list(chat.stream_cipher("write a function to reverse a string"))
 sent3 = captured3["messages"][-1]["content"]
 check("memory is NOT injected into an unrelated question", "Background memory" not in sent3)
-chat.stream_gemini = original_stream_gemini
+chat.stream_by_tier = original_stream_by_tier
 
 # --- end-to-end: a MEMORY_SAVE marker in the model's response actually gets saved ---
 saved_calls = []
 chat.save_memory = lambda category, content: saved_calls.append((category, content))
-def model_with_memory_marker(system_prompt, messages, location=""):
+def model_with_memory_marker(agent, tier, system_prompt, messages, location=""):
     return iter(["Done. That's a solid approach.\nMEMORY_SAVE: preference | Always give FIND/REPLACE blocks, not prose diffs"])
-chat.stream_gemini = model_with_memory_marker
+chat.stream_by_tier = model_with_memory_marker
 out = list(chat.stream_cipher("from now on always give me find/replace blocks"))
 check("MEMORY_SAVE marker in the response triggers save_memory() automatically",
       saved_calls == [("preference", "Always give FIND/REPLACE blocks, not prose diffs")])
 check("raw response text is still what gets streamed out (marker included, caller strips for history)",
       "MEMORY_SAVE:" in "".join(out))
-chat.stream_gemini = original_stream_gemini
+chat.stream_by_tier = original_stream_by_tier
 chat.save_memory = cipher_memory.save_memory  # restore real one
 chat.search_memory = cipher_memory.search_memory  # restore real one
 

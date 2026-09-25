@@ -16,7 +16,7 @@ from shared.agent_topics import (
     CIPHER_NON_TOPIC, CIPHER_INTENT, CIPHER_SEARCH_TRIGGERS, CIPHER_MEMORY_TRIGGERS,
 )
 from shared.web_search import web_search, WEB_SEARCH_FAILED_PREFIX
-from shared.model_client import stream_gemini
+from shared.model_client import stream_by_tier
 from shared.memory_context import format_memory_context
 from shared.cipher_memory import save_memory, search_memory
 from agents.cipher.prompt import CIPHER_PROMPT
@@ -85,7 +85,7 @@ def strip_unexecuted_action_markers(text: str) -> str:
 
 from typing import Optional
 
-def stream_cipher(message: str, history: Optional[list] = None, location: str = ""):
+def stream_cipher(message: str, history: Optional[list] = None, location: str = "", model_tier: Optional[str] = None):
     """
     history: list of {"role": "user"|"assistant", "content": str}, or None
     Yields text chunks. Caller still owns conversation-history persistence.
@@ -118,7 +118,7 @@ def stream_cipher(message: str, history: Optional[list] = None, location: str = 
     messages.append({"role": "user", "content": full_message})
 
     full_response = ""
-    for chunk in stream_gemini(CIPHER_PROMPT, messages, location):
+    for chunk in stream_by_tier("cipher", model_tier, CIPHER_PROMPT, messages, location):
         full_response += chunk
         yield chunk
 

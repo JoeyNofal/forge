@@ -22,7 +22,7 @@ except SyntaxError as e:
 
 # Mock model/search so L1/L2 need zero real API keys or network calls
 fake_model_client = types.ModuleType("shared.model_client")
-fake_model_client.stream_gemini = lambda system_prompt, messages, location="": iter(["mocked response chunk"])  # type: ignore[attr-defined]
+fake_model_client.stream_by_tier = lambda agent, tier, system_prompt, messages, location="": iter(["mocked response chunk"])  # type: ignore[attr-defined]
 sys.modules["shared.model_client"] = fake_model_client
 
 fake_web_search = types.ModuleType("shared.web_search")
