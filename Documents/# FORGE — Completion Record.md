@@ -250,3 +250,34 @@ FORGE logic)
   execution) — not started, depends on Phase 2.
 - Instagram reel extractor and the scheduler/sub-agent/plugin features
   — still scoped, not started for any agent.
+
+  Session 4 — CIPHER Memory, Model-Tier Switching, Phase 2 Kickoff
+Built and tested — CIPHER memory (Lesson #2/#3, deferred from Session 3)
+shared/cipher_memory.py — ChromaDB storage, filtered saving (only decision/correction/preference/project_fact categories persist — fixes Lesson #3 directly). Embeddings run through Ollama (nomic-embed-text), not ChromaDB's default — decided for local-first consistency over the one-time-download convenience of the default.
+agents/cipher/chat.py — inline MEMORY_SAVE marker in CIPHER's own response (no extra classification API call), retrieval only triggered when a message looks like it's referencing something past (CIPHER_MEMORY_TRIGGERS in shared/agent_topics.py). Also fixed a real live Lesson #2 gap found along the way: web search results weren't wrapped in the "background, may be outdated" label — now they are.
+agents/cipher/prompt.py — added the MEMORY_SAVE marker instructions.
+shared/memory_context.py — added project_fact to MEMORY_WORTHY_CATEGORIES.
+Two real bugs caught in L5 and fixed: unbounded content length crashed Ollama's embedding call (fixed with a 2000-char cap + truncation), and an empty search query crashed ChromaDB indexing (fixed by short-circuiting to no results).
+Tested — CONFIRMED CLOSED: L1/L2 mocked 21/21, L3 real end-to-end 6/6 (real Gemini + real Ollama embeddings), L4/L5 10/10 (20 concurrent saves, both real bugs above found and fixed here).
+Built and tested — CIPHER model-tier switching (Local/Free Cloud/Paid Cloud)
+shared/api_budget.py — ported from the old system's real proven dashboard/api_budget.py (rollover-forever $10/day cap, 50/80/90% warnings, hard stop, per-agent tier overrides) — but pointed at a completely fresh database (D:\Projects\forge\data\chat_history.db), deliberately not shared with the old NEXUS SYSTEM's tracker.
+shared/model_client.py — extended with stream_ollama, stream_claude, and a stream_by_tier() router, ported from the old system's real proven chat_streaming.py. One deliberate deviation from the old code: Paid Cloud → Local fallback on a real API failure is now visible (yields a clear warning first), never silent — the old silent version was literally the Lesson #11 bug.
+agents/cipher/chat.py — stream_cipher() now takes an optional model_tier param; None resolves to CIPHER's live default (paid_cloud, matching old-system precedent).
+Tested — CONFIRMED CLOSED: L1/L2 mocked 22/22, L4/L5 8/8 (confirmed SQLite's own locking prevents lost updates under 20 concurrent budget writes — the Lesson #4 risk didn't materialize, but was actually checked rather than assumed), real L3 6/6 across all three tiers (real Ollama, real Gemini, real Sonnet 5 call — ~$0.013, balance moved $10.00 → $9.98686 — including memory+search still working correctly when routed through Paid Cloud).
+CIPHER Phase 1 status: complete
+
+Only remaining piece is real file-write/command-execution, which stays blocked on NEXUS's approval workflow (Phase 2) actually existing.
+
+Phase 2 (NEXUS) — scoped, not yet built
+
+Decisions made before any code was written:
+
+Core chat first, same phased approach as CIPHER's Session 3 — tool detection (reminders/search/app-launch), the 8 agent-bridge keyword lists, the approval workflow, and the multi-step tool loop are all separate later increments, not built in one shot.
+NEXUS's old bridge-detection keyword lists in reference/chat_streaming.py use plain substring matching (e.g. "swim", "vehicle") — confirmed as the same Lesson #6 bug shape CIPHER's keyword gate already fixed. Will need the same word-boundary treatment when bridges are actually built, not a straight port.
+NEXUS's system prompt: carrying over the old NEXUS_PROMPT_DEFAULT (Alfred Pennyworth voice) unchanged for now, same precedent as CIPHER's prompt.py.
+NEXUS gets model_tier wired in from day one (not hardcoded to one tier like CIPHER's Session 3 start) — trivial now since stream_by_tier already exists.
+NEXUS's memory deferred as its own tested increment after core chat, same split as CIPHER.
+Not yet decided / still open
+Exact shape of NEXUS's core-chat increment (what stays in scope vs. gets deferred beyond what's listed above) — not yet worked out in detail.
+Reel idea-extractor, task scheduler/crontab, expert/sub-agent spawning, plugin/skill marketplace — still scoped from Session 1, not started for any agent.
+NEXUS's approval workflow (Tier 1/Tier 2) — not started; this is also what unblocks CIPHER's last remaining piece.
