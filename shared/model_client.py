@@ -49,7 +49,7 @@ def get_claude_client():
 # ASSET is deliberately excluded — it's permanently local-only, and
 # never calls stream_by_tier at all (privacy rule, not a routing choice).
 AGENT_DEFAULT_TIERS_DEFAULT = {
-    "nexus":  "paid_cloud",
+    "nexus":  "free_cloud",
     "cipher": "paid_cloud",
     "atlas":  "free_cloud",
     "drive":  "free_cloud",
