@@ -1,14 +1,11 @@
 """
-CIPHER's permanent memory. Local ChromaDB, one collection.
-Embedding logic itself now lives in shared/ollama_embeddings.py, shared
-with NEXUS's memory (Lesson #9 — merged before it could spread to 9
-duplicate copies).
+NEXUS's permanent memory. Local ChromaDB, own collection, completely
+separate from CIPHER's (Lesson #3's "isolated per-agent memory" pattern
+— no agent recalls another agent's saved facts).
 
-Fixes Lesson #3 directly: only categories in
-shared.memory_context.MEMORY_WORTHY_CATEGORIES ever get saved. The old
-ATLAS/NEXUS memory saved every single turn unfiltered, which let a
-wrong statement get recalled, restated, and re-saved until it became
-the agent's confident "truth."
+Fixes Lesson #3 directly: only categories in NEXUS's own accepted set
+(agents/nexus/chat.py's NEXUS_MEMORY_SAVE_CATEGORIES) ever get saved —
+never every turn unfiltered.
 
 This module never labels retrieved memory as background — that's
 chat.py's job via shared.memory_context.format_memory_context()
@@ -23,9 +20,8 @@ import chromadb
 from shared.memory_context import is_memory_worthy
 from shared.ollama_embeddings import OllamaEmbeddingFunction, MAX_MEMORY_CONTENT_CHARS
 
-# D:\Projects\forge\memory\cipher on Youssef's machine.
-CIPHER_MEMORY_PATH = os.getenv("CIPHER_MEMORY_PATH", r"D:\Projects\forge\memory\cipher")
-
+# D:\Projects\forge\memory\nexus on Youssef's machine.
+NEXUS_MEMORY_PATH = os.getenv("NEXUS_MEMORY_PATH", r"D:\Projects\forge\memory\nexus")
 
 _client = None
 _collection = None
@@ -35,23 +31,36 @@ def _get_collection():
     """Lazy connect — so importing this module never touches disk by itself."""
     global _client, _collection
     if _collection is None:
-        os.makedirs(CIPHER_MEMORY_PATH, exist_ok=True)
-        _client = chromadb.PersistentClient(path=CIPHER_MEMORY_PATH)
+        os.makedirs(NEXUS_MEMORY_PATH, exist_ok=True)
+        _client = chromadb.PersistentClient(path=NEXUS_MEMORY_PATH)
         _collection = _client.get_or_create_collection(
-            name="cipher_memory", embedding_function=OllamaEmbeddingFunction()
+            name="nexus_memory", embedding_function=OllamaEmbeddingFunction()
         )
     return _collection
+
+
+# NEXUS deliberately never stores financial facts, no matter what calls
+# this function — ASSET's exclusive domain (Decision). Enforced HERE,
+# at the storage layer, not only up in chat.py's extract_memory_saves()
+# — a real L5 test (Test 11) caught that relying on the caller alone
+# left a gap: financial_fact IS in the shared worth-saving list (it's
+# valid for ASSET), so is_memory_worthy() alone would have let it
+# through if anything ever called save_memory() directly with it.
+_NEXUS_EXCLUDED_CATEGORIES = {"financial_fact"}
 
 
 def save_memory(category: str, content: str, metadata: dict | None = None) -> bool:
     """
     Saves one memory item — but ONLY if `category` is in the shared
-    worth-saving list. Returns True if it was actually saved, False if
-    it was filtered out (wrong category, or empty content).
+    worth-saving list AND not one of NEXUS's own excluded categories.
+    Returns True if it was actually saved, False if it was filtered
+    out (wrong category, excluded category, or empty content).
 
     This is the filter Lesson #3 says has to exist BEFORE the write,
     not as a cleanup pass after memory gets noisy.
     """
+    if category in _NEXUS_EXCLUDED_CATEGORIES:
+        return False
     if not is_memory_worthy(category):
         return False
     if not content or not content.strip():
@@ -100,4 +109,4 @@ def search_memory(query: str, n_results: int = 3) -> list[str]:
 def get_memory_summary() -> str:
     """Quick debug helper — how much is actually stored right now."""
     collection = _get_collection()
-    return f"CIPHER memory contains {collection.count()} entries."
+    return f"NEXUS memory contains {collection.count()} entries."

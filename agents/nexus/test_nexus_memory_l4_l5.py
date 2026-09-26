@@ -1,14 +1,14 @@
 """
-CIPHER memory increment - L4 (sustained/concurrency) + L5 (extreme/
+NEXUS memory increment - L4 (sustained/concurrency) + L5 (extreme/
 breaking). Real ChromaDB + real Ollama embeddings, no mocks - same
-rigor as agents/cipher/test_cipher_l4_l5.py for core chat.
+rigor as agents/nexus/test_nexus_l4_l5.py for core chat.
 Needs: Ollama running locally, nomic-embed-text already pulled.
-Run with: python agents/cipher/test_cipher_memory_l4_l5.py
+Run with: python agents/nexus/test_nexus_memory_l4_l5.py
 """
 import os, sys, tempfile, threading
 sys.path.insert(0, os.path.abspath("."))
 
-os.environ["CIPHER_MEMORY_PATH"] = tempfile.mkdtemp(prefix="cipher_memory_l4l5_")
+os.environ["NEXUS_MEMORY_PATH"] = tempfile.mkdtemp(prefix="nexus_memory_l4l5_")
 
 results = []
 def check(name, cond, detail=""):
@@ -16,17 +16,17 @@ def check(name, cond, detail=""):
     results.append((status, name, detail))
     print(f"[{status}] {name}" + (f" - {detail}" if detail else ""))
 
-from shared import cipher_memory
+from shared import nexus_memory
 from shared import ollama_embeddings
-from agents.cipher import chat
+from agents.nexus import chat
 
 print("=== L4 SUSTAINED / CONCURRENCY ===\n")
 
 print("--- Test 1: 20 simultaneous save_memory calls - no data loss ---")
-before_count = cipher_memory._get_collection().count()
+before_count = nexus_memory._get_collection().count()
 
 def save_in_thread(i):
-    cipher_memory.save_memory("project_fact", f"Concurrent test fact number {i}")
+    nexus_memory.save_memory("project_fact", f"Concurrent test fact number {i}")
 
 threads = [threading.Thread(target=save_in_thread, args=(i,)) for i in range(20)]
 for t in threads:
@@ -34,7 +34,7 @@ for t in threads:
 for t in threads:
     t.join()
 
-after_count = cipher_memory._get_collection().count()
+after_count = nexus_memory._get_collection().count()
 check(f"all 20 concurrent saves landed (before={before_count}, after={after_count})",
       after_count - before_count == 20)
 
@@ -42,7 +42,7 @@ print("\n--- Test 2: 30 sequential real searches - no crash ---")
 crashed = False
 try:
     for i in range(30):
-        cipher_memory.search_memory(f"test query number {i}")
+        nexus_memory.search_memory(f"test query number {i}")
 except Exception as e:
     crashed = True
     print(f"  crashed on iteration: {e}")
@@ -51,36 +51,37 @@ check("30 sequential real searches complete without crashing", not crashed)
 print("\n=== L5 EXTREME / BREAKING ===\n")
 
 print("--- Test 3: very large content (~50,000 chars) ---")
-huge_content = "The system architecture decision is X. " * 1250
+huge_content = "The rebuild decision is X. " * 1800
 try:
-    ok = cipher_memory.save_memory("decision", huge_content)
+    ok = nexus_memory.save_memory("decision", huge_content)
     check("50,000-char content handled without a raw crash", True, f"save_memory returned {ok}")
 except Exception as e:
     check("50,000-char content handled without a raw crash", False, f"raised {type(e).__name__}: {e}")
 
 print("\n--- Test 4: unicode and emoji content ---")
 try:
-    ok = cipher_memory.save_memory("preference", "Use émojis 🎉 and ünïcödé in comments — 日本語 too")
+    ok = nexus_memory.save_memory("preference", "Use émojis 🎉 and ünïcödé in comments — 日本語 too")
     check("unicode/emoji content saves without crashing", ok is True)
 except Exception as e:
     check("unicode/emoji content saves without crashing", False, f"raised {type(e).__name__}: {e}")
 
 print("--- Test 5: None as content is rejected, not crashed on ---")
 try:
-    ok = cipher_memory.save_memory("decision", None)  # type: ignore[arg-type]
+    ok = nexus_memory.save_memory("decision", None)  # type: ignore[arg-type]
     check("None content is safely rejected (not saved, no crash)", ok is False)
 except Exception as e:
     check("None content is safely rejected (not saved, no crash)", False, f"raised {type(e).__name__}: {e}")
 
 print("\n--- Test 6: None as category is rejected, not crashed on ---")
 try:
-    ok = cipher_memory.save_memory(None, "some real content here")  # type: ignore[arg-type]
+    ok = nexus_memory.save_memory(None, "some real content here")  # type: ignore[arg-type]
     check("None category is safely rejected (not saved, no crash)", ok is False)
 except Exception as e:
     check("None category is safely rejected (not saved, no crash)", False, f"raised {type(e).__name__}: {e}")
+
 print("\n--- Test 7: empty-string search query doesn't crash ---")
 try:
-    result = cipher_memory.search_memory("")
+    result = nexus_memory.search_memory("")
     check("empty search query handled without crashing", isinstance(result, list))
 except Exception as e:
     check("empty search query handled without crashing", False, f"raised {type(e).__name__}: {e}")
@@ -101,13 +102,10 @@ except Exception as e:
     check("malformed lines skipped, uppercase category still normalized and accepted", False, f"raised {type(e).__name__}: {e}")
 
 print("\n--- Test 10: Ollama unreachable fails loudly, not silently ---")
-# OLLAMA_EMBED_URL now lives in shared/ollama_embeddings.py (extracted
-# so NEXUS's memory could share it, Lesson #9) - patch it there, not on
-# cipher_memory, which no longer defines this name at all.
 original_url = ollama_embeddings.OLLAMA_EMBED_URL
 ollama_embeddings.OLLAMA_EMBED_URL = "http://localhost:1/api/embeddings"  # nothing listens here
 try:
-    cipher_memory.save_memory("decision", "this should fail to embed")
+    nexus_memory.save_memory("decision", "this should fail to embed")
     check("unreachable Ollama raises a clear error instead of saving silently", False, "no exception was raised")
 except RuntimeError as e:
     check("unreachable Ollama raises the clear RuntimeError we wrote (Lesson #12: fail loudly)",
@@ -117,6 +115,21 @@ except Exception as e:
           False, f"raised the wrong exception type instead: {type(e).__name__}: {e}")
 finally:
     ollama_embeddings.OLLAMA_EMBED_URL = original_url
+
+print("\n--- Test 11: NEXUS-specific - financial_fact is rejected by save_memory() directly ---")
+# Not just the model's own restraint (L3 already showed that) - this
+# confirms the actual filter rejects it even if something upstream
+# someday tries to pass it through anyway.
+try:
+    ok = nexus_memory.save_memory("financial_fact", "checking balance is $4,300")
+    check("financial_fact is rejected by save_memory() itself, not saved", ok is False)
+except Exception as e:
+    check("financial_fact is rejected by save_memory() itself, not saved", False, f"raised {type(e).__name__}: {e}")
+
+print("\n--- Test 12: NEXUS-specific - extract_memory_saves() drops financial_fact even if the model writes it ---")
+fake_model_output = "Noted.\nMEMORY_SAVE: financial_fact | checking balance is $4,300"
+saves3 = chat.extract_memory_saves(fake_model_output)
+check("extract_memory_saves() drops financial_fact before it ever reaches save_memory()", saves3 == [])
 
 print("\n=== SUMMARY ===")
 passed = sum(1 for s, _, _ in results if s == "PASS")
