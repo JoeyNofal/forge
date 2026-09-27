@@ -22,7 +22,30 @@ from agents.cipher import chat
 
 print("=== L4 SUSTAINED / CONCURRENCY ===\n")
 
-print("--- Test 1: 20 simultaneous save_memory calls - no data loss ---")
+print("--- Test 0: COLD START - 20 threads call save_memory before the singleton is warmed up ---")
+# This is the race NEXUS's own bridge L4 test caught: every other test
+# below (starting with Test 1) warms _get_collection() sequentially
+# FIRST, which is exactly why this never surfaced here before. This one
+# resets the module-level singleton to force a genuine cold start.
+cipher_memory._client = None
+cipher_memory._collection = None
+
+cold_start_errors = []
+def cold_save(i):
+    try:
+        cipher_memory.save_memory("project_fact", f"Cold start fact number {i}")
+    except Exception as e:
+        cold_start_errors.append(e)
+
+cold_threads = [threading.Thread(target=cold_save, args=(i,)) for i in range(20)]
+for t in cold_threads:
+    t.start()
+for t in cold_threads:
+    t.join()
+check("20 threads hitting an uninitialized collection at once: zero crashes",
+      len(cold_start_errors) == 0, f"{len(cold_start_errors)} errors: {cold_start_errors[:2]}")
+
+print("\n--- Test 1: 20 simultaneous save_memory calls - no data loss ---")
 before_count = cipher_memory._get_collection().count()
 
 def save_in_thread(i):

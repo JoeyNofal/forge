@@ -27,19 +27,33 @@ from shared.ollama_embeddings import OllamaEmbeddingFunction, MAX_MEMORY_CONTENT
 CIPHER_MEMORY_PATH = os.getenv("CIPHER_MEMORY_PATH", r"D:\Projects\forge\memory\cipher")
 
 
+import threading
+
 _client = None
 _collection = None
+_init_lock = threading.Lock()
 
 
 def _get_collection():
-    """Lazy connect — so importing this module never touches disk by itself."""
+    """
+    Lazy connect, thread-safe. A real race found via NEXUS's L4 testing
+    (identical code shape here — Lesson #9's whole point is exactly this
+    kind of shared bug): multiple threads calling
+    chromadb.PersistentClient() on the same path for the FIRST time
+    simultaneously (cold start, singleton not yet warmed up) can throw
+    an AttributeError deep inside ChromaDB's Rust bindings.
+    Double-checked locking: cheap to skip the lock once warmed up, safe
+    on the cold-start race that matters.
+    """
     global _client, _collection
     if _collection is None:
-        os.makedirs(CIPHER_MEMORY_PATH, exist_ok=True)
-        _client = chromadb.PersistentClient(path=CIPHER_MEMORY_PATH)
-        _collection = _client.get_or_create_collection(
-            name="cipher_memory", embedding_function=OllamaEmbeddingFunction()
-        )
+        with _init_lock:
+            if _collection is None:
+                os.makedirs(CIPHER_MEMORY_PATH, exist_ok=True)
+                _client = chromadb.PersistentClient(path=CIPHER_MEMORY_PATH)
+                _collection = _client.get_or_create_collection(
+                    name="cipher_memory", embedding_function=OllamaEmbeddingFunction()
+                )
     return _collection
 
 

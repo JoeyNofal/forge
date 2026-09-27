@@ -22,7 +22,30 @@ from agents.nexus import chat
 
 print("=== L4 SUSTAINED / CONCURRENCY ===\n")
 
-print("--- Test 1: 20 simultaneous save_memory calls - no data loss ---")
+print("--- Test 0: COLD START - 20 threads call save_memory before the singleton is warmed up ---")
+# Same race caught in NEXUS's bridge L4 test and fixed in
+# shared/nexus_memory.py's _get_collection() - every test below warms
+# the singleton sequentially FIRST, which is exactly why this never
+# surfaced here before. Force a genuine cold start to confirm the fix.
+nexus_memory._client = None
+nexus_memory._collection = None
+
+cold_start_errors = []
+def cold_save(i):
+    try:
+        nexus_memory.save_memory("project_fact", f"Cold start fact number {i}")
+    except Exception as e:
+        cold_start_errors.append(e)
+
+cold_threads = [threading.Thread(target=cold_save, args=(i,)) for i in range(20)]
+for t in cold_threads:
+    t.start()
+for t in cold_threads:
+    t.join()
+check("20 threads hitting an uninitialized collection at once: zero crashes",
+      len(cold_start_errors) == 0, f"{len(cold_start_errors)} errors: {cold_start_errors[:2]}")
+
+print("\n--- Test 1: 20 simultaneous save_memory calls - no data loss ---")
 before_count = nexus_memory._get_collection().count()
 
 def save_in_thread(i):
