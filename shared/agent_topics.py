@@ -24,7 +24,19 @@ ASSET_NON_TOPIC = ["weather", "fitness", "workout", "recipe", "food",
                     "car", "vehicle", "legal", "law", "code", "python"]
 ASSET_INTENT = ["money", "budget", "spending", "invest", "stock",
                  "portfolio", "expense", "income", "savings", "debt",
-                 "finance", "financial"]
+                 "finance", "financial",
+                 # Found during Phase 3 build: "how much do I spend on
+                 # food" would otherwise wrongly refuse, since "food" is
+                 # in ASSET_NON_TOPIC and neither "spend" nor "grocery"
+                 # were here to override it (same shape as the
+                 # "workout program" example in this file's own header).
+                 "spend", "spent", "cost", "grocery", "groceries",
+                 # Found by an actual L2 test this session: "pay off
+                 # the car loan" wrongly refused, since "car" is in
+                 # ASSET_NON_TOPIC (DRIVE's topic) and nothing here
+                 # overrode it back to finance. Same bug shape, caught
+                 # by testing exactly as intended.
+                 "loan", "car loan", "car payment"]
 
 ATLAS_NON_TOPIC = ["weather", "finance", "money", "car", "vehicle",
                     "recipe", "legal", "law", "code", "python"]
@@ -75,4 +87,29 @@ CIPHER_MEMORY_TRIGGERS = [
 NEXUS_CIPHER_BRIDGE_KEYWORDS = [
     "write me a script", "write me code", "fix this code", "debug this",
     "build me a", "python script", "how do i code",
+]
+
+# ASSET's real-data tool selection — which of its 9 real data-getters
+# actually fire, based on what's being asked. Not an elif chain: every
+# tool whose keywords match runs, same as the old system. Pulled from
+# the old chat_streaming.py's plain substring checks, now word-boundary
+# safe via keyword_gate.py's contains_keyword (Lesson #6).
+ASSET_TOOL_KEYWORDS = {
+    "spending_summary": ["spend", "spent", "expense", "cost", "groceries", "grocery"],
+    "net_worth": ["worth", "total", "balance", "net worth"],
+    "recent_transactions": ["transaction", "recent", "last", "latest", "history"],
+    "income_summary": ["income", "paycheck", "pay", "salary", "wage"],
+    "savings_rate": ["savings rate", "saving rate", "save", "saving"],
+    "credit_score": ["credit score", "credit", "fico", "vantage"],
+    "grocery_history": ["grocery", "groceries"],
+    "emergency_fund": ["emergency fund", "emergency", "buffer", "3-month", "3 month", "6-month", "6 month"],
+}
+
+# ASSET's own web search is narrow on purpose (old comment: "Only used
+# when Joey explicitly asks for news or rates") — unlike NEXUS's
+# near-universal search, this stays trigger-gated, same shape as
+# CIPHER_SEARCH_TRIGGERS.
+ASSET_NEWS_TRIGGERS = [
+    "news", "rate", "rates", "market", "economy", "inflation",
+    "fed", "federal reserve", "stock market",
 ]
