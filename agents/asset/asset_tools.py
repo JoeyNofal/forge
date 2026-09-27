@@ -113,12 +113,19 @@ def get_account_settings() -> str:
 
     lines = ["ACCOUNT SETTINGS & STATIC FACTS:\n"]
 
+    # NOTE: carLoanMonthlyTarget and carFundTarget are the SAME real
+    # target, stored as two separate settings keys (confirmed with
+    # Youssef, real data quirk — not a bug in this code). Said
+    # explicitly below so a local model can't mistake them for two
+    # different things needing two different corrections, the way it
+    # did once during real L3 testing.
     car_loan_balance = accounts.get("car_loan", 0)
+    car_loan_monthly_target = settings.get("carLoanMonthlyTarget", 0)
     lines.append(f"  CAR LOAN:")
     lines.append(f"    Current balance: ${car_loan_balance:,.2f}")
     lines.append(f"    Initial amount:  ${settings.get('carLoanInitial', 0):,.2f}")
     lines.append(f"    Interest rate:   0% (no interest - confirmed fact)")
-    lines.append(f"    Monthly target:  ${settings.get('carLoanMonthlyTarget', 0):,.2f}")
+    lines.append(f"    Monthly target:  ${car_loan_monthly_target:,.2f} (this is the SAME real target as 'CAR FUND TARGET' below — one target, tracked under two settings names, not two separate goals)")
 
     lines.append(f"\n  FREEDOM CARD (Chase):")
     lines.append(f"    Limit: ${settings.get('ccLimit', 0):,.2f}")
@@ -130,7 +137,8 @@ def get_account_settings() -> str:
 
     lines.append(f"\n  FLEX FLOOR: ${settings.get('flexFloor', 0):,.2f} (minimum balance to maintain)")
 
-    lines.append(f"\n  CAR FUND TARGET: ${settings.get('carFundTarget', 0):,.2f}")
+    # Car fund / savings fund targets
+    lines.append(f"\n  CAR FUND TARGET: ${settings.get('carFundTarget', 0):,.2f} (SAME target as the car loan's Monthly target above — do not treat as a second, separate goal)")
     lines.append(f"  CAR FUND MINIMUM: ${settings.get('carFundMinimum', 0):,.2f}")
 
     lines.append(f"\n  CREDIT SCORE TARGETS: VantageScore {settings.get('creditScoreTarget', 0)}, FICO {settings.get('creditScoreTarget2', 0)}")
