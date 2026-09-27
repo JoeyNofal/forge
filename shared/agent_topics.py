@@ -65,3 +65,14 @@ CIPHER_MEMORY_TRIGGERS = [
     "previously", "like i mentioned", "as i mentioned", "what did i",
     "what did we", "we talked about", "we agreed",
 ]
+
+# NEXUS's Python-side pre-detection for the ASK_CIPHER bridge — the
+# ONLY bridge that exists yet, since CIPHER is the only other agent
+# built so far. Pulled from the old chat_streaming.py's own CIPHER
+# bridge list, used here with keyword_gate.py's word-boundary-safe
+# contains_keyword() instead of the old plain substring check
+# (Lesson #6 — flagged as a real gap back in Phase 2 kickoff notes).
+NEXUS_CIPHER_BRIDGE_KEYWORDS = [
+    "write me a script", "write me code", "fix this code", "debug this",
+    "build me a", "python script", "how do i code",
+]

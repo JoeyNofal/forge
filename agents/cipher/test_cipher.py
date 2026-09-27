@@ -12,7 +12,7 @@ def check(name, cond, detail=""):
     print(f"[{status}] {name}" + (f" — {detail}" if detail and status == "FAIL" else ""))
 
 print("=== L1 STATIC ===")
-with open("agents/cipher/chat.py") as f:
+with open("agents/cipher/chat.py", encoding="utf-8") as f:
     src = f.read()
 try:
     ast.parse(src)
@@ -50,13 +50,17 @@ check("plain coding question does NOT trigger search", chat.needs_search("write 
 out = list(chat.stream_cipher("what's the latest version of FastAPI"))
 check("search-triggering question still gets a real (mocked) model response", out == ["mocked response chunk"])
 
-raw = "Sure, here it is.\nSAVE_FILE: test.py\n<<<CODE_START>>>\nprint(1)\n<<<CODE_END>>>\nDone."
+# SAVE_FILE/RUN_COMMAND are now REAL (Decision, later session) - they go
+# through extract_pending_actions()/strip_action_markers() instead, with
+# their own full coverage in test_cipher_actions.py. strip_unexecuted_
+# action_markers() now only covers what's still genuinely unbuilt.
+raw = "Sure, here it is.\nCREATE_BACKUP: milestone | summary\nDone."
 stripped = chat.strip_unexecuted_action_markers(raw)
-check("SAVE_FILE marker gets stripped and replaced with placeholder", "SAVE_FILE:" not in stripped and "not yet built in FORGE" in stripped)
+check("CREATE_BACKUP marker gets stripped and replaced with placeholder", "CREATE_BACKUP:" not in stripped and "isn't built yet in FORGE" in stripped)
 
-raw2 = "Sure.\nRUN_COMMAND: pip install requests"
+raw2 = "Sure.\nWRITE_RECORD: some/path.txt | new content"
 stripped2 = chat.strip_unexecuted_action_markers(raw2)
-check("RUN_COMMAND marker gets stripped and replaced with placeholder", "RUN_COMMAND:" not in stripped2)
+check("WRITE_RECORD marker gets stripped and replaced with placeholder", "WRITE_RECORD:" not in stripped2)
 
 history = [{"role": "user", "content": "hi"}, {"role": "assistant", "content": "hello"}]
 list(chat.stream_cipher("write a function to add two numbers", history=history))

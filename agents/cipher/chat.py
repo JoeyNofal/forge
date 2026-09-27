@@ -1,8 +1,11 @@
 """
-CIPHER — Phase 1, core chat + memory.
-No real file-write/command-execution (Decision: gated behind a future
-NEXUS approval workflow — Phase 2 — same safety pattern as the old
-system, not built yet here).
+CIPHER — Phase 1, core chat + memory + real, permission-gated actions.
+Real file-write/command-execution is now wired in (Decision, this
+session): CIPHER's own SAVE_FILE/RUN_COMMAND markers create a pending
+action via agents/cipher/cipher_tools.py — NOTHING happens for real
+until Joey explicitly approves that specific action. This is the ONLY
+thing in FORGE that pauses for approval; a plain question to CIPHER,
+even routed through NEXUS's future bridge, never pauses for anything.
 Web search only fires when the question actually needs current info.
 Memory search only fires when the message looks like it's referencing
 something past (Decision, Session 4) — not on every message.
@@ -19,6 +22,7 @@ from shared.web_search import web_search, WEB_SEARCH_FAILED_PREFIX
 from shared.model_client import stream_by_tier
 from shared.memory_context import format_memory_context
 from shared.cipher_memory import save_memory, search_memory
+from agents.cipher.cipher_tools import propose_create_file, propose_run_command
 from agents.cipher.prompt import CIPHER_PROMPT
 
 REFUSAL_MESSAGE = "I'm C.I.P.H.E.R. — I handle programming tasks only. For that, please consult the appropriate NEXUS agent."
@@ -66,20 +70,57 @@ def strip_memory_markers(text: str) -> str:
     return MEMORY_SAVE_PATTERN.sub("", text).rstrip()
 
 
+SAVE_FILE_PATTERN = re.compile(r"SAVE_FILE:\s*(.+?)\s*\n<<<CODE_START>>>\n(.*?)\n<<<CODE_END>>>", re.DOTALL)
+RUN_COMMAND_PATTERN = re.compile(r"RUN_COMMAND:\s*(.+)")
+
+
+def extract_pending_actions(text: str) -> list[dict]:
+    """
+    Scans CIPHER's raw response for real SAVE_FILE/RUN_COMMAND markers
+    and PROPOSES each one — this creates a pending action (nothing real
+    happens yet) and returns what's now waiting on Joey's approval.
+    Each dict: {"id": ..., "type": "create_file"/"run_command", "description": ...}
+    """
+    proposals = []
+    for match in SAVE_FILE_PATTERN.finditer(text):
+        path, content = match.group(1).strip(), match.group(2)
+        action_id, description = propose_create_file(path, content)
+        proposals.append({"id": action_id, "type": "create_file", "description": description})
+    for match in RUN_COMMAND_PATTERN.finditer(text):
+        command = match.group(1).strip()
+        action_id, description = propose_run_command(command)
+        proposals.append({"id": action_id, "type": "run_command", "description": description})
+    return proposals
+
+
+def strip_action_markers(text: str) -> str:
+    """
+    Replaces raw SAVE_FILE/RUN_COMMAND syntax in what gets saved to
+    history with a short plain-English note instead of erasing it
+    outright — a pending approval is real, ongoing state Joey may ask
+    about later ("did I already approve that file?"), so history
+    should still reflect that something was proposed, just not the raw
+    machine syntax.
+    """
+    text = SAVE_FILE_PATTERN.sub(
+        lambda m: f"(Proposed: create {m.group(1).strip()} — awaiting your approval.)", text
+    )
+    text = RUN_COMMAND_PATTERN.sub(
+        lambda m: f"(Proposed: run `{m.group(1).strip()}` — awaiting your approval.)", text
+    )
+    return text
+
+
 def strip_unexecuted_action_markers(text: str) -> str:
     """
-    Direct chat with CIPHER never actually saves files or runs commands
-    (Decision: option (a) — real execution stays gated behind a future
-    NEXUS approval workflow). Strip any marker CIPHER writes so it
-    never sits in saved history as confusing, non-functional syntax.
+    CREATE_BACKUP/WRITE_RECORD/TRACK_TASK belong to NEXUS's own
+    completion-record system (not built in FORGE yet, for any agent) —
+    unlike SAVE_FILE/RUN_COMMAND, which are now real (see
+    extract_pending_actions/strip_action_markers above), these three
+    still get replaced with a plain placeholder.
     """
-    text = re.sub(
-        r"SAVE_FILE:.*?<<<CODE_START>>>.*?<<<CODE_END>>>",
-        "(File save is only available through an approved NEXUS build task — not yet built in FORGE.)",
-        text, flags=re.DOTALL,
-    )
-    for marker in ["RUN_COMMAND:", "CREATE_BACKUP:", "WRITE_RECORD:", "TRACK_TASK:"]:
-        text = re.sub(rf"{marker}.*", "(That action requires an approved NEXUS build task — not yet built in FORGE.)", text)
+    for marker in ["CREATE_BACKUP:", "WRITE_RECORD:", "TRACK_TASK:"]:
+        text = re.sub(rf"{marker}.*", "(That capability isn't built yet in FORGE.)", text)
     return text
 
 
@@ -125,7 +166,12 @@ def stream_cipher(message: str, history: Optional[list] = None, location: str = 
     for category, content in extract_memory_saves(full_response):
         save_memory(category, content)
 
+    proposals = extract_pending_actions(full_response)
+    for p in proposals:
+        yield f"\n\n⏳ Waiting for your approval to {p['description']} (id: {p['id']})"
+
     # (caller is still responsible for saving
-    # `strip_unexecuted_action_markers(strip_memory_markers(full_response))`
+    # `strip_unexecuted_action_markers(strip_action_markers(strip_memory_markers(full_response)))`
     # to its own conversation history — this function persists MEMORY_SAVE
-    # items but does not persist the turn itself)
+    # items and PROPOSES pending actions, but never executes them itself
+    # and does not persist the turn)

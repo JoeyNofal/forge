@@ -20,7 +20,7 @@ def check(name, cond, detail=""):
 print("=== L1 STATIC ===")
 for f in ["shared/cipher_memory.py", "agents/cipher/chat.py", "shared/memory_context.py", "shared/agent_topics.py"]:
     try:
-        ast.parse(open(f).read())
+        ast.parse(open(f, encoding="utf-8").read())
         check(f"{f} parses as valid Python", True)
     except SyntaxError as e:
         check(f"{f} parses as valid Python", False, str(e))

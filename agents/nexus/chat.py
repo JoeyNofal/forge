@@ -23,29 +23,80 @@ stays ASSET's exclusive domain (Decision).
 NEXUS's carried-over prompt (Decision: kept unchanged) still instructs
 the model to write tool/bridge/record-keeping commands for systems that
 don't exist yet in FORGE this increment — reminders, app launching,
-folder/file reading, the 8 ASK_* bridges, backup/record/task-tracking.
-strip_unexecuted_action_markers() below replaces any of those with one
-clear placeholder — never left as dead syntax, and never silently
-dropped either (a silent drop would look like nothing was asked for,
-when something was).
+folder/file reading, 7 of the 8 ASK_* bridges, backup/record/task-
+tracking. strip_unexecuted_action_markers() below replaces any of
+those with one clear placeholder — never left as dead syntax, and
+never silently dropped either.
+
+ASK_CIPHER is now REAL (Decision, this session) — the only bridge that
+exists, since CIPHER is the only other agent built so far. Two
+independent trigger paths, matching the old system's real design
+(Lesson #6's word-boundary fix applied to the first one):
+  1. Python-side keyword pre-check on Joey's raw message
+     (NEXUS_CIPHER_BRIDGE_KEYWORDS) — when it fires, NEXUS's own model
+     call is told to write ONE brief acknowledgment only, not attempt
+     the technical answer itself.
+  2. A fallback scan of NEXUS's own response for a real ASK_CIPHER:
+     line the model wrote itself.
+Either way, the actual bridge call goes straight to CIPHER's own
+stream_cipher() — Lesson #1, no separate implementation — so reaching
+CIPHER through NEXUS gets the exact same real, approval-gated
+SAVE_FILE/RUN_COMMAND behavior CIPHER's direct chat already has.
+CIPHER's answer is shown as its own distinct block, never re-
+synthesized through NEXUS a second time.
 """
 import re
 from typing import Optional
+from shared.keyword_gate import contains_keyword
+from shared.agent_topics import NEXUS_CIPHER_BRIDGE_KEYWORDS
 from shared.web_search import web_search, WEB_SEARCH_FAILED_PREFIX
 from shared.model_client import stream_by_tier
 from shared.memory_context import format_memory_context
 from shared.nexus_memory import save_memory, search_memory
+from agents.cipher.chat import stream_cipher
 from agents.nexus.prompt import NEXUS_PROMPT
 
 # Every marker NEXUS's carried-over prompt describes that FORGE hasn't
-# built a real processor for yet, this increment.
+# built a real processor for yet, this increment. ASK_CIPHER is
+# deliberately NOT in this list anymore — it's real now, handled by
+# detect_cipher_bridge()/extract_cipher_bridge_task() below instead.
 _LINE_MARKERS = [
     "OPEN_APP:", "SET_REMINDER:", "SEARCH_WEB:", "LIST_FOLDER:", "READ_FILE:",
-    "ASK_CIPHER:", "ASK_ASSET:", "ASK_ATLAS:", "ASK_DRIVE:", "ASK_STOCK:",
+    "ASK_ASSET:", "ASK_ATLAS:", "ASK_DRIVE:", "ASK_STOCK:",
     "ASK_FLAME:", "ASK_CASE:", "ASK_PULSE:",
     "CREATE_BACKUP:", "WRITE_RECORD:", "TRACK_TASK:",
 ]
 _PLACEHOLDER = "(That capability isn't built yet in FORGE.)"
+
+# Backtick-guarded so a MENTION of the marker ("the `ASK_CIPHER:`
+# format") is never mistaken for actually issuing it — matches NEXUS's
+# own prompt instruction about never wrapping a real command in
+# backticks when just talking about it.
+ASK_CIPHER_PATTERN = re.compile(r"(?<!`)ASK_CIPHER:\s*(.+)")
+
+
+def detect_cipher_bridge(message: str) -> bool:
+    """Python-side pre-check on Joey's raw message, word-boundary-safe (Lesson #6)."""
+    return contains_keyword(message, NEXUS_CIPHER_BRIDGE_KEYWORDS)
+
+
+def extract_cipher_bridge_task(text: str) -> Optional[str]:
+    """Fallback: a real ASK_CIPHER: line NEXUS's own model wrote itself."""
+    match = ASK_CIPHER_PATTERN.search(text)
+    if match:
+        task = match.group(1).strip()
+        if task:
+            return task
+    return None
+
+
+def strip_bridge_markers(text: str) -> str:
+    """
+    Replaces a real ASK_CIPHER: line with a short plain-English note in
+    what gets saved to history, instead of leaving raw machine syntax
+    there — mirrors CIPHER's own strip_action_markers().
+    """
+    return ASK_CIPHER_PATTERN.sub(lambda m: f"(Routed to CIPHER: {m.group(1).strip()})", text)
 
 # Must match shared.memory_context.MEMORY_WORTHY_CATEGORIES — kept as
 # its own set here (rather than imported) so an unrelated category
@@ -119,17 +170,25 @@ def stream_nexus(message: str, history: Optional[list] = None, location: str = "
     history: list of {"role": "user"|"assistant", "content": str}, or None
     Yields text chunks. Caller still owns conversation-history
     persistence — save
-    strip_unexecuted_action_markers(strip_memory_markers(full_response))
-    to history, not the raw model output, so dead markers and MEMORY_SAVE
-    lines never build up there.
+    strip_unexecuted_action_markers(strip_bridge_markers(strip_memory_markers(full_response)))
+    to history, not the raw model output, so dead markers, MEMORY_SAVE
+    lines, and raw bridge syntax never build up there.
 
     Permanent memory (the 7 categories above) is saved automatically
     inside this function when NEXUS's response carries a MEMORY_SAVE
     marker — the caller doesn't need to do anything extra for that part.
 
+    If this message routes to CIPHER (either Python-side keyword
+    pre-check, or NEXUS's own model writing a real ASK_CIPHER: line),
+    CIPHER's real streamed answer is yielded right after NEXUS's own
+    part of the response, separated clearly — CIPHER's own memory and
+    approval-gated actions all work exactly as they do in direct chat
+    (Lesson #1).
+
     Core chat + tiered models + safe, near-universal web search and
-    memory retrieval only, this increment (Decision) — no bridges, no
-    approval workflow, no tool loop yet.
+    memory retrieval, plus the one real bridge (CIPHER) this increment
+    (Decision) — no approval workflow of NEXUS's own, no tool loop, no
+    other bridges yet (nothing else exists to bridge to).
     """
     context_blocks = []
 
@@ -150,7 +209,16 @@ def stream_nexus(message: str, history: Optional[list] = None, location: str = "
     # "Joey says:" is the exact literal phrase NEXUS's own (unchanged)
     # prompt looks for to treat this as a real, trusted instruction —
     # not a stylistic choice, a contract with the prompt text above.
-    full_message = "\n\n".join(context_blocks + [f"Joey says: {message}"])
+    routed_to_cipher = detect_cipher_bridge(message)
+    instruction_lines = [f"Joey says: {message}"]
+    if routed_to_cipher:
+        instruction_lines.append(
+            "[SYSTEM NOTE: This has already been routed to CIPHER automatically. "
+            "Write ONE brief sentence acknowledging that, in your own voice — do NOT "
+            "attempt to answer the technical question yourself, and do NOT write an "
+            "ASK_CIPHER line, the system is handling that for you.]"
+        )
+    full_message = "\n\n".join(context_blocks + instruction_lines)
 
     messages = list(history) if history else []
     messages.append({"role": "user", "content": full_message})
@@ -163,7 +231,14 @@ def stream_nexus(message: str, history: Optional[list] = None, location: str = "
     for category, content in extract_memory_saves(full_response):
         save_memory(category, content)
 
+    bridge_task = message if routed_to_cipher else extract_cipher_bridge_task(full_response)
+    if bridge_task:
+        yield "\n\n---\nCIPHER:\n"
+        yield from stream_cipher(bridge_task)
+
     # (caller is still responsible for saving
-    # strip_unexecuted_action_markers(strip_memory_markers(full_response))
+    # strip_unexecuted_action_markers(strip_bridge_markers(strip_memory_markers(full_response)))
     # to its own conversation history — this function persists MEMORY_SAVE
-    # items but does not persist the turn itself)
+    # items but does not persist the turn itself, and never executes any
+    # of CIPHER's own SAVE_FILE/RUN_COMMAND proposals — that's still
+    # entirely CIPHER's own approval-gated territory)

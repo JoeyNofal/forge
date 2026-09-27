@@ -12,7 +12,7 @@ def check(name, cond, detail=""):
     print(f"[{status}] {name}" + (f" — {detail}" if detail and status == "FAIL" else ""))
 
 print("=== L1 STATIC ===")
-with open("agents/nexus/chat.py") as f:
+with open("agents/nexus/chat.py", encoding="utf-8") as f:
     src = f.read()
 try:
     ast.parse(src)
