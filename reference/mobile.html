@@ -1,0 +1,4010 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="theme-color" content="#0f0f11">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <title>NEXUS</title>
+  <link rel="manifest" href="/mobile/manifest.json">
+  <style>
+    /* ============================================================
+       BASE STYLES
+    ============================================================ */
+    * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+    
+    :root {
+      --bg:        #0f0f11;
+      --bg2:       #1a1a1f;
+      --bg3:       #25252d;
+      --border:    #2e2e3a;
+      --text:      #e8e8f0;
+      --text2:     #9090a8;
+      --gold:      #c8a96e;
+      --green:     #6db891;
+      --red:       #e06b6b;
+      --blue:      #6b9fe0;
+      --purple:    #9b6be0;
+      --orange:    #e09b6b;
+      --brown:     #a0785a;
+      --cyan:      #6bcfe0;
+      --teal:      #2a9d8f;
+    }
+
+    html, body {
+      height: 100%;
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'DM Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+      overflow: hidden;
+    }
+
+    /* ============================================================
+       LOGIN SCREEN
+    ============================================================ */
+    #login-screen {
+      position: fixed;
+      inset: 0;
+      background: var(--bg);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 32px;
+      z-index: 1000;
+    }
+
+    #login-screen.hidden { display: none; }
+
+    .login-logo {
+      font-size: 48px;
+      font-weight: 800;
+      color: var(--gold);
+      letter-spacing: 8px;
+      margin-bottom: 8px;
+    }
+
+    .login-subtitle {
+      font-size: 13px;
+      color: var(--text2);
+      letter-spacing: 3px;
+      margin-bottom: 48px;
+    }
+
+    .login-form {
+      width: 100%;
+      max-width: 320px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .login-input {
+      width: 100%;
+      padding: 14px 16px;
+      background: var(--bg2);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      color: var(--text);
+      font-size: 16px;
+      outline: none;
+    }
+
+    .login-input:focus { border-color: var(--gold); }
+
+    .login-btn {
+      width: 100%;
+      padding: 14px;
+      background: var(--gold);
+      color: #0f0f11;
+      border: none;
+      border-radius: 12px;
+      font-size: 16px;
+      font-weight: 700;
+      cursor: pointer;
+      letter-spacing: 2px;
+    }
+
+    .login-error {
+      color: var(--red);
+      font-size: 13px;
+      text-align: center;
+      min-height: 20px;
+    }
+
+    /* ============================================================
+       MAIN APP
+    ============================================================ */
+    #app {
+      position: fixed;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+    }
+
+    #app.hidden { display: none; }
+
+    /* Top bar */
+    .topbar {
+      display: flex;
+      align-items: center;
+      padding: 12px 16px;
+      background: var(--bg2);
+      border-bottom: 1px solid var(--border);
+      gap: 12px;
+      flex-shrink: 0;
+    }
+
+    .topbar-title {
+      font-size: 18px;
+      font-weight: 800;
+      color: var(--gold);
+      letter-spacing: 4px;
+      flex: 1;
+    }
+
+    .topbar-agent-name {
+      font-size: 12px;
+      color: var(--text2);
+      letter-spacing: 2px;
+    }
+
+    /* Agent icon rail - horizontal scroll */
+    .agent-rail {
+      display: flex;
+      gap: 8px;
+      padding: 10px 16px;
+      background: var(--bg2);
+      border-bottom: 1px solid var(--border);
+      overflow-x: auto;
+      flex-shrink: 0;
+      scrollbar-width: none;
+    }
+
+    .agent-rail::-webkit-scrollbar { display: none; }
+
+    .agent-btn {
+      flex-shrink: 0;
+      width: 44px;
+      height: 44px;
+      border-radius: 12px;
+      border: 2px solid var(--border);
+      background: var(--bg3);
+      color: var(--text2);
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 1px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.2s;
+    }
+
+    .agent-btn.active {
+      border-color: var(--agent-color);
+      color: var(--agent-color);
+      background: var(--bg);
+    }
+
+    /* Main content area */
+    .main {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    /* Data panel */
+    .data-panel {
+      padding: 12px 16px;
+      background: var(--bg2);
+      border-bottom: 1px solid var(--border);
+      max-height: 180px;
+      overflow-y: auto;
+      flex-shrink: 0;
+      display: none;
+    }
+
+    .data-panel.visible { display: block; }
+
+    .data-panel-title {
+      font-size: 11px;
+      color: var(--text2);
+      letter-spacing: 2px;
+      margin-bottom: 8px;
+    }
+
+    .data-cards {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+
+    .data-card {
+      background: var(--bg3);
+      border-radius: 10px;
+      padding: 10px 12px;
+      border: 1px solid var(--border);
+    }
+
+    .data-card-label {
+      font-size: 10px;
+      color: var(--text2);
+      letter-spacing: 1px;
+      margin-bottom: 4px;
+    }
+
+    .data-card-value {
+      font-size: 15px;
+      font-weight: 700;
+      color: var(--text);
+    }
+
+    /* Chat area */
+    .chat-area {
+      flex: 1;
+      overflow-y: auto;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .bubble {
+      max-width: 85%;
+      padding: 12px 14px;
+      border-radius: 16px;
+      font-size: 14px;
+      line-height: 1.5;
+      user-select: text;
+      -webkit-user-select: text;
+    }
+
+    .bubble.user {
+      align-self: flex-end;
+      background: var(--bg3);
+      border: 1px solid var(--border);
+      border-bottom-right-radius: 4px;
+    }
+
+    .bubble.agent {
+      align-self: flex-start;
+      background: var(--bg2);
+      border: 1px solid var(--border);
+      border-bottom-left-radius: 4px;
+    }
+
+    .bubble.thinking {
+      align-self: flex-start;
+      background: var(--bg2);
+      border: 1px solid var(--border);
+      color: var(--text2);
+      font-style: italic;
+    }
+
+    /* Agent response box inside bubble */
+    .agent-response-box {
+      margin-top: 10px;
+      padding: 10px 12px;
+      border-radius: 10px;
+      border-left: 3px solid var(--agent-color, var(--gold));
+      background: rgba(255,255,255,0.04);
+      font-size: 13px;
+    }
+
+    .agent-response-header {
+      font-size: 10px;
+      letter-spacing: 2px;
+      font-weight: 700;
+      margin-bottom: 6px;
+      opacity: 0.7;
+    }
+
+    /* Input bar */
+    .input-bar {
+      display: flex;
+      gap: 10px;
+      padding: 12px 16px;
+      background: var(--bg2);
+      border-top: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+
+    .chat-input {
+      flex: 1;
+      padding: 12px 14px;
+      background: var(--bg3);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      color: var(--text);
+      font-size: 15px;
+      outline: none;
+      resize: none;
+      max-height: 100px;
+      font-family: inherit;
+    }
+
+    .chat-input:focus { border-color: var(--gold); }
+
+    .send-btn {
+      width: 44px;
+      height: 44px;
+      border-radius: 12px;
+      border: none;
+      background: var(--gold);
+      color: #0f0f11;
+      font-size: 20px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      align-self: flex-end;
+    }
+
+/* ============================================================
+       BOTTOM NAV
+    ============================================================ */
+    .bottom-nav {
+      display: flex;
+      background: var(--bg2);
+      border-top: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+
+    .bottom-nav-btn {
+      flex: 1;
+      padding: 10px 4px 6px;
+      background: none;
+      border: none;
+      color: var(--text2);
+      font-size: 9px;
+      font-weight: 700;
+      letter-spacing: 1px;
+      cursor: pointer;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 4px;
+      transition: color 0.2s;
+    }
+
+    .bottom-nav-btn.active { color: var(--gold); }
+
+    .bottom-nav-icon { font-size: 20px; }
+
+    /* ============================================================
+       TRACKER VIEWS
+    ============================================================ */
+    .tracker-view {
+      position: fixed;
+      inset: 0;
+      background: var(--bg);
+      display: flex;
+      flex-direction: column;
+      z-index: 100;
+    }
+
+    .tracker-view.hidden { display: none; }
+    .hidden { display: none; }
+
+    .tracker-header {
+      display: flex;
+      align-items: center;
+      padding: 14px 16px;
+      background: var(--bg2);
+      border-bottom: 1px solid var(--border);
+      gap: 12px;
+      flex-shrink: 0;
+    }
+
+    .tracker-title {
+      font-size: 16px;
+      font-weight: 800;
+      letter-spacing: 3px;
+      flex: 1;
+    }
+
+    .tracker-body {
+      flex: 1;
+      overflow-y: auto;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .tracker-section {
+      background: var(--bg2);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      overflow: visible;
+    }
+
+    .tracker-section-title {
+      padding: 12px 16px;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 2px;
+      color: var(--text2);
+      border-bottom: 1px solid var(--border);
+      background: var(--bg3);
+    }
+
+    .tracker-cards {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0;
+      background: var(--border);
+    }
+
+    .tracker-card {
+      background: var(--bg2);
+      padding: 14px 16px;
+      min-height: 60px;
+      word-break: break-word;
+    }
+
+    .tracker-card-label {
+      font-size: 10px;
+      color: var(--text2);
+      letter-spacing: 1px;
+      margin-bottom: 4px;
+    }
+
+    .tracker-card-value {
+      font-size: 16px;
+      font-weight: 700;
+      color: var(--text);
+    }
+
+    .tracker-card-value.positive { color: var(--green); }
+    .tracker-card-value.negative { color: var(--red); }
+    .tracker-card-value.gold { color: var(--gold); }
+
+    .tracker-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 12px;
+    }
+
+    .tracker-table th {
+      padding: 10px 12px;
+      text-align: left;
+      font-size: 10px;
+      letter-spacing: 1px;
+      color: var(--text2);
+      border-bottom: 1px solid var(--border);
+      background: var(--bg3);
+    }
+
+    .tracker-table td {
+      padding: 10px 12px;
+      border-bottom: 1px solid var(--border);
+      color: var(--text);
+    }
+
+    .tracker-table tr:last-child td { border-bottom: none; }
+
+    .badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 20px;
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 1px;
+    }
+
+    .badge-green { background: rgba(109,184,145,0.2); color: var(--green); }
+    .badge-red { background: rgba(224,107,107,0.2); color: var(--red); }
+    .badge-gold { background: rgba(200,169,110,0.2); color: var(--gold); }
+    .badge-blue { background: rgba(107,159,224,0.2); color: var(--blue); }
+    .badge-grey { background: rgba(144,144,168,0.2); color: var(--text2); }
+
+    .progress-bar-wrap {
+      background: var(--bg3);
+      border-radius: 99px;
+      height: 6px;
+      margin-top: 6px;
+      overflow: hidden;
+    }
+
+    .progress-bar-fill {
+      height: 100%;
+      border-radius: 99px;
+      background: var(--gold);
+      transition: width 0.5s;
+    }
+
+    .list-item {
+      padding: 12px 16px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .list-item:last-child { border-bottom: none; }
+
+    .list-item-left { flex: 1; }
+
+    .list-item-title {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text);
+      margin-bottom: 2px;
+    }
+
+    .list-item-sub {
+      font-size: 11px;
+      color: var(--text2);
+    }
+
+    .list-item-right {
+      text-align: right;
+      flex-shrink: 0;
+    }
+
+    .list-item-value {
+      font-size: 14px;
+      font-weight: 700;
+    }
+
+    .list-item-date {
+      font-size: 10px;
+      color: var(--text2);
+      margin-top: 2px;
+    }
+
+    .chart-container {
+      padding: 16px;
+    }
+
+    .score-display {
+      text-align: center;
+      padding: 20px;
+    }
+
+    .score-number {
+      font-size: 48px;
+      font-weight: 800;
+      color: var(--gold);
+    }
+
+    .score-label {
+      font-size: 11px;
+      color: var(--text2);
+      letter-spacing: 2px;
+      margin-top: 4px;
+    }
+
+    .two-scores {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1px;
+      background: var(--border);
+    }
+
+/* ============================================================
+       CHAT HISTORY SCREEN
+    ============================================================ */
+    .history-view {
+      position: fixed;
+      inset: 0;
+      background: var(--bg);
+      display: flex;
+      flex-direction: column;
+      z-index: 200;
+    }
+
+    .history-view.hidden { display: none; }
+
+    .history-header {
+      display: flex;
+      align-items: center;
+      padding: 14px 16px;
+      background: var(--bg2);
+      border-bottom: 1px solid var(--border);
+      gap: 12px;
+      flex-shrink: 0;
+    }
+
+    .history-title {
+      font-size: 16px;
+      font-weight: 800;
+      letter-spacing: 3px;
+      color: var(--gold);
+      flex: 1;
+    }
+
+    .history-filters {
+      display: flex;
+      gap: 6px;
+      padding: 10px 16px;
+      background: var(--bg2);
+      border-bottom: 1px solid var(--border);
+      overflow-x: auto;
+      flex-shrink: 0;
+      scrollbar-width: none;
+    }
+
+    .history-filters::-webkit-scrollbar { display: none; }
+
+    .filter-btn {
+      flex-shrink: 0;
+      padding: 6px 12px;
+      border-radius: 20px;
+      border: 1px solid var(--border);
+      background: var(--bg3);
+      color: var(--text2);
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 1px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .filter-btn.active {
+      background: var(--gold);
+      color: #0f0f11;
+      border-color: var(--gold);
+    }
+
+    .filter-btn.agent-filter.active-nexus  { background: #c8a96e; border-color: #c8a96e; color: #0f0f11; }
+    .filter-btn.agent-filter.active-cipher { background: #9b6be0; border-color: #9b6be0; color: #fff; }
+    .filter-btn.agent-filter.active-asset  { background: #6db891; border-color: #6db891; color: #0f0f11; }
+    .filter-btn.agent-filter.active-atlas  { background: #6b9fe0; border-color: #6b9fe0; color: #0f0f11; }
+    .filter-btn.agent-filter.active-drive  { background: #e09b6b; border-color: #e09b6b; color: #0f0f11; }
+    .filter-btn.agent-filter.active-stock  { background: #a0785a; border-color: #a0785a; color: #fff; }
+    .filter-btn.agent-filter.active-flame  { background: #e06b6b; border-color: #e06b6b; color: #fff; }
+    .filter-btn.agent-filter.active-case   { background: #6bcfe0; border-color: #6bcfe0; color: #0f0f11; }
+
+    .history-body {
+      flex: 1;
+      overflow-y: auto;
+      padding: 12px 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .history-item {
+      background: var(--bg2);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 12px 14px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      transition: border-color 0.2s;
+    }
+
+    .history-item:active { opacity: 0.7; }
+
+    .history-agent-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+
+    .history-item-content { flex: 1; min-width: 0; }
+
+    .history-item-title {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      margin-bottom: 3px;
+    }
+
+    .history-item-meta {
+      font-size: 10px;
+      color: var(--text2);
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+
+    .history-agent-badge {
+      font-size: 9px;
+      font-weight: 700;
+      letter-spacing: 1px;
+      padding: 2px 6px;
+      border-radius: 20px;
+      background: rgba(255,255,255,0.08);
+    }
+
+/* ============================================================
+       INPUT MODALS
+    ============================================================ */
+    .modal-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.7);
+      z-index: 500;
+      display: flex;
+      align-items: flex-end;
+      justify-content: center;
+    }
+
+    .modal-overlay.hidden { display: none; }
+
+    .modal-sheet {
+      background: var(--bg2);
+      border-radius: 20px 20px 0 0;
+      width: 100%;
+      max-height: 90vh;
+      overflow-y: auto;
+      padding: 20px 20px 40px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .modal-handle {
+      width: 40px;
+      height: 4px;
+      background: var(--border);
+      border-radius: 99px;
+      margin: 0 auto 8px;
+    }
+
+    .modal-title {
+      font-size: 16px;
+      font-weight: 800;
+      letter-spacing: 2px;
+      color: var(--text);
+      text-align: center;
+    }
+
+    .modal-tabs {
+      display: flex;
+      gap: 0;
+      background: var(--bg3);
+      border-radius: 10px;
+      padding: 3px;
+    }
+
+    .modal-tab {
+      flex: 1;
+      padding: 8px;
+      border: none;
+      background: none;
+      color: var(--text2);
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 1px;
+      cursor: pointer;
+      border-radius: 8px;
+      transition: all 0.2s;
+    }
+
+    .modal-tab.active {
+      background: var(--bg2);
+      color: var(--text);
+    }
+
+    .modal-field {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .modal-label {
+      font-size: 11px;
+      color: var(--text2);
+      letter-spacing: 1px;
+      font-weight: 700;
+    }
+
+    .modal-input {
+      width: 100%;
+      padding: 12px 14px;
+      background: var(--bg3);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      color: var(--text);
+      font-size: 15px;
+      outline: none;
+      font-family: inherit;
+    }
+
+    .modal-input:focus { border-color: var(--gold); }
+
+    .modal-select {
+      width: 100%;
+      padding: 12px 14px;
+      background: var(--bg3);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      color: var(--text);
+      font-size: 15px;
+      outline: none;
+      font-family: inherit;
+      appearance: none;
+    }
+
+    .modal-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+
+    .modal-submit {
+      width: 100%;
+      padding: 14px;
+      background: var(--gold);
+      color: #0f0f11;
+      border: none;
+      border-radius: 12px;
+      font-size: 15px;
+      font-weight: 700;
+      cursor: pointer;
+      letter-spacing: 1px;
+      margin-top: 8px;
+    }
+
+    .modal-cancel {
+      width: 100%;
+      padding: 12px;
+      background: none;
+      color: var(--text2);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      font-size: 14px;
+      cursor: pointer;
+    }
+
+    .modal-divider {
+      height: 1px;
+      background: var(--border);
+      margin: 4px 0;
+    }
+
+    .modal-summary {
+      background: var(--bg3);
+      border-radius: 10px;
+      padding: 12px 14px;
+      font-size: 13px;
+      color: var(--text2);
+      line-height: 1.8;
+    }
+
+    .modal-summary span {
+      color: var(--text);
+      font-weight: 700;
+    }
+
+    .modal-error {
+      color: var(--red);
+      font-size: 12px;
+      text-align: center;
+      min-height: 16px;
+    }
+
+    .modal-success {
+      color: var(--green);
+      font-size: 13px;
+      text-align: center;
+      padding: 10px;
+    }
+
+    .add-btn {
+      background: none;
+      border: none;
+      color: var(--gold);
+      font-size: 24px;
+      cursor: pointer;
+      padding: 0;
+      line-height: 1;
+    }
+
+    .modal-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .modal-close {
+      background: none;
+      border: none;
+      color: var(--text2);
+      font-size: 18px;
+      cursor: pointer;
+      padding: 4px 8px;
+    }
+
+    .modal-body {
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+
+    .form-group {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .form-group label {
+      font-size: 11px;
+      color: var(--text2);
+      letter-spacing: 1px;
+      font-weight: 700;
+      text-transform: uppercase;
+    }
+
+    .form-group input,
+    .form-group select,
+    .form-group textarea {
+      width: 100%;
+      padding: 12px 14px;
+      background: var(--bg3);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      color: var(--text);
+      font-size: 15px;
+      outline: none;
+      font-family: inherit;
+      box-sizing: border-box;
+    }
+
+    .form-group input:focus,
+    .form-group select:focus,
+    .form-group textarea:focus {
+      border-color: var(--gold);
+    }
+
+    .form-group select {
+      appearance: none;
+    }
+
+    .form-group textarea {
+      resize: none;
+    }
+
+    .form-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+
+    .submit-btn {
+      width: 100%;
+      padding: 14px;
+      color: #0f0f11;
+      border: none;
+      border-radius: 12px;
+      font-size: 15px;
+      font-weight: 700;
+      cursor: pointer;
+      letter-spacing: 1px;
+      margin-top: 4px;
+    }
+
+    .add-row-btn {
+      background: var(--bg3);
+      border: 1px dashed var(--border);
+      color: var(--text2);
+      border-radius: 8px;
+      padding: 8px 14px;
+      font-size: 13px;
+      cursor: pointer;
+      width: 100%;
+      text-align: center;
+      margin-top: 4px;
+    }
+
+    .set-row,
+    .exercise-row {
+      display: grid;
+      gap: 6px;
+      background: var(--bg3);
+      border-radius: 8px;
+      padding: 10px;
+      margin-bottom: 6px;
+      position: relative;
+    }
+
+    .set-row { grid-template-columns: 1fr 1fr auto; }
+    .exercise-row { grid-template-columns: 1fr auto; }
+    .exercise-row-details { grid-template-columns: 1fr 1fr 1fr; }
+
+    .remove-row-btn {
+      background: none;
+      border: none;
+      color: var(--red);
+      font-size: 16px;
+      cursor: pointer;
+      padding: 0 4px;
+      align-self: center;
+    }
+
+    .delete-item-btn {
+      background: none;
+      border: none;
+      color: var(--red);
+      font-size: 16px;
+      cursor: pointer;
+      padding: 4px 6px;
+      opacity: 0.6;
+      line-height: 1;
+      flex-shrink: 0;
+    }
+
+    .delete-item-btn:active {
+      opacity: 1;
+    }
+
+    .image-option {
+      border: 2px solid var(--border);
+      border-radius: 8px;
+      overflow: hidden;
+      cursor: pointer;
+      aspect-ratio: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .image-option img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+
+    .image-option.selected {
+      border-color: var(--gold);
+    }
+
+    .image-option-none {
+      border: 2px solid var(--border);
+      border-radius: 8px;
+      padding: 10px;
+      cursor: pointer;
+      text-align: center;
+      font-size: 12px;
+      color: var(--text2);
+      grid-column: span 2;
+    }
+
+    .image-option-none.selected {
+      border-color: var(--gold);
+      color: var(--text);
+    }
+
+    .new-chat-btn {
+      position: fixed;
+      bottom: 80px;
+      right: 20px;
+      width: 52px;
+      height: 52px;
+      border-radius: 50%;
+      background: var(--gold);
+      color: #0f0f11;
+      border: none;
+      font-size: 24px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 4px 16px rgba(0,0,0,0.4);
+      z-index: 201;
+    }
+
+    /* Agent colors */
+    .color-nexus  { --agent-color: var(--gold); }
+    .color-cipher { --agent-color: var(--purple); }
+    .color-asset  { --agent-color: var(--green); }
+    .color-atlas  { --agent-color: var(--blue); }
+    .color-drive  { --agent-color: var(--orange); }
+    .color-stock  { --agent-color: var(--brown); }
+    .color-flame  { --agent-color: var(--red); }
+    .color-case   { --agent-color: var(--cyan); }
+  </style>
+</head>
+<body>
+
+<!-- ============================================================
+     LOGIN SCREEN
+============================================================ -->
+<div id="login-screen">
+  <div class="login-logo">NEXUS</div>
+  <div class="login-subtitle">PERSONAL AI SYSTEM</div>
+  <div class="login-form">
+    <input class="login-input" type="text" id="login-username" placeholder="Username" autocomplete="username">
+    <input class="login-input" type="password" id="login-password" placeholder="Password" autocomplete="current-password">
+    <button class="login-btn" onclick="doLogin()">ENTER</button>
+    <div class="login-error" id="login-error"></div>
+  </div>
+</div>
+
+<!-- ============================================================
+     MAIN APP
+============================================================ -->
+<div id="app" class="hidden">
+  <!-- Top bar -->
+  <div class="topbar">
+    <div class="topbar-title">NEXUS</div>
+    <div class="topbar-agent-name" id="topbar-agent-name">N.E.X.U.S.</div>
+    <button onclick="openHistory()" style="background:none;border:none;color:var(--text2);font-size:20px;cursor:pointer;padding:0 0 0 12px">🕐</button>
+  </div>
+
+  <!-- Agent rail -->
+  <div class="agent-rail">
+    <button class="agent-btn color-nexus active" onclick="switchAgent('nexus')" id="btn-nexus" style="--agent-color: #c8a96e">NEX</button>
+    <button class="agent-btn color-cipher" onclick="switchAgent('cipher')" id="btn-cipher" style="--agent-color: #9b6be0">CIP</button>
+    <button class="agent-btn color-asset" onclick="switchAgent('asset')" id="btn-asset" style="--agent-color: #6db891">ASS</button>
+    <button class="agent-btn color-atlas" onclick="switchAgent('atlas')" id="btn-atlas" style="--agent-color: #6b9fe0">ATL</button>
+    <button class="agent-btn color-drive" onclick="switchAgent('drive')" id="btn-drive" style="--agent-color: #e09b6b">DRV</button>
+    <button class="agent-btn color-stock" onclick="switchAgent('stock')" id="btn-stock" style="--agent-color: #a0785a">STK</button>
+    <button class="agent-btn color-flame" onclick="switchAgent('flame')" id="btn-flame" style="--agent-color: #e06b6b">FLM</button>
+    <button class="agent-btn color-case" onclick="switchAgent('case')" id="btn-case" style="--agent-color: #6bcfe0">CAS</button>
+  </div>
+
+  <!-- Main content -->
+  <div class="main color-nexus" id="main-content">
+    <!-- Data panel -->
+    <div class="data-panel" id="data-panel"></div>
+
+    <!-- Chat area -->
+    <div class="chat-area" id="chat-area"></div>
+
+    <!-- Input bar -->
+    <div class="input-bar">
+      <textarea class="chat-input" id="chat-input" placeholder="Message NEXUS..." rows="1"
+        onkeydown="handleKey(event)" oninput="autoResize(this)"></textarea>
+      <button class="send-btn" onclick="sendMessage()">↑</button>
+    </div>
+  <!-- Bottom Nav -->
+    <div class="bottom-nav">
+      <button class="bottom-nav-btn active" onclick="switchTab('chat')" id="tab-chat">
+        <span class="bottom-nav-icon">💬</span>CHAT
+      </button>
+      <button class="bottom-nav-btn" onclick="switchTab('finance')" id="tab-finance">
+        <span class="bottom-nav-icon">💰</span>FINANCE
+      </button>
+      <button class="bottom-nav-btn" onclick="switchTab('drive')" id="tab-drive">
+        <span class="bottom-nav-icon">🚗</span>DRIVE
+      </button>
+      <button class="bottom-nav-btn" onclick="switchTab('train')" id="tab-train">
+        <span class="bottom-nav-icon">💪</span>TRAIN
+      </button>
+      <button class="bottom-nav-btn" onclick="switchTab('stock')" id="tab-stock">
+        <span class="bottom-nav-icon">🥫</span>STOCK
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================
+     CHAT HISTORY SCREEN
+============================================================ -->
+<div class="history-view hidden" id="history-view">
+  <div class="history-header">
+    <button onclick="closeHistory()" style="background:none;border:none;color:var(--text2);font-size:22px;cursor:pointer;padding:0 8px 0 0">‹</button>
+    <div class="history-title">HISTORY</div>
+    <button onclick="startNewChat()" style="background:none;border:none;color:var(--gold);font-size:13px;font-weight:700;cursor:pointer;letter-spacing:1px">+ NEW</button>
+  </div>
+  <div class="history-filters" id="history-filters">
+    <button class="filter-btn active" onclick="filterHistory('all')" id="filter-all">ALL</button>
+    <button class="filter-btn agent-filter" onclick="filterHistory('nexus')" id="filter-nexus" style="color:#c8a96e">NEX</button>
+    <button class="filter-btn agent-filter" onclick="filterHistory('cipher')" id="filter-cipher" style="color:#9b6be0">CIP</button>
+    <button class="filter-btn agent-filter" onclick="filterHistory('asset')" id="filter-asset" style="color:#6db891">ASS</button>
+    <button class="filter-btn agent-filter" onclick="filterHistory('atlas')" id="filter-atlas" style="color:#6b9fe0">ATL</button>
+    <button class="filter-btn agent-filter" onclick="filterHistory('drive')" id="filter-drive" style="color:#e09b6b">DRV</button>
+    <button class="filter-btn agent-filter" onclick="filterHistory('stock')" id="filter-stock" style="color:#a0785a">STK</button>
+    <button class="filter-btn agent-filter" onclick="filterHistory('flame')" id="filter-flame" style="color:#e06b6b">FLM</button>
+    <button class="filter-btn agent-filter" onclick="filterHistory('case')" id="filter-case" style="color:#6bcfe0">CAS</button>
+  </div>
+  <div class="history-body" id="history-body">
+    <div style="color:var(--text2);text-align:center;padding:40px">Loading...</div>
+  </div>
+</div>
+
+<!-- Exit confirmation overlay -->
+<div id="exit-confirm" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.8);z-index:99999;align-items:center;justify-content:center">
+  <div style="background:var(--bg2);border-radius:16px;padding:28px 24px;width:80%;max-width:320px;text-align:center">
+    <div style="font-size:16px;font-weight:700;color:var(--text);margin-bottom:8px">Leave NEXUS?</div>
+    <div style="font-size:13px;color:var(--text2);margin-bottom:24px">Are you sure you want to exit?</div>
+    <div style="display:flex;gap:12px">
+      <button onclick="cancelExit()" style="flex:1;padding:12px;background:var(--bg3);border:1px solid var(--border);border-radius:10px;color:var(--text);font-size:14px;cursor:pointer">Stay</button>
+      <button onclick="confirmExit()" style="flex:1;padding:12px;background:var(--red);border:none;border-radius:10px;color:#fff;font-size:14px;font-weight:700;cursor:pointer">Leave</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================
+     DRIVE INPUT MODAL
+============================================================ -->
+<div class="modal-overlay hidden" id="drive-modal">
+  <div class="modal-sheet">
+    <div class="modal-handle"></div>
+    <div class="modal-header">
+      <div class="modal-title" style="color:var(--orange)">LOG DRIVE</div>
+      <button onclick="closeDriveModal()" class="modal-close">✕</button>
+    </div>
+
+    <!-- Tabs -->
+    <div class="modal-tabs">
+      <button class="modal-tab active" id="dtab-maintenance" onclick="switchDriveTab('maintenance')">Maintenance</button>
+      <button class="modal-tab" id="dtab-gas" onclick="switchDriveTab('gas')">Gas</button>
+      <button class="modal-tab" id="dtab-issue" onclick="switchDriveTab('issue')">Issue</button>
+      <button class="modal-tab" id="dtab-mileage" onclick="switchDriveTab('mileage')">Mileage</button>
+    </div>
+
+    <div class="modal-body">
+
+      <!-- MAINTENANCE FORM -->
+      <div id="dform-maintenance">
+        <div class="form-group">
+          <label>Service Type</label>
+          <select id="dm-service">
+            <option value="oil_change">Oil Change</option>
+            <option value="tire_rotation">Tire Rotation</option>
+            <option value="air_filter">Air Filter</option>
+            <option value="cabin_filter">Cabin Air Filter</option>
+            <option value="wiper_blades">Wiper Blades</option>
+            <option value="brake_inspection">Brake Inspection</option>
+            <option value="brake_pads">Brake Pads</option>
+            <option value="coolant_flush">Coolant Flush</option>
+            <option value="transmission_fluid">Transmission Fluid</option>
+            <option value="spark_plugs">Spark Plugs</option>
+            <option value="tire_replacement">Tire Replacement</option>
+            <option value="battery_replacement">Battery Replacement</option>
+            <option value="other">Other</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Date</label>
+          <input type="date" id="dm-date">
+        </div>
+        <div class="form-group">
+          <label>Mileage</label>
+          <input type="number" id="dm-mileage" placeholder="e.g. 52000">
+        </div>
+        <div class="form-group">
+          <label>Shop / Location</label>
+          <input type="text" id="dm-shop" placeholder="e.g. Honda Dealership">
+        </div>
+        <div class="form-group">
+          <label>Cost ($)</label>
+          <input type="number" step="0.01" id="dm-cost" placeholder="e.g. 89.99">
+        </div>
+        <div class="form-group">
+          <label>Performed By</label>
+          <select id="dm-performed-by">
+            <option value="dealership">Dealership</option>
+            <option value="shop">Shop</option>
+            <option value="diy">DIY</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Notes</label>
+          <textarea id="dm-notes" rows="2" placeholder="Optional notes..."></textarea>
+        </div>
+      </div>
+
+      <!-- GAS FORM -->
+      <div id="dform-gas" class="hidden">
+        <div class="form-group">
+          <label>Date</label>
+          <input type="date" id="dg-date">
+        </div>
+        <div class="form-group">
+          <label>Mileage at Fill-up</label>
+          <input type="number" id="dg-mileage" placeholder="e.g. 52000">
+        </div>
+        <div class="form-group">
+          <label>Gallons</label>
+          <input type="number" step="0.001" id="dg-gallons" placeholder="e.g. 10.5" oninput="calcGasTotal()">
+        </div>
+        <div class="form-group">
+          <label>Price per Gallon ($)</label>
+          <input type="number" step="0.001" id="dg-price" placeholder="e.g. 3.459" oninput="calcGasTotal()">
+        </div>
+        <div class="form-group">
+          <label>Total Cost ($)</label>
+          <input type="number" step="0.01" id="dg-total" placeholder="Auto-calculated">
+        </div>
+      </div>
+
+      <!-- ISSUE FORM -->
+      <div id="dform-issue" class="hidden">
+        <div class="form-group">
+          <label>Description</label>
+          <input type="text" id="di-desc" placeholder="e.g. Squealing brakes">
+        </div>
+        <div class="form-group">
+          <label>Severity</label>
+          <select id="di-severity">
+            <option value="mild">Mild</option>
+            <option value="moderate">Moderate</option>
+            <option value="severe">Severe</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Date</label>
+          <input type="date" id="di-date">
+        </div>
+        <div class="form-group">
+          <label>Notes</label>
+          <textarea id="di-notes" rows="2" placeholder="Optional details..."></textarea>
+        </div>
+      </div>
+
+      <!-- MILEAGE FORM -->
+      <div id="dform-mileage" class="hidden">
+        <div class="form-group">
+          <label>Current Mileage</label>
+          <input type="number" id="dmi-mileage" placeholder="e.g. 52000">
+        </div>
+      </div>
+
+      <div class="modal-error" id="drive-modal-error"></div>
+      <button class="submit-btn" onclick="submitDriveForm()" style="background:var(--orange)">SAVE</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================
+     TRAINING INPUT MODAL
+============================================================ -->
+<div class="modal-overlay hidden" id="train-modal">
+  <div class="modal-sheet">
+    <div class="modal-handle"></div>
+    <div class="modal-header">
+      <div class="modal-title" style="color:var(--blue)">LOG TRAINING</div>
+      <button onclick="closeTrainModal()" class="modal-close">✕</button>
+    </div>
+
+    <!-- Tabs -->
+    <div class="modal-tabs">
+      <button class="modal-tab active" id="ttab-swim" onclick="switchTrainTab('swim')">Swim</button>
+      <button class="modal-tab" id="ttab-gym" onclick="switchTrainTab('gym')">Gym</button>
+      <button class="modal-tab" id="ttab-injury" onclick="switchTrainTab('injury')">Injury</button>
+    </div>
+
+    <div class="modal-body">
+
+      <!-- SWIM FORM -->
+      <div id="tform-swim">
+        <div class="form-group">
+          <label>Date</label>
+          <input type="date" id="sw-date">
+        </div>
+        <div class="form-group">
+          <label>Total Distance (yards)</label>
+          <input type="number" id="sw-distance" placeholder="e.g. 1500">
+        </div>
+        <div class="form-group">
+          <label>Duration (minutes)</label>
+          <input type="number" id="sw-duration" placeholder="e.g. 45">
+        </div>
+        <div class="form-group">
+          <label>Strokes (comma separated)</label>
+          <input type="text" id="sw-strokes" placeholder="e.g. freestyle, breaststroke">
+        </div>
+        <div class="form-group">
+          <label>Difficulty (1–10)</label>
+          <input type="number" min="1" max="10" id="sw-difficulty" placeholder="e.g. 7">
+        </div>
+        <div class="form-group">
+          <label>Sets</label>
+          <div id="sw-sets-list"></div>
+          <button type="button" onclick="addSwimSet()" class="add-row-btn">＋ Add Set</button>
+        </div>
+        <div class="form-group">
+          <label>Form Notes</label>
+          <textarea id="sw-form-notes" rows="2" placeholder="Optional..."></textarea>
+        </div>
+        <div class="form-group">
+          <label>Weaknesses</label>
+          <textarea id="sw-weaknesses" rows="2" placeholder="Optional..."></textarea>
+        </div>
+        <div class="form-group">
+          <label>Coach Notes</label>
+          <textarea id="sw-coach-notes" rows="2" placeholder="Optional..."></textarea>
+        </div>
+      </div>
+
+      <!-- GYM FORM -->
+      <div id="tform-gym" class="hidden">
+        <div class="form-group">
+          <label>Date</label>
+          <input type="date" id="gy-date">
+        </div>
+        <div class="form-group">
+          <label>Duration (minutes)</label>
+          <input type="number" id="gy-duration" placeholder="e.g. 60">
+        </div>
+        <div class="form-group">
+          <label>Difficulty (1–10)</label>
+          <input type="number" min="1" max="10" id="gy-difficulty" placeholder="e.g. 6">
+        </div>
+        <div class="form-group">
+          <label>Exercises</label>
+          <div id="gy-exercises-list"></div>
+          <button type="button" onclick="addGymExercise()" class="add-row-btn">＋ Add Exercise</button>
+        </div>
+        <div class="form-group">
+          <label>Form Notes</label>
+          <textarea id="gy-form-notes" rows="2" placeholder="Optional..."></textarea>
+        </div>
+        <div class="form-group">
+          <label>Weaknesses</label>
+          <textarea id="gy-weaknesses" rows="2" placeholder="Optional..."></textarea>
+        </div>
+        <div class="form-group">
+          <label>Coach Notes</label>
+          <textarea id="gy-coach-notes" rows="2" placeholder="Optional..."></textarea>
+        </div>
+      </div>
+
+      <!-- INJURY FORM -->
+      <div id="tform-injury" class="hidden">
+        <div class="form-group">
+          <label>Description</label>
+          <input type="text" id="inj-desc" placeholder="e.g. Left shoulder strain">
+        </div>
+        <div class="form-group">
+          <label>Severity</label>
+          <select id="inj-severity">
+            <option value="mild">Mild</option>
+            <option value="moderate">Moderate</option>
+            <option value="severe">Severe</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Date</label>
+          <input type="date" id="inj-date">
+        </div>
+        <div class="form-group">
+          <label>Notes</label>
+          <textarea id="inj-notes" rows="2" placeholder="Optional details..."></textarea>
+        </div>
+      </div>
+
+      <div class="modal-error" id="train-modal-error"></div>
+      <button class="submit-btn" onclick="submitTrainForm()" style="background:var(--blue)">SAVE</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================
+     STOCK INPUT MODAL
+============================================================ -->
+<div class="modal-overlay hidden" id="stock-modal">
+  <div class="modal-sheet">
+    <div class="modal-handle"></div>
+    <div class="modal-header">
+      <div class="modal-title" style="color:var(--brown)">LOG STOCK</div>
+      <button onclick="closeStockModal()" class="modal-close">✕</button>
+    </div>
+
+    <!-- Tabs -->
+    <div class="modal-tabs">
+      <button class="modal-tab active" id="stab-add" onclick="switchStockTab('add')">Add Item</button>
+      <button class="modal-tab" id="stab-out" onclick="switchStockTab('out')">Out of Stock</button>
+      <button class="modal-tab" id="stab-grocery" onclick="switchStockTab('grocery')">Grocery List</button>
+      <button class="modal-tab" id="stab-bought" onclick="switchStockTab('bought')">Mark Bought</button>
+    </div>
+
+    <div class="modal-body">
+
+      <!-- ADD PANTRY ITEM -->
+      <div id="sform-add">
+        <div class="form-group">
+          <label>Item Name</label>
+          <input type="text" id="sa-name" placeholder="e.g. Olive Oil">
+        </div>
+        <div class="form-row">
+          <div class="form-group" style="flex:1">
+            <label>Quantity</label>
+            <input type="number" step="0.1" id="sa-quantity" placeholder="e.g. 2">
+          </div>
+          <div class="form-group" style="flex:1">
+            <label>Unit</label>
+            <input type="text" id="sa-unit" placeholder="e.g. bottles" list="unit-suggestions">
+            <datalist id="unit-suggestions">
+              <option value="pieces"><option value="bottle"><option value="kg">
+              <option value="g"><option value="liter"><option value="ml">
+              <option value="pack"><option value="can"><option value="box">
+              <option value="bag"><option value="jar">
+            </datalist>
+          </div>
+        </div>
+        <div class="form-group" id="sa-cg-section">
+          <label>Package Sizes (optional — e.g. 2 bottles, 1 gal each)</label>
+          <div id="sa-cg-rows"></div>
+          <button type="button" onclick="addContainerGroupRow('sa')" style="background:var(--surface2);color:var(--text2);border:1px dashed var(--border);border-radius:8px;padding:6px 12px;font-size:12px;margin-top:6px;cursor:pointer;">+ Add another size</button>
+        </div>
+          <div style="display:flex;gap:8px">
+            <input type="text" id="sa-image-query" placeholder="Search Walmart...">
+            <button type="button" onclick="searchItemImage('sa')" style="background:var(--brown);color:#fff;border:none;border-radius:8px;padding:8px 14px;cursor:pointer;white-space:nowrap">Search</button>
+          </div>
+          <div id="sa-image-results" style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px"></div>
+          <input type="hidden" id="sa-image-url">
+        </div>
+        <div class="form-group">
+          <label>Notes</label>
+          <input type="text" id="sa-notes" placeholder="Optional...">
+        </div>
+      </div>
+
+      <!-- OUT OF STOCK -->
+      <div id="sform-out" class="hidden">
+        <div class="form-group">
+          <label>Item Name</label>
+          <input type="text" id="so-name" placeholder="Type or select..." list="so-name-list">
+          <datalist id="so-name-list"></datalist>
+        </div>
+      </div>
+
+      <!-- ADD TO GROCERY LIST -->
+      <div id="sform-grocery" class="hidden">
+        <div class="form-group">
+          <label>Item Name</label>
+          <input type="text" id="sg-name" placeholder="e.g. Milk">
+        </div>
+        <div class="form-row">
+          <div class="form-group" style="flex:1">
+            <label>Quantity</label>
+            <input type="number" step="0.1" id="sg-quantity" placeholder="e.g. 2">
+          </div>
+          <div class="form-group" style="flex:1">
+            <label>Unit</label>
+            <input type="text" id="sg-unit" placeholder="e.g. liters" list="unit-suggestions">
+          </div>
+        </div>
+        <div class="form-group" id="sg-cg-section">
+          <label>Package Sizes (optional — e.g. 2 bottles, 1 gal each)</label>
+          <div id="sg-cg-rows"></div>
+          <button type="button" onclick="addContainerGroupRow('sg')" style="background:var(--surface2);color:var(--text2);border:1px dashed var(--border);border-radius:8px;padding:6px 12px;font-size:12px;margin-top:6px;cursor:pointer;">+ Add another size</button>
+        </div>
+        <div class="form-group">
+          <label>Notes</label>
+          <input type="text" id="sg-notes" placeholder="Optional...">
+        </div>
+      </div>
+
+      <!-- MARK BOUGHT -->
+      <div id="sform-bought" class="hidden">
+        <div class="form-group">
+          <label>Item Name</label>
+          <input type="text" id="sb-name" placeholder="Type or select..." list="sb-name-list">
+          <datalist id="sb-name-list"></datalist>
+        </div>
+        <div class="form-row">
+          <div class="form-group" style="flex:1">
+            <label>Quantity Bought</label>
+            <input type="number" step="0.1" id="sb-quantity" placeholder="e.g. 2">
+          </div>
+          <div class="form-group" style="flex:1">
+            <label>Unit</label>
+            <input type="text" id="sb-unit" placeholder="e.g. liters" list="unit-suggestions">
+          </div>
+        </div>
+      </div>
+
+      <div class="modal-error" id="stock-modal-error"></div>
+      <button class="submit-btn" onclick="submitStockForm()" style="background:var(--brown)">SAVE</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================
+     FINANCE TRACKER VIEW
+============================================================ -->
+<div class="tracker-view hidden" id="view-finance">
+  <div class="tracker-header">
+    <button onclick="switchTab('chat')" style="background:none;border:none;color:var(--text2);font-size:22px;cursor:pointer;padding:0 8px 0 0">‹</button>
+    <div class="tracker-title" style="color: var(--green)">FINANCE</div>
+    <div style="font-size:12px; color:var(--text2)" id="finance-updated"></div>
+    <button class="add-btn" onclick="openFinanceModal()">＋</button>
+  </div>
+  <div class="tracker-body" id="finance-body">
+    <div style="color:var(--text2); text-align:center; padding:40px">Loading...</div>
+  </div>
+</div>
+
+<!-- ============================================================
+     FINANCE INPUT MODAL
+============================================================ -->
+<div class="modal-overlay hidden" id="finance-modal">
+  <div class="modal-sheet">
+    <div class="modal-handle"></div>
+    <div class="modal-title" id="finance-modal-title">ADD ENTRY</div>
+
+    <!-- Tab selector -->
+    <div class="modal-tabs">
+      <button class="modal-tab active" onclick="switchFinanceTab('transaction')" id="ftab-transaction">TRANSACTION</button>
+      <button class="modal-tab" onclick="switchFinanceTab('transfer')" id="ftab-transfer">TRANSFER</button>
+      <button class="modal-tab" onclick="switchFinanceTab('paycheck')" id="ftab-paycheck">PAYCHECK</button>
+      <button class="modal-tab" onclick="switchFinanceTab('credit')" id="ftab-credit">CREDIT</button>
+      <button class="modal-tab" onclick="switchFinanceTab('balance')" id="ftab-balance">BALANCE</button>
+    </div>
+
+    <!-- Transaction form -->
+    <div id="fform-transaction">
+      <div class="modal-field">
+        <div class="modal-label">DESCRIPTION</div>
+        <input class="modal-input" id="tx-desc" placeholder="e.g. Groceries" list="tx-desc-list">
+        <datalist id="tx-desc-list"></datalist>
+      </div>
+      <div class="modal-row">
+        <div class="modal-field">
+          <div class="modal-label">TYPE</div>
+          <div style="display:flex;gap:6px">
+            <button id="tx-type-out" onclick="setTxType('out')" style="flex:1;padding:12px;border-radius:10px;border:1px solid var(--red);background:var(--red);color:#fff;font-size:12px;font-weight:700;cursor:pointer">− EXPENSE</button>
+            <button id="tx-type-in" onclick="setTxType('in')" style="flex:1;padding:12px;border-radius:10px;border:1px solid var(--border);background:var(--bg3);color:var(--text2);font-size:12px;font-weight:700;cursor:pointer">+ INCOME</button>
+          </div>
+        </div>
+      </div>
+      <div class="modal-row">
+        <div class="modal-field">
+          <div class="modal-label">AMOUNT</div>
+          <input class="modal-input" id="tx-amount" type="number" step="0.01" placeholder="0.00" inputmode="decimal">
+        </div>
+        <div class="modal-field">
+          <div class="modal-label">DATE</div>
+          <input class="modal-input" id="tx-date" type="date">
+        </div>
+      </div>
+      <div class="modal-field">
+        <div class="modal-label">ACCOUNT</div>
+        <select class="modal-select" id="tx-account">
+          <option value="vault">VAULT (Chase Checking)</option>
+          <option value="flex">FLEX (SoFi Checking)</option>
+          <option value="funds">FUNDS (SoFi Savings)</option>
+          <option value="cc">FREEDOM (Chase CC)</option>
+          <option value="cc2">SAVOR (Capital One CC)</option>
+          <option value="car_loan">Car Loan</option>
+        </select>
+      </div>
+      <div class="modal-field">
+        <div class="modal-label">NOTES (OPTIONAL)</div>
+        <input class="modal-input" id="tx-notes" placeholder="Optional notes">
+      </div>
+    </div>
+
+    <!-- Transfer form -->
+    <div id="fform-transfer" class="hidden">
+      <div class="modal-field">
+        <div class="modal-label">FROM</div>
+        <select class="modal-select" id="tr-from">
+          <option value="vault">VAULT (Chase Checking)</option>
+          <option value="flex">FLEX (SoFi Checking)</option>
+          <option value="funds">FUNDS (SoFi Savings)</option>
+          <option value="cc">FREEDOM (Chase CC)</option>
+          <option value="cc2">SAVOR (Capital One CC)</option>
+        </select>
+      </div>
+      <div class="modal-field">
+        <div class="modal-label">TO</div>
+        <select class="modal-select" id="tr-to">
+          <option value="flex">FLEX (SoFi Checking)</option>
+          <option value="vault">VAULT (Chase Checking)</option>
+          <option value="funds">FUNDS (SoFi Savings)</option>
+          <option value="cc">FREEDOM (Chase CC)</option>
+          <option value="cc2">SAVOR (Capital One CC)</option>
+          <option value="car_loan">Car Loan</option>
+        </select>
+      </div>
+      <div class="modal-row">
+        <div class="modal-field">
+          <div class="modal-label">AMOUNT</div>
+          <input class="modal-input" id="tr-amount" type="number" step="0.01" placeholder="0.00">
+        </div>
+        <div class="modal-field">
+          <div class="modal-label">DATE</div>
+          <input class="modal-input" id="tr-date" type="date">
+        </div>
+      </div>
+      <div class="modal-field">
+        <div class="modal-label">DESCRIPTION</div>
+        <input class="modal-input" id="tr-desc" placeholder="e.g. Weekly FLEX" value="Transfer">
+      </div>
+    </div>
+
+    <!-- Paycheck form -->
+    <div id="fform-paycheck" class="hidden">
+      <div class="modal-row">
+        <div class="modal-field">
+          <div class="modal-label">DATE</div>
+          <input class="modal-input" id="pc-date" type="date" oninput="autoCalcPaycheck()">
+        </div>
+        <div class="modal-field">
+          <div class="modal-label">HOURS WORKED</div>
+          <input class="modal-input" id="pc-hours" type="number" step="0.5" placeholder="36" oninput="autoCalcPaycheck()">
+        </div>
+      </div>
+      <div class="modal-field">
+        <div class="modal-label">GROSS PAY</div>
+        <input class="modal-input" id="pc-gross" type="number" step="0.01" placeholder="0.00" oninput="calcNetPay()">
+      </div>
+      <div class="modal-divider"></div>
+      <div style="font-size:11px;color:var(--text2);letter-spacing:1px;font-weight:700">DEDUCTIONS</div>
+      <div class="modal-row">
+        <div class="modal-field">
+          <div class="modal-label">FEDERAL TAX</div>
+          <input class="modal-input" id="pc-federal" type="number" step="0.01" placeholder="0.00" oninput="calcNetPay()">
+        </div>
+        <div class="modal-field">
+          <div class="modal-label">STATE TAX</div>
+          <input class="modal-input" id="pc-state" type="number" step="0.01" placeholder="0.00" oninput="calcNetPay()">
+        </div>
+      </div>
+      <div class="modal-row">
+        <div class="modal-field">
+          <div class="modal-label">SOC. SECURITY</div>
+          <input class="modal-input" id="pc-ss" type="number" step="0.01" placeholder="0.00" oninput="calcNetPay()">
+        </div>
+        <div class="modal-field">
+          <div class="modal-label">MEDICARE</div>
+          <input class="modal-input" id="pc-medicare" type="number" step="0.01" placeholder="0.00" oninput="calcNetPay()">
+        </div>
+      </div>
+      <div class="modal-row">
+        <div class="modal-field">
+          <div class="modal-label">BENEFITS</div>
+          <input class="modal-input" id="pc-benefits" type="number" step="0.01" placeholder="0.00" oninput="calcNetPay()">
+        </div>
+        <div class="modal-field">
+          <div class="modal-label">RETIREMENT</div>
+          <input class="modal-input" id="pc-retirement" type="number" step="0.01" placeholder="0.00" oninput="calcNetPay()">
+        </div>
+      </div>
+      <div class="modal-field">
+        <div class="modal-label">OTHER DEDUCTIONS</div>
+        <input class="modal-input" id="pc-other" type="number" step="0.01" placeholder="0.00" oninput="calcNetPay()">
+      </div>
+      <div class="modal-divider"></div>
+      <div class="modal-summary" id="pc-summary">
+        Gross: <span>$0.00</span> — Deductions: <span>$0.00</span> — Net: <span>$0.00</span>
+      </div>
+      <div class="modal-field">
+        <div class="modal-label">STATUS</div>
+        <select class="modal-select" id="pc-approved">
+          <option value="false">Predicted</option>
+          <option value="true">Approved</option>
+        </select>
+      </div>
+      <div class="modal-field">
+        <div class="modal-label">NOTES (OPTIONAL)</div>
+        <input class="modal-input" id="pc-notes" placeholder="Optional notes">
+      </div>
+    </div>
+
+    <!-- Credit Score form -->
+    <div id="fform-credit" class="hidden">
+      <div class="modal-row">
+        <div class="modal-field">
+          <div class="modal-label">SCORE</div>
+          <input class="modal-input" id="cs-score" type="number" placeholder="750">
+        </div>
+        <div class="modal-field">
+          <div class="modal-label">DATE</div>
+          <input class="modal-input" id="cs-date" type="date">
+        </div>
+      </div>
+      <div class="modal-field">
+        <div class="modal-label">TYPE</div>
+        <select class="modal-select" id="cs-type">
+          <option value="vantage">VantageScore (Chase Credit Journey)</option>
+          <option value="fico">FICO (CreditWise)</option>
+        </select>
+      </div>
+    </div>
+
+    <!-- Balance Correction form -->
+    <div id="fform-balance" class="hidden">
+      <div class="modal-field">
+        <div class="modal-label">ACCOUNT</div>
+        <select class="modal-select" id="bc-account">
+          <option value="vault">VAULT (Chase Checking)</option>
+          <option value="flex">FLEX (SoFi Checking)</option>
+          <option value="funds">FUNDS (SoFi Savings)</option>
+          <option value="cc">FREEDOM (Chase CC)</option>
+          <option value="cc2">SAVOR (Capital One CC)</option>
+          <option value="car_loan">Car Loan</option>
+        </select>
+      </div>
+      <div class="modal-row">
+        <div class="modal-field">
+          <div class="modal-label">CORRECT BALANCE</div>
+          <input class="modal-input" id="bc-amount" type="number" step="0.01" placeholder="0.00">
+        </div>
+        <div class="modal-field">
+          <div class="modal-label">DATE</div>
+          <input class="modal-input" id="bc-date" type="date">
+        </div>
+      </div>
+      <div class="modal-summary">
+        This will create a correction transaction to set the account to the balance you enter.
+      </div>
+    </div>
+
+    <div class="modal-error" id="finance-modal-error"></div>
+    <button class="modal-submit" onclick="submitFinanceForm()">SAVE</button>
+    <button class="modal-cancel" onclick="closeFinanceModal()">Cancel</button>
+  </div>
+</div>
+
+<!-- ============================================================
+     DRIVE TRACKER VIEW
+============================================================ -->
+<div class="tracker-view hidden" id="view-drive">
+  <div class="tracker-header">
+    <button onclick="switchTab('chat')" style="background:none;border:none;color:var(--text2);font-size:22px;cursor:pointer;padding:0 8px 0 0">‹</button>
+    <div class="tracker-title" style="color: var(--orange)">DRIVE</div>
+    <button class="add-btn" onclick="openDriveModal()">＋</button>
+  </div>
+  <div class="tracker-body" id="drive-body">
+    <div style="color:var(--text2); text-align:center; padding:40px">Loading...</div>
+  </div>
+</div>
+
+<!-- ============================================================
+     TRAINING TRACKER VIEW
+============================================================ -->
+<div class="tracker-view hidden" id="view-train">
+  <div class="tracker-header">
+    <button onclick="switchTab('chat')" style="background:none;border:none;color:var(--text2);font-size:22px;cursor:pointer;padding:0 8px 0 0">‹</button>
+    <div class="tracker-title" style="color: var(--blue)">TRAINING</div>
+    <button class="add-btn" onclick="openTrainModal()">＋</button>
+  </div>
+  <div class="tracker-body" id="train-body">
+    <div style="color:var(--text2); text-align:center; padding:40px">Loading...</div>
+  </div>
+</div>
+
+<!-- ============================================================
+     STOCK TRACKER VIEW
+============================================================ -->
+<div class="tracker-view hidden" id="view-stock">
+  <div class="tracker-header">
+    <button onclick="switchTab('chat')" style="background:none;border:none;color:var(--text2);font-size:22px;cursor:pointer;padding:0 8px 0 0">‹</button>
+    <div class="tracker-title" style="color: var(--brown)">STOCK</div>
+    <button class="add-btn" onclick="openStockModal()">＋</button>
+  </div>
+  <div class="tracker-body" id="stock-body">
+    <div style="color:var(--text2); text-align:center; padding:40px">Loading...</div>
+  </div>
+</div>
+
+<script>
+// ============================================================
+// CONFIG
+// ============================================================
+const BASE_URL = 'https://YOUR-SERVER-ADDRESS';
+
+const AGENTS = {
+  nexus:  { name: 'N.E.X.U.S.', color: '#c8a96e', label: 'NEX' },
+  cipher: { name: 'C.I.P.H.E.R.', color: '#9b6be0', label: 'CIP' },
+  asset:  { name: 'A.S.S.E.T.', color: '#6db891', label: 'ASS' },
+  atlas:  { name: 'A.T.L.A.S.', color: '#6b9fe0', label: 'ATL' },
+  drive:  { name: 'D.R.I.V.E.', color: '#e09b6b', label: 'DRV' },
+  stock:  { name: 'S.T.O.C.K.', color: '#a0785a', label: 'STK' },
+  flame:  { name: 'F.L.A.M.E.', color: '#e06b6b', label: 'FLM' },
+  case:   { name: 'C.A.S.E.', color: '#6bcfe0', label: 'CAS' }
+};
+
+const DATA_ENDPOINTS = {
+  asset: '/data/asset',
+  atlas: '/data/atlas',
+  drive: '/data/drive',
+  stock: '/data/stock',
+  flame: '/data/flame'
+};
+
+// ============================================================
+// STATE
+// ============================================================
+let token = localStorage.getItem('nexus_token') || '';
+let currentAgent = 'nexus';
+let chatHistories = {};
+let isStreaming = false;
+
+Object.keys(AGENTS).forEach(a => chatHistories[a] = []);
+
+// ============================================================
+// LOGIN
+// ============================================================
+async function doLogin() {
+  const username = document.getElementById('login-username').value.trim();
+  const password = document.getElementById('login-password').value;
+  const errorEl = document.getElementById('login-error');
+  errorEl.textContent = '';
+
+  try {
+    const res = await fetch(`${BASE_URL}/mobile/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, password })
+    });
+    const data = await res.json();
+    if (!res.ok) { errorEl.textContent = 'Invalid username or password'; return; }
+    token = data.token;
+    localStorage.setItem('nexus_token', token);
+    errorEl.textContent = 'Login ok, loading app...';
+    try {
+      await showApp();
+      errorEl.textContent = '';
+    } catch(e2) {
+      errorEl.textContent = 'showApp failed: ' + e2.message;
+    }
+  } catch (e) {
+    errorEl.textContent = 'Connection error: ' + e.message;
+  }
+}
+
+async function checkToken() {
+  if (!token) { showLogin(); return; }
+  try {
+    const res = await fetch(`${BASE_URL}/mobile/verify`, {
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    if (res.ok) { showApp(); } else { 
+      localStorage.removeItem('nexus_token');
+      showLogin(); 
+    }
+  } catch (e) { 
+    document.getElementById('login-error').textContent = 'Verify failed: ' + e.message;
+    showLogin(); 
+  }
+}
+
+function showLogin() {
+  document.getElementById('login-screen').classList.remove('hidden');
+  document.getElementById('app').classList.add('hidden');
+}
+
+function showApp() {
+  try {
+    document.getElementById('login-screen').classList.add('hidden');
+  } catch(e) {}
+  try {
+    document.getElementById('app').classList.remove('hidden');
+  } catch(e) {}
+  try {
+    switchAgent('nexus');
+  } catch(e) {
+    document.getElementById('login-error').textContent = 'switchAgent failed: ' + e.message;
+    return;
+  }
+  try {
+    registerPushNotifications();
+  } catch(e) {}
+}
+
+// ============================================================
+// AGENT SWITCHING
+// ============================================================
+function switchAgent(agent) {
+  // Update buttons
+  document.querySelectorAll('.agent-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById(`btn-${agent}`).classList.add('active');
+
+  // Update agent color on main content
+  const main = document.getElementById('main-content');
+  main.className = `main color-${agent}`;
+
+  // Update topbar
+  document.getElementById('topbar-agent-name').textContent = AGENTS[agent].name;
+
+  currentAgent = agent;
+
+  // Update placeholder
+  document.getElementById('chat-input').placeholder = `Message ${AGENTS[agent].name}...`;
+
+  // Load chat history
+  renderChat();
+
+  // Load data panel
+  loadDataPanel(agent);
+}
+
+// ============================================================
+// DATA PANEL
+// ============================================================
+async function loadDataPanel(agent) {
+  const panel = document.getElementById('data-panel');
+  if (!DATA_ENDPOINTS[agent]) { panel.classList.remove('visible'); return; }
+
+  try {
+    const res = await fetch(`${BASE_URL}${DATA_ENDPOINTS[agent]}`, {
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    const data = await res.json();
+    panel.classList.add('visible');
+    panel.innerHTML = buildDataPanel(agent, data);
+  } catch(e) {
+    panel.classList.remove('visible');
+  }
+}
+
+function buildDataPanel(agent, data) {
+  let cards = '';
+  if (agent === 'asset' && data.accounts) {
+    const a = data.accounts;
+    cards += dataCard('VAULT', '$' + (a.vault||0).toLocaleString('en-US', {minimumFractionDigits:2}));
+    cards += dataCard('FLEX', '$' + (a.flex||0).toLocaleString('en-US', {minimumFractionDigits:2}));
+    cards += dataCard('FUNDS', '$' + (a.funds||0).toLocaleString('en-US', {minimumFractionDigits:2}));
+    cards += dataCard('CAR LOAN', '$' + (a.car_loan||0).toLocaleString('en-US', {minimumFractionDigits:2}));
+  } else if (agent === 'atlas' && data.summary) {
+    const s = data.summary;
+    cards += dataCard('WORKOUTS', s.total_workouts||0);
+    cards += dataCard('YARDS', (s.total_yards||0).toLocaleString());
+    cards += dataCard('SWIMS', s.swim_sessions||0);
+    cards += dataCard('GYM', s.gym_sessions||0);
+  } else if (agent === 'drive' && data.vehicle) {
+    const v = data.vehicle;
+    cards += dataCard('MILEAGE', (v.current_mileage||0).toLocaleString() + ' mi');
+    cards += dataCard('VEHICLE', (v.year||'') + ' ' + (v.make||''));
+  } else if (agent === 'stock' && data.pantry) {
+    const inStock = (data.pantry.in_stock||[]).length;
+    const outStock = (data.pantry.out_of_stock||[]).length;
+    const grocery = (data.grocery_list||[]).length;
+    cards += dataCard('IN STOCK', inStock + ' items');
+    cards += dataCard('OUT', outStock + ' items');
+    cards += dataCard('GROCERY LIST', grocery + ' items');
+  } else if (agent === 'flame' && data.preferences) {
+    const favs = (data.favourites||[]).length;
+    cards += dataCard('FAVOURITES', favs + ' meals');
+    cards += dataCard('DIET', 'Halal');
+  }
+  return `<div class="data-panel-title">LIVE DATA</div><div class="data-cards">${cards}</div>`;
+}
+
+function dataCard(label, value) {
+  return `<div class="data-card"><div class="data-card-label">${label}</div><div class="data-card-value">${value}</div></div>`;
+}
+
+// ============================================================
+// CHAT
+// ============================================================
+function renderChat() {
+  const area = document.getElementById('chat-area');
+  area.innerHTML = '';
+  const history = chatHistories[currentAgent] || [];
+  history.forEach(msg => {
+    const bubble = document.createElement('div');
+    bubble.className = `bubble ${msg.role === 'user' ? 'user' : 'agent'}`;
+    bubble.innerHTML = msg.content;
+    area.appendChild(bubble);
+  });
+  area.scrollTop = area.scrollHeight;
+}
+
+async function sendMessage() {
+  if (isStreaming) return;
+  const input = document.getElementById('chat-input');
+  const text = input.value.trim();
+  if (!text) return;
+
+  input.value = '';
+  autoResize(input);
+
+  // Add user bubble
+  chatHistories[currentAgent].push({ role: 'user', content: text });
+  renderChat();
+
+  // Add thinking bubble
+  const area = document.getElementById('chat-area');
+  const thinking = document.createElement('div');
+  thinking.className = 'bubble thinking';
+  thinking.textContent = '...';
+  area.appendChild(thinking);
+  area.scrollTop = area.scrollHeight;
+
+  isStreaming = true;
+
+  try {
+    const res = await fetch(`${BASE_URL}/chat/${currentAgent}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body: JSON.stringify({
+        message: text,
+        history: chatHistories[currentAgent].slice(0, -1),
+        agent: currentAgent
+      })
+    });
+
+    thinking.remove();
+
+    const agentBubble = document.createElement('div');
+    agentBubble.className = 'bubble agent';
+    area.appendChild(agentBubble);
+
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let fullText = '';
+    let mainText = '';
+    let agentBoxes = {};
+    let markerBuffer = '';
+    let currentAgentBox = null;
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      const chunk = decoder.decode(value, { stream: true });
+      const lines = chunk.split('\n');
+      
+      for (const line of lines) {
+        if (line.startsWith('data: ')) {
+          const jsonStr = line.substring(6).trim();
+          if (jsonStr === '[DONE]') break;
+          try {
+            const parsed = JSON.parse(jsonStr);
+            const text = parsed.text || '';
+            markerBuffer += text;
+          } catch(e) {
+            markerBuffer += jsonStr;
+          }
+        }
+      }
+
+      // Process markers
+      while (true) {
+        const agentStart = markerBuffer.indexOf('<<<AGENT_RESPONSE:');
+        const agentEnd = markerBuffer.indexOf('<<<AGENT_RESPONSE_END>>>');
+
+        if (agentStart !== -1 && agentEnd === -1) break; // incomplete marker
+
+        if (agentStart !== -1 && agentEnd !== -1 && agentStart < agentEnd) {
+          // Text before marker goes to main bubble
+          const before = markerBuffer.substring(0, agentStart);
+          if (before) { mainText += before; agentBubble.innerHTML = formatText(mainText); }
+
+          // Extract agent name and response
+          const nameEnd = markerBuffer.indexOf('>>>', agentStart + 18);
+          const agentName = markerBuffer.substring(agentStart + 18, nameEnd);
+          const agentResponse = markerBuffer.substring(nameEnd + 3, agentEnd);
+
+          // Build colored agent box
+          const box = document.createElement('div');
+          box.className = 'agent-response-box';
+          box.style.borderLeftColor = AGENTS[agentName] ? AGENTS[agentName].color : '#888';
+          box.innerHTML = `<div class="agent-response-header" style="color:${AGENTS[agentName]?.color||'#888'}">${AGENTS[agentName]?.name||agentName}</div>${formatText(agentResponse)}`;
+          agentBubble.appendChild(box);
+
+          markerBuffer = markerBuffer.substring(agentEnd + 24);
+        } else {
+          // No complete marker — flush safe text
+          const safeEnd = markerBuffer.lastIndexOf('\n') + 1 || markerBuffer.length;
+          if (!markerBuffer.includes('<<<')) {
+            mainText += markerBuffer;
+            agentBubble.innerHTML = formatText(mainText);
+            markerBuffer = '';
+          }
+          break;
+        }
+      }
+
+      area.scrollTop = area.scrollHeight;
+    }
+
+    // Final flush
+    if (markerBuffer && !markerBuffer.includes('<<<')) {
+      mainText += markerBuffer;
+      agentBubble.innerHTML = formatText(mainText);
+    }
+
+    fullText = agentBubble.innerHTML;
+    chatHistories[currentAgent].push({ role: 'assistant', content: fullText });
+    await saveCurrentChat();
+
+  } catch(e) {
+    thinking.remove();
+    const errBubble = document.createElement('div');
+    errBubble.className = 'bubble agent';
+    errBubble.textContent = 'Connection error. Is the laptop on?';
+    area.appendChild(errBubble);
+  }
+
+  isStreaming = false;
+  area.scrollTop = area.scrollHeight;
+}
+
+function formatText(text) {
+  return text
+    .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+    .replace(/\*(.*?)\*/g, '<em>$1</em>')
+    .replace(/\n/g, '<br>');
+}
+
+function handleKey(e) {
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault();
+    sendMessage();
+  }
+}
+
+function autoResize(el) {
+  el.style.height = 'auto';
+  el.style.height = Math.min(el.scrollHeight, 100) + 'px';
+}
+
+// ============================================================
+// CHAT HISTORY
+// ============================================================
+let allChats = [];
+let historyFilter = 'all';
+let currentChatId = null;
+
+async function openHistory() {
+  document.getElementById('history-view').classList.remove('hidden');
+  await loadAllChats();
+}
+
+function closeHistory() {
+  document.getElementById('history-view').classList.add('hidden');
+}
+
+async function loadAllChats() {
+  const body = document.getElementById('history-body');
+  body.innerHTML = '<div style="color:var(--text2);text-align:center;padding:40px">Loading...</div>';
+
+  try {
+    // Load chats for all agents in parallel
+    const agents = Object.keys(AGENTS);
+    const results = await Promise.all(
+      agents.map(agent =>
+        fetch(`${BASE_URL}/chats/${agent}`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        }).then(r => r.json()).catch(() => [])
+      )
+    );
+
+    // Flatten and sort by updated_at descending
+    allChats = [];
+    agents.forEach((agent, i) => {
+      (results[i] || []).forEach(chat => {
+        allChats.push({ ...chat, agent });
+      });
+    });
+    allChats.sort((a, b) => {
+      const dateA = new Date(a.updated_at || a.date || 0);
+      const dateB = new Date(b.updated_at || b.date || 0);
+      return dateB - dateA;
+    });
+
+    renderHistory();
+  } catch(e) {
+    body.innerHTML = '<div style="color:var(--red);text-align:center;padding:40px">Failed to load history</div>';
+  }
+}
+
+function filterHistory(filter) {
+  historyFilter = filter;
+
+  // Update filter buttons
+  document.querySelectorAll('.filter-btn').forEach(b => {
+    b.classList.remove('active');
+    b.className = b.className.replace(/active-\w+/g, '').trim();
+  });
+  const activeBtn = document.getElementById(`filter-${filter}`);
+  activeBtn.classList.add('active');
+  if (filter !== 'all') activeBtn.classList.add(`active-${filter}`);
+
+  renderHistory();
+}
+
+function renderHistory() {
+  const body = document.getElementById('history-body');
+  const filtered = historyFilter === 'all'
+    ? allChats
+    : allChats.filter(c => c.agent === historyFilter);
+
+  if (filtered.length === 0) {
+    body.innerHTML = '<div style="color:var(--text2);text-align:center;padding:40px">No chats yet</div>';
+    return;
+  }
+
+  body.innerHTML = filtered.map(chat => {
+    const color = AGENTS[chat.agent]?.color || '#888';
+    const label = AGENTS[chat.agent]?.label || chat.agent.toUpperCase();
+    const agentName = AGENTS[chat.agent]?.name || chat.agent;
+    const date = chat.updated_at || chat.date || '';
+    const displayDate = date ? new Date(date).toLocaleDateString('en-US', {
+      month: 'short', day: 'numeric', year: 'numeric'
+    }) : '';
+
+    return `
+      <div class="history-item" onclick="loadChat('${chat.chat_id}', '${chat.agent}')">
+        <div class="history-agent-dot" style="background:${color}"></div>
+        <div class="history-item-content">
+          <div class="history-item-title">${chat.title || 'Untitled Chat'}</div>
+          <div class="history-item-meta">
+            <span class="history-agent-badge" style="color:${color}">${label}</span>
+            <span>${displayDate}</span>
+          </div>
+        </div>
+        <div style="color:var(--text2);font-size:18px">›</div>
+      </div>
+    `;
+  }).join('');
+}
+
+async function loadChat(chatId, agent) {
+  try {
+    const res = await fetch(`${BASE_URL}/chats/${agent}`, {
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    const chats = await res.json();
+    const chat = chats.find(c => c.chat_id === chatId);
+    if (!chat) return;
+
+    // Switch to correct agent and load messages
+    closeHistory();
+    switchAgent(agent);
+    currentChatId = chatId;
+
+    // Load messages into chat history
+    chatHistories[agent] = chat.messages || [];
+    renderChat();
+
+    // Switch to chat tab
+    switchTab('chat');
+  } catch(e) {
+    console.error('Failed to load chat:', e);
+  }
+}
+
+function startNewChat() {
+  closeHistory();
+  switchTab('chat');
+  // Clear current agent's chat
+  chatHistories[currentAgent] = [];
+  currentChatId = null;
+  renderChat();
+}
+
+async function saveCurrentChat() {
+  if (!chatHistories[currentAgent] || chatHistories[currentAgent].length === 0) return;
+
+  const messages = chatHistories[currentAgent];
+  const title = messages[0]?.content?.substring(0, 50) || 'New Chat';
+  const chatId = currentChatId || `mobile_${Date.now()}_${Math.random().toString(36).substr(2,6)}`;
+  currentChatId = chatId;
+
+  try {
+    await fetch(`${BASE_URL}/chats/save`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body: JSON.stringify({
+        chat_id: chatId,
+        agent: currentAgent,
+        title: title,
+        date: new Date().toISOString(),
+        messages: messages
+      })
+    });
+  } catch(e) {
+    console.error('Failed to save chat:', e);
+  }
+}
+
+// ============================================================
+// FINANCE INPUT MODAL
+// ============================================================
+let currentFinanceTab = 'transaction';
+let financeDataCache = null;
+
+let txType = 'out'; // default to expense
+
+function setTxType(type) {
+  txType = type;
+  const outBtn = document.getElementById('tx-type-out');
+  const inBtn = document.getElementById('tx-type-in');
+  if (type === 'out') {
+    outBtn.style.background = 'var(--red)';
+    outBtn.style.borderColor = 'var(--red)';
+    outBtn.style.color = '#fff';
+    inBtn.style.background = 'var(--bg3)';
+    inBtn.style.borderColor = 'var(--border)';
+    inBtn.style.color = 'var(--text2)';
+  } else {
+    inBtn.style.background = 'var(--green)';
+    inBtn.style.borderColor = 'var(--green)';
+    inBtn.style.color = '#0f0f11';
+    outBtn.style.background = 'var(--bg3)';
+    outBtn.style.borderColor = 'var(--border)';
+    outBtn.style.color = 'var(--text2)';
+  }
+}
+
+function openFinanceModal() {
+  // Set today's date on all date fields
+  const today = new Date().toISOString().split('T')[0];
+  document.getElementById('tx-date').value = today;
+  document.getElementById('tr-date').value = today;
+  document.getElementById('pc-date').value = today;
+  document.getElementById('cs-date').value = today;
+  document.getElementById('bc-date').value = today;
+
+  // Load past descriptions for autocomplete
+  loadDescriptionSuggestions();
+
+  // Auto-calc paycheck defaults
+  autoCalcPaycheck();
+
+  document.getElementById('finance-modal-error').textContent = '';
+  document.getElementById('finance-modal').classList.remove('hidden');
+  switchFinanceTab('transaction');
+}
+
+function closeFinanceModal() {
+  document.getElementById('finance-modal').classList.add('hidden');
+}
+
+function switchFinanceTab(tab) {
+  currentFinanceTab = tab;
+  const tabs = ['transaction', 'transfer', 'paycheck', 'credit', 'balance'];
+  tabs.forEach(t => {
+    document.getElementById(`ftab-${t}`).classList.toggle('active', t === tab);
+    document.getElementById(`fform-${t}`).classList.toggle('hidden', t !== tab);
+  });
+}
+
+async function loadDescriptionSuggestions() {
+  try {
+    const res = await fetch(`${BASE_URL}/mobile/data/finance`, {
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    const data = await res.json();
+    financeDataCache = data;
+
+    // Build description list from past transactions
+    const descs = [...new Set((data.transactions || []).map(t => t.description).filter(Boolean))];
+    const list = document.getElementById('tx-desc-list');
+    list.innerHTML = descs.map(d => `<option value="${d}">`).join('');
+
+    // Auto-fill tax rates for paycheck
+    autoCalcPaycheck(data);
+  } catch(e) {}
+}
+
+function autoCalcPaycheck(data) {
+  const d = data || financeDataCache;
+  if (!d) return;
+
+  const paychecks = (d.paychecks || []).filter(p => p.approved);
+  if (paychecks.length === 0) return;
+
+  // Use average rates from approved paychecks
+  const avgRates = {
+    federal: 0, state: 0, ss: 0, medicare: 0,
+    benefits: 0, retirement: 0, other: 0
+  };
+
+  paychecks.forEach(p => {
+    const gross = p.grossPay || 1;
+    avgRates.federal += (p.federalTax || 0) / gross;
+    avgRates.state += (p.stateTax || 0) / gross;
+    avgRates.ss += (p.socialSecurity || 0) / gross;
+    avgRates.medicare += (p.medicare || 0) / gross;
+    avgRates.benefits += (p.benefits || 0) / gross;
+    avgRates.retirement += (p.retirement || 0) / gross;
+    avgRates.other += (p.otherDeductions || 0) / gross;
+  });
+
+  const count = paychecks.length;
+  Object.keys(avgRates).forEach(k => avgRates[k] /= count);
+
+  // Store rates for use when hours change
+  window._paycheckRates = avgRates;
+
+  // Calculate gross from hours
+  const hours = parseFloat(document.getElementById('pc-hours').value) || 0;
+  if (hours > 0) {
+    const settings = d.settings || {};
+    const rate = settings.regularRate || 36.15;
+    const gross = hours * rate;
+    document.getElementById('pc-gross').value = gross.toFixed(2);
+
+    // Fill deductions based on average rates
+    document.getElementById('pc-federal').value = (gross * avgRates.federal).toFixed(2);
+    document.getElementById('pc-state').value = (gross * avgRates.state).toFixed(2);
+    document.getElementById('pc-ss').value = (gross * avgRates.ss).toFixed(2);
+    document.getElementById('pc-medicare').value = (gross * avgRates.medicare).toFixed(2);
+    document.getElementById('pc-benefits').value = (gross * avgRates.benefits).toFixed(2);
+    document.getElementById('pc-retirement').value = (gross * avgRates.retirement).toFixed(2);
+    document.getElementById('pc-other').value = (gross * avgRates.other).toFixed(2);
+
+    calcNetPay();
+  }
+}
+
+function calcNetPay() {
+  const gross = parseFloat(document.getElementById('pc-gross').value) || 0;
+  const federal = parseFloat(document.getElementById('pc-federal').value) || 0;
+  const state = parseFloat(document.getElementById('pc-state').value) || 0;
+  const ss = parseFloat(document.getElementById('pc-ss').value) || 0;
+  const medicare = parseFloat(document.getElementById('pc-medicare').value) || 0;
+  const benefits = parseFloat(document.getElementById('pc-benefits').value) || 0;
+  const retirement = parseFloat(document.getElementById('pc-retirement').value) || 0;
+  const other = parseFloat(document.getElementById('pc-other').value) || 0;
+
+  const totalDeductions = federal + state + ss + medicare + benefits + retirement + other;
+  const net = gross - totalDeductions;
+
+  document.getElementById('pc-summary').innerHTML =
+    `Gross: <span>$${gross.toFixed(2)}</span> — Deductions: <span>$${totalDeductions.toFixed(2)}</span> — Net: <span style="color:var(--green)">$${net.toFixed(2)}</span>`;
+}
+
+async function submitFinanceForm() {
+  const errorEl = document.getElementById('finance-modal-error');
+  errorEl.textContent = '';
+
+  try {
+    let endpoint = '';
+    let body = {};
+
+    if (currentFinanceTab === 'transaction') {
+      const desc = document.getElementById('tx-desc').value.trim();
+      const rawAmount = parseFloat(document.getElementById('tx-amount').value);
+      const amount = txType === 'out' ? -Math.abs(rawAmount) : Math.abs(rawAmount);
+      const date = document.getElementById('tx-date').value;
+      const account = document.getElementById('tx-account').value;
+      const notes = document.getElementById('tx-notes').value.trim();
+
+      if (!desc) { errorEl.textContent = 'Description is required'; return; }
+      if (isNaN(amount)) { errorEl.textContent = 'Amount is required'; return; }
+      if (!date) { errorEl.textContent = 'Date is required'; return; }
+
+      endpoint = '/mobile/finance/add_transaction';
+      body = { description: desc, amount, account, date, notes };
+
+    } else if (currentFinanceTab === 'transfer') {
+      const from_account = document.getElementById('tr-from').value;
+      const to_account = document.getElementById('tr-to').value;
+      const amount = parseFloat(document.getElementById('tr-amount').value);
+      const date = document.getElementById('tr-date').value;
+      const description = document.getElementById('tr-desc').value.trim() || 'Transfer';
+
+      if (isNaN(amount) || amount <= 0) { errorEl.textContent = 'Valid amount is required'; return; }
+      if (!date) { errorEl.textContent = 'Date is required'; return; }
+      if (from_account === to_account) { errorEl.textContent = 'From and To accounts must be different'; return; }
+
+      endpoint = '/mobile/finance/transfer';
+      body = { from_account, to_account, amount, date, description };
+
+    } else if (currentFinanceTab === 'paycheck') {
+      const date = document.getElementById('pc-date').value;
+      const hours_worked = parseFloat(document.getElementById('pc-hours').value) || 0;
+      const gross_pay = parseFloat(document.getElementById('pc-gross').value) || 0;
+      const federal_tax = parseFloat(document.getElementById('pc-federal').value) || 0;
+      const state_tax = parseFloat(document.getElementById('pc-state').value) || 0;
+      const social_security = parseFloat(document.getElementById('pc-ss').value) || 0;
+      const medicare = parseFloat(document.getElementById('pc-medicare').value) || 0;
+      const benefits = parseFloat(document.getElementById('pc-benefits').value) || 0;
+      const retirement = parseFloat(document.getElementById('pc-retirement').value) || 0;
+      const other_deductions = parseFloat(document.getElementById('pc-other').value) || 0;
+      const net_pay = gross_pay - federal_tax - state_tax - social_security - medicare - benefits - retirement - other_deductions;
+      const approved = document.getElementById('pc-approved').value === 'true';
+      const notes = document.getElementById('pc-notes').value.trim();
+
+      if (!date) { errorEl.textContent = 'Date is required'; return; }
+      if (gross_pay <= 0) { errorEl.textContent = 'Gross pay is required'; return; }
+
+      endpoint = '/mobile/finance/add_paycheck';
+      body = { date, hours_worked, gross_pay, federal_tax, state_tax, social_security, medicare, benefits, retirement, other_deductions, net_pay, approved, notes };
+
+    } else if (currentFinanceTab === 'credit') {
+      const score = parseInt(document.getElementById('cs-score').value);
+      const date = document.getElementById('cs-date').value;
+      const type = document.getElementById('cs-type').value;
+
+      if (isNaN(score) || score < 300 || score > 850) { errorEl.textContent = 'Score must be between 300 and 850'; return; }
+      if (!date) { errorEl.textContent = 'Date is required'; return; }
+
+      endpoint = '/mobile/finance/add_credit_score';
+      body = { score, date, type, source: type === 'vantage' ? 'Chase Credit Journey' : 'CreditWise' };
+
+    } else if (currentFinanceTab === 'balance') {
+      const account = document.getElementById('bc-account').value;
+      const amount = parseFloat(document.getElementById('bc-amount').value);
+      const date = document.getElementById('bc-date').value;
+
+      if (isNaN(amount)) { errorEl.textContent = 'Balance amount is required'; return; }
+      if (!date) { errorEl.textContent = 'Date is required'; return; }
+
+      endpoint = '/mobile/finance/balance_correction';
+      body = { account, amount, date };
+    }
+
+    const res = await fetch(`${BASE_URL}${endpoint}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body: JSON.stringify(body)
+    });
+
+    const result = await res.json();
+    if (!res.ok) { errorEl.textContent = result.detail || 'Failed to save'; return; }
+
+    // Success — close modal and reload data
+    closeFinanceModal();
+    loadTrackerData('finance');
+
+  } catch(e) {
+    errorEl.textContent = 'Connection error — try again';
+  }
+}
+
+// ============================================================
+// TAB SWITCHING
+// ============================================================
+let currentTab = 'chat';
+
+function switchTab(tab) {
+  currentTab = tab;
+
+  // Update bottom nav buttons
+  document.querySelectorAll('.bottom-nav-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById(`tab-${tab}`).classList.add('active');
+
+  // Show/hide main app content vs tracker views
+  const mainContent = document.getElementById('main-content');
+  const topbar = document.querySelector('.topbar');
+  const agentRail = document.querySelector('.agent-rail');
+  const views = ['finance', 'drive', 'train', 'stock'];
+
+  if (tab === 'chat') {
+    mainContent.style.display = 'flex';
+    topbar.style.display = 'flex';
+    agentRail.style.display = 'flex';
+    views.forEach(v => document.getElementById(`view-${v}`).classList.add('hidden'));
+  } else {
+    mainContent.style.display = 'none';
+    topbar.style.display = 'none';
+    agentRail.style.display = 'none';
+    views.forEach(v => document.getElementById(`view-${v}`).classList.add('hidden'));
+    document.getElementById(`view-${tab}`).classList.remove('hidden');
+    loadTrackerData(tab);
+  }
+}
+
+// ============================================================
+// TRACKER DATA LOADING
+// ============================================================
+async function loadTrackerData(tab) {
+  const endpoints = {
+    finance: '/mobile/data/finance',
+    drive:   '/mobile/data/vehicle',
+    train:   '/mobile/data/fitness',
+    stock:   '/mobile/data/stock'
+  };
+
+  try {
+    const res = await fetch(`${BASE_URL}${endpoints[tab]}`, {
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    const data = await res.json();
+
+    if (tab === 'finance') renderFinance(data);
+    else if (tab === 'drive') renderDrive(data);
+    else if (tab === 'train') renderTrain(data);
+    else if (tab === 'stock') renderStock(data);
+  } catch(e) {
+    document.getElementById(`${tab}-body`).innerHTML =
+      `<div style="color:var(--red);text-align:center;padding:40px">Failed to load data</div>`;
+  }
+}
+
+// ============================================================
+// FINANCE RENDERER
+// ============================================================
+function renderFinance(data) {
+  const body = document.getElementById('finance-body');
+  const accounts = data.accounts || {};
+  const settings = data.settings || {};
+  const transactions = data.transactions || [];
+  const paychecks = data.paychecks || [];
+  const creditScores = data.creditScores || [];
+  const fixedExpenses = data.fixedExpenses || [];
+  const fundsSubAccounts = data.fundsSubAccounts || {};
+
+  // Sort credit scores
+  const vantageScores = creditScores.filter(s => s.type === 'vantage').sort((a,b) => new Date(b.date) - new Date(a.date));
+  const ficoScores = creditScores.filter(s => s.type === 'fico').sort((a,b) => new Date(b.date) - new Date(a.date));
+  const latestVantage = vantageScores[0]?.score || '--';
+  const latestFico = ficoScores[0]?.score || '--';
+
+  // Recent transactions
+  const recentTx = [...transactions].sort((a,b) => new Date(b.date) - new Date(a.date)).slice(0, 20);
+
+  // Recent paychecks
+  const recentPay = [...paychecks].sort((a,b) => new Date(b.date) - new Date(a.date)).slice(0, 5);
+
+  // Car loan progress
+  const carLoanInitial = settings.carLoanInitial || 18500;
+  const carLoanRemaining = accounts.car_loan || 0;
+  const carLoanPaid = carLoanInitial - carLoanRemaining;
+  const carLoanPct = Math.round((carLoanPaid / carLoanInitial) * 100);
+
+  // Emergency fund
+  const savingsFund = fundsSubAccounts.savingsFund || 0;
+  const monthlyExpenses = 2266;
+  const emergencyTarget3 = monthlyExpenses * 3;
+  const emergencyPct = Math.min(100, Math.round((savingsFund / emergencyTarget3) * 100));
+
+  body.innerHTML = `
+    <!-- Account Balances -->
+    <div class="tracker-section">
+      <div class="tracker-section-title">ACCOUNT BALANCES</div>
+      <div class="tracker-cards">
+        ${trackerCard('VAULT', '$' + fmt(accounts.vault), '')}
+        ${trackerCard('FLEX', '$' + fmt(accounts.flex), '')}
+        ${trackerCard('CAR FUND', '$' + fmt(fundsSubAccounts.carFund), '')}
+        ${trackerCard('SAVINGS FUND', '$' + fmt(savingsFund), '')}
+        ${trackerCard('FREEDOM CC', '$' + fmt(accounts.cc), accounts.cc > 0 ? 'negative' : 'positive')}
+        ${trackerCard('SAVOR CC', '$' + fmt(accounts.cc2), accounts.cc2 > 0 ? 'negative' : 'positive')}
+      </div>
+    </div>
+
+    <!-- BREX -->
+    <div class="tracker-section">
+      <div class="tracker-section-title">BREX — LOAN TO FRIEND</div>
+      <div style="padding:16px">
+        <div style="display:flex;justify-content:space-between;margin-bottom:6px">
+          <span style="font-size:13px;color:var(--text2)">Outstanding</span>
+          <span style="font-size:13px;font-weight:700;color:#a78bfa">$${fmt(accounts.brex || 0)}</span>
+        </div>
+        ${(()=>{
+          const start = settings.brexStartingBalance || 0;
+          const remaining = accounts.brex || 0;
+          const pct = start > 0 ? Math.min(100, Math.round(((start - remaining) / start) * 100)) : 0;
+          return start > 0 ? `
+        <div style="display:flex;justify-content:space-between;margin-bottom:8px">
+          <span style="font-size:13px;color:var(--text2)">Paid back (started $${fmt(start)})</span>
+          <span style="font-size:13px;font-weight:700;color:#a78bfa">${pct}%</span>
+        </div>
+        <div class="progress-bar-wrap">
+          <div class="progress-bar-fill" style="width:${pct}%;background:#a78bfa"></div>
+        </div>` : `<div style="font-size:12px;color:var(--text2)">Set starting balance in desktop Settings</div>`;
+        })()}
+      </div>
+    </div>
+
+    <!-- Car Loan -->
+    <div class="tracker-section">
+      <div class="tracker-section-title">CAR LOAN</div>
+      <div style="padding:16px">
+        <div style="display:flex;justify-content:space-between;margin-bottom:6px">
+          <span style="font-size:13px;color:var(--text2)">Remaining</span>
+          <span style="font-size:13px;font-weight:700">$${fmt(carLoanRemaining)}</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;margin-bottom:8px">
+          <span style="font-size:13px;color:var(--text2)">Paid off</span>
+          <span style="font-size:13px;font-weight:700;color:var(--green)">${carLoanPct}%</span>
+        </div>
+        <div class="progress-bar-wrap">
+          <div class="progress-bar-fill" style="width:${carLoanPct}%;background:var(--green)"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Emergency Fund -->
+    <div class="tracker-section">
+      <div class="tracker-section-title">EMERGENCY FUND</div>
+      <div style="padding:16px">
+        <div style="display:flex;justify-content:space-between;margin-bottom:6px">
+          <span style="font-size:13px;color:var(--text2)">Current</span>
+          <span style="font-size:13px;font-weight:700">$${fmt(savingsFund)}</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;margin-bottom:8px">
+          <span style="font-size:13px;color:var(--text2)">3-month target ($${fmt(emergencyTarget3)})</span>
+          <span style="font-size:13px;font-weight:700;color:var(--gold)">${emergencyPct}%</span>
+        </div>
+        <div class="progress-bar-wrap">
+          <div class="progress-bar-fill" style="width:${emergencyPct}%"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Credit Scores -->
+    <div class="tracker-section">
+      <div class="tracker-section-title">CREDIT SCORES</div>
+      <div class="two-scores">
+        <div class="score-display">
+          <div class="score-number" style="color:var(--gold)">${latestVantage}</div>
+          <div class="score-label">VANTAGESCORE</div>
+          <div style="font-size:10px;color:var(--text2);margin-top:4px">${vantageScores[0]?.date || ''}</div>
+        </div>
+        <div class="score-display">
+          <div class="score-number" style="color:var(--blue)">${latestFico}</div>
+          <div class="score-label">FICO</div>
+          <div style="font-size:10px;color:var(--text2);margin-top:4px">${ficoScores[0]?.date || ''}</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Recent Paychecks -->
+    <div class="tracker-section">
+      <div class="tracker-section-title">RECENT PAYCHECKS</div>
+      ${recentPay.map(p => `
+        <div class="list-item">
+          <div class="list-item-left">
+            <div class="list-item-title">${p.date}</div>
+            <div class="list-item-sub">${p.hoursWorked || '--'} hrs · ${p.approved ? 'Approved' : 'Predicted'}</div>
+          </div>
+          <div class="list-item-right">
+            <div class="list-item-value" style="color:var(--green)">$${fmt(p.netPay)}</div>
+            <div class="list-item-date">Gross $${fmt(p.grossPay)}</div>
+          </div>
+          <button class="delete-item-btn" onclick="deleteEntry('/delete/paycheck/${p.id}', 'finance', 'Delete this paycheck?')">🗑</button>
+        </div>
+      `).join('')}
+    </div>
+
+    <!-- Fixed Expenses -->
+    <div class="tracker-section">
+      <div class="tracker-section-title">FIXED EXPENSES</div>
+      ${fixedExpenses.map(e => `
+        <div class="list-item">
+          <div class="list-item-left">
+            <div class="list-item-title">${e.name}</div>
+            <div class="list-item-sub">Due day ${e.dueDay || '--'}</div>
+          </div>
+          <div class="list-item-right">
+            <div class="list-item-value" style="color:var(--red)">-$${fmt(e.amount)}</div>
+          </div>
+        </div>
+      `).join('')}
+    </div>
+
+    <!-- Recent Transactions -->
+    <div class="tracker-section">
+      <div class="tracker-section-title">RECENT TRANSACTIONS</div>
+      ${recentTx.map(tx => `
+        <div class="list-item">
+          <div class="list-item-left">
+            <div class="list-item-title">${tx.description || 'Transaction'}</div>
+            <div class="list-item-sub">${tx.accountId || tx.account || ''}</div>
+          </div>
+          <div class="list-item-right">
+            <div class="list-item-value ${tx.amount < 0 ? 'negative' : 'positive'}">${tx.amount < 0 ? '-' : '+'}$${fmt(Math.abs(tx.amount))}</div>
+            <div class="list-item-date">${tx.date}</div>
+          </div>
+          <button class="delete-item-btn" onclick="deleteEntry('/delete/transaction/${tx.id}', 'finance', 'Delete this transaction?')">🗑</button>
+        </div>
+      `).join('')}
+    </div>
+
+    <!-- Credit Score History -->
+    <div class="tracker-section">
+      <div class="tracker-section-title">CREDIT SCORE HISTORY</div>
+      <table class="tracker-table">
+        <tr><th>DATE</th><th>SCORE</th><th>TYPE</th></tr>
+        ${[...creditScores].sort((a,b) => new Date(b.date)-new Date(a.date)).slice(0,20).map(s => `
+          <tr>
+            <td>${s.date}</td>
+            <td style="font-weight:700">${s.score}</td>
+            <td><span class="badge ${s.type === 'fico' ? 'badge-blue' : 'badge-gold'}">${s.type === 'fico' ? 'FICO' : 'VS'}</span></td>
+            <td><button class="delete-item-btn" onclick="deleteEntry('/delete/credit_score/${s.id}', 'finance', 'Delete this credit score entry?')">🗑</button></td>
+          </tr>
+        `).join('')}
+      </table>
+    </div>
+  `;
+}
+
+// ============================================================
+// DRIVE RENDERER
+// ============================================================
+function renderDrive(data) {
+  const body = document.getElementById('drive-body');
+  const vehicles = data.vehicles || [];
+  const vehicle = vehicles.find(v => v.active) || vehicles[0] || {};
+  const maintenance = [...(vehicle.maintenance_log || [])].sort((a,b) => new Date(b.date)-new Date(a.date));
+  const gasLog = [...(vehicle.gas_log || [])].sort((a,b) => new Date(b.date)-new Date(a.date));
+  const issues = vehicle.issues || [];
+  const upcoming = vehicle.upcoming_maintenance || [];
+
+  const avgMpg = gasLog.length > 0
+    ? (gasLog.reduce((s,g) => s + (g.mpg||0), 0) / gasLog.length).toFixed(1)
+    : '--';
+
+  const openIssues = issues.filter(i => i.status === 'open').length;
+
+  body.innerHTML = `
+    <!-- Vehicle Info -->
+    <div class="tracker-section">
+      <div class="tracker-section-title">VEHICLE</div>
+      <div class="tracker-cards">
+        ${trackerCard('VEHICLE', (vehicle.year||'') + ' ' + (vehicle.make||'') + ' ' + (vehicle.model||''), '')}
+        ${trackerCard('MILEAGE', (vehicle.current_mileage||0).toLocaleString() + ' mi', '')}
+        ${trackerCard('AVG MPG', avgMpg, '')}
+        ${trackerCard('OPEN ISSUES', openIssues, openIssues > 0 ? 'negative' : 'positive')}
+      </div>
+    </div>
+
+    <!-- Upcoming Maintenance -->
+    <div class="tracker-section">
+      <div class="tracker-section-title">UPCOMING MAINTENANCE</div>
+      ${upcoming.length === 0 ? '<div class="list-item"><div class="list-item-title" style="color:var(--text2)">No upcoming maintenance</div></div>' :
+        upcoming.map(u => {
+          const isOverdue = u.status === 'overdue';
+          const isSoon = u.status === 'due_soon';
+          return `
+            <div class="list-item">
+              <div class="list-item-left">
+                <div class="list-item-title">${u.display_name || u.service_type}</div>
+                <div class="list-item-sub">${u.miles_away != null ? u.miles_away.toLocaleString() + ' mi away' : ''} ${u.days_away != null ? '· ' + u.days_away + ' days' : ''}</div>
+              </div>
+              <div class="list-item-right">
+                <span class="badge ${isOverdue ? 'badge-red' : isSoon ? 'badge-gold' : 'badge-green'}">${isOverdue ? 'OVERDUE' : isSoon ? 'SOON' : 'OK'}</span>
+              </div>
+            </div>
+          `;
+        }).join('')
+      }
+    </div>
+
+    <!-- Open Issues -->
+    ${openIssues > 0 ? `
+    <div class="tracker-section">
+      <div class="tracker-section-title">OPEN ISSUES</div>
+      ${issues.filter(i=>i.status==='open').map(i => `
+        <div class="list-item">
+          <div class="list-item-left">
+            <div class="list-item-title">${i.description}</div>
+            <div class="list-item-sub">${i.date_reported || i.date_logged?.split('T')[0] || ''}</div>
+          </div>
+          <div class="list-item-right">
+            <span class="badge badge-red">${i.severity||'UNKNOWN'}</span>
+          </div>
+          <button class="delete-item-btn" onclick="deleteEntry('/delete/issue/${i.id}', 'drive', 'Delete this issue?')">🗑</button>
+        </div>
+      `).join('')}
+    </div>` : ''}
+
+    <!-- Maintenance Log -->
+    <div class="tracker-section">
+      <div class="tracker-section-title">MAINTENANCE LOG</div>
+      ${maintenance.slice(0,20).map(m => `
+        <div class="list-item">
+          <div class="list-item-left">
+            <div class="list-item-title">${m.display_name || m.service_type}</div>
+            <div class="list-item-sub">${m.shop || ''} · ${(m.mileage||0).toLocaleString()} mi</div>
+          </div>
+          <div class="list-item-right">
+            <div class="list-item-value">${m.cost ? '$'+fmt(m.cost) : '--'}</div>
+            <div class="list-item-date">${m.date}</div>
+          </div>
+          <button class="delete-item-btn" onclick="deleteEntry('/delete/maintenance/${m.id}', 'drive', 'Delete this maintenance entry?')">🗑</button>
+        </div>
+      `).join('')}
+    </div>
+
+    <!-- Gas Log -->
+    <div class="tracker-section">
+      <div class="tracker-section-title">GAS LOG</div>
+      <table class="tracker-table">
+        <tr><th>DATE</th><th>GALLONS</th><th>TOTAL</th><th>MPG</th></tr>
+        ${gasLog.slice(0,20).map(g => `
+          <tr>
+            <td>${g.date}</td>
+            <td>${g.gallons}</td>
+            <td>$${fmt(g.total_cost)}</td>
+            <td style="font-weight:700;color:${(g.mpg||0)>=35?'var(--green)':(g.mpg||0)>=28?'var(--gold)':'var(--red)'}">${g.mpg||'--'}</td>
+            <td><button class="delete-item-btn" onclick="deleteEntry('/delete/gas/${g.id}', 'drive', 'Delete this gas entry?')">🗑</button></td>
+          </tr>
+        `).join('')}
+      </table>
+    </div>
+  `;
+}
+
+// ============================================================
+// TRAINING RENDERER
+// ============================================================
+function renderTrain(data) {
+  const body = document.getElementById('train-body');
+  const workouts = [...(data.workouts || [])].sort((a,b) => new Date(b.date)-new Date(a.date));
+  const injuries = data.injuries || [];
+  const swims = workouts.filter(w => w.type === 'swim');
+  const gyms = workouts.filter(w => w.type === 'gym');
+  const totalYards = swims.reduce((s,w) => s + (w.total_distance_yards||0), 0);
+  const openInjuries = injuries.filter(i => i.status === 'open' || i.status === 'active').length;
+  const realInjuries = injuries.filter(i => i.status !== 'none');
+
+  const swimHtml = swims.length === 0
+    ? '<div class="list-item"><div class="list-item-title" style="color:var(--text2)">No swim sessions logged</div></div>'
+    : swims.map(w => `
+        <div class="list-item">
+          <div class="list-item-left">
+            <div class="list-item-title">${w.total_distance_yards?.toLocaleString() || '--'} yards</div>
+            <div class="list-item-sub">${w.duration_minutes || '--'} min · Difficulty ${w.difficulty_1_to_10}/10</div>
+            ${w.strokes?.length ? `<div class="list-item-sub" style="margin-top:2px">${w.strokes.join(', ')}</div>` : ''}
+          </div>
+          <div class="list-item-right">
+            <div class="list-item-date">${w.date}</div>
+          </div>
+          <button class="delete-item-btn" onclick="deleteEntry('/delete/workout/${w.id}', 'train', 'Delete this swim session?')">🗑</button>
+        </div>
+      `).join('');
+
+  const gymHtml = gyms.length === 0
+    ? '<div class="list-item"><div class="list-item-title" style="color:var(--text2)">No gym sessions logged</div></div>'
+    : gyms.map(w => `
+        <div class="list-item">
+          <div class="list-item-left">
+            <div class="list-item-title">${w.exercises?.length || 0} exercises</div>
+            <div class="list-item-sub">${w.duration_minutes || '--'} min · Difficulty ${w.difficulty_1_to_10}/10</div>
+            ${w.exercises?.length ? `<div class="list-item-sub" style="margin-top:2px">${w.exercises.slice(0,3).map(e=>e.name).join(', ')}${w.exercises.length>3?'...':''}</div>` : ''}
+          </div>
+          <div class="list-item-right">
+            <div class="list-item-date">${w.date}</div>
+          </div>
+          <button class="delete-item-btn" onclick="deleteEntry('/delete/workout/${w.id}', 'train', 'Delete this gym session?')">🗑</button>
+        </div>
+      `).join('');
+
+  const injuryHtml = realInjuries.length === 0
+    ? '<div class="list-item"><div class="list-item-title" style="color:var(--text2)">No injuries logged</div></div>'
+    : realInjuries.map(i => `
+        <div class="list-item">
+          <div class="list-item-left">
+            <div class="list-item-title">${i.description}</div>
+            <div class="list-item-sub">${i.date_logged?.split('T')[0] || ''}</div>
+          </div>
+          <div class="list-item-right">
+            <span class="badge ${i.status==='open'||i.status==='active'?'badge-red':'badge-green'}">${i.status?.toUpperCase()}</span>
+          </div>
+          <button class="delete-item-btn" onclick="deleteEntry('/delete/injury/${i.id}', 'train', 'Delete this injury entry?')">🗑</button>
+        </div>
+      `).join('');
+
+  const currentInjuriesHtml = openInjuries > 0 ? `
+    <div class="tracker-section">
+      <div class="tracker-section-title">CURRENT INJURIES</div>
+      ${injuries.filter(i=>i.status==='open'||i.status==='active').map(i => `
+        <div class="list-item">
+          <div class="list-item-left">
+            <div class="list-item-title">${i.description}</div>
+            <div class="list-item-sub">${i.date_logged?.split('T')[0] || ''}</div>
+          </div>
+          <div class="list-item-right">
+            <span class="badge badge-red">${(i.status||'active').toUpperCase()}</span>
+          </div>
+        </div>
+      `).join('')}
+    </div>` : '';
+
+  body.innerHTML = `
+    <div class="tracker-section">
+      <div class="tracker-section-title">SUMMARY</div>
+      <div class="tracker-cards">
+        ${trackerCard('TOTAL WORKOUTS', workouts.length, '')}
+        ${trackerCard('TOTAL YARDS', totalYards.toLocaleString(), 'gold')}
+        ${trackerCard('SWIM SESSIONS', swims.length, '')}
+        ${trackerCard('GYM SESSIONS', gyms.length, '')}
+        ${trackerCard('OPEN INJURIES', openInjuries, openInjuries > 0 ? 'negative' : 'positive')}
+      </div>
+    </div>
+
+    ${currentInjuriesHtml}
+
+    <div class="tracker-section">
+      <div class="tracker-section-title">SWIM LOG</div>
+      ${swimHtml}
+    </div>
+
+    <div class="tracker-section">
+      <div class="tracker-section-title">GYM LOG</div>
+      ${gymHtml}
+    </div>
+
+    <div class="tracker-section">
+      <div class="tracker-section-title">INJURY HISTORY</div>
+      ${injuryHtml}
+    </div>
+  `;
+}
+
+// ============================================================
+// STOCK RENDERER
+// ============================================================
+function formatItemAmount(item) {
+  const groups = item.container_groups || [];
+  if (groups.length > 0) {
+    return groups.map(g => {
+      const count = g.count;
+      const label = g.container_label || '';
+      const size = g.size;
+      const sizeUnit = g.size_unit || '';
+      let labelDisplay = label;
+      if (label && count !== 1) {
+        labelDisplay = label.endsWith('s') ? label : label + 's';
+      }
+      const countPart = (count != null) ? `${count} ${labelDisplay}`.trim() : labelDisplay;
+      if (size != null && sizeUnit) {
+        const sizePart = (count === 1) ? `(${size} ${sizeUnit})` : `(${size} ${sizeUnit} each)`;
+        return `${countPart} ${sizePart}`.trim();
+      }
+      return countPart;
+    }).join(', ');
+  }
+  return item.quantity != null ? item.quantity + ' ' + (item.unit||'') : '';
+}
+
+function renderStock(data) {
+  const body = document.getElementById('stock-body');
+  const pantryItems = data.pantry?.items || [];
+  const groceryItems = data.grocery_list?.items || [];
+
+  const inStock = pantryItems.filter(i => i.status === 'in_stock');
+  const outOfStock = pantryItems.filter(i => i.status === 'out_of_stock');
+  const needed = groceryItems.filter(i => i.status === 'needed');
+
+  body.innerHTML = `
+    <!-- Stats -->
+    <div class="tracker-section">
+      <div class="tracker-section-title">SUMMARY</div>
+      <div class="tracker-cards">
+        ${trackerCard('IN STOCK', inStock.length + ' items', 'positive')}
+        ${trackerCard('OUT OF STOCK', outOfStock.length + ' items', outOfStock.length > 0 ? 'negative' : '')}
+        ${trackerCard('GROCERY LIST', needed.length + ' items', needed.length > 0 ? 'gold' : '')}
+      </div>
+    </div>
+
+    <!-- Pantry - In Stock -->
+    <div class="tracker-section">
+      <div class="tracker-section-title">PANTRY — IN STOCK</div>
+      ${inStock.length === 0 ? '<div class="list-item"><div class="list-item-title" style="color:var(--text2)">Nothing in stock</div></div>' :
+        inStock.map(i => `
+          <div class="list-item">
+            <div class="list-item-left">
+              <div class="list-item-title">${i.name}</div>
+              ${i.notes ? `<div class="list-item-sub">${i.notes}</div>` : ''}
+            </div>
+            <div class="list-item-right">
+              <div class="list-item-value">${formatItemAmount(i)}</div>
+            </div>
+            <button class="delete-item-btn" onclick="deleteEntry('/delete/pantry/${encodeURIComponent(i.name)}', 'stock', 'Remove item from pantry?')">🗑</button>
+          </div>
+        `).join('')}
+    </div>
+
+    <!-- Pantry - Out of Stock -->
+    ${outOfStock.length > 0 ? `
+    <div class="tracker-section">
+      <div class="tracker-section-title">OUT OF STOCK</div>
+      ${outOfStock.map(i => `
+        <div class="list-item">
+          <div class="list-item-left">
+            <div class="list-item-title">${i.name}</div>
+          </div>
+          <div class="list-item-right">
+            <span class="badge badge-red">OUT</span>
+          </div>
+          <button class="delete-item-btn" onclick="deleteEntry('/delete/pantry/${encodeURIComponent(i.name)}', 'stock', 'Remove item from pantry?')">🗑</button>
+        </div>
+      `).join('')}
+    </div>` : ''}
+
+    <!-- Grocery List -->
+    <div class="tracker-section">
+      <div class="tracker-section-title">GROCERY LIST</div>
+      ${needed.length === 0 ? '<div class="list-item"><div class="list-item-title" style="color:var(--text2)">Nothing on the list</div></div>' :
+        needed.map(i => `
+          <div class="list-item">
+            <div class="list-item-left">
+              <div class="list-item-title">${i.name}</div>
+              ${i.notes ? `<div class="list-item-sub">${i.notes}</div>` : ''}
+            </div>
+            <div class="list-item-right">
+              <div class="list-item-value">${formatItemAmount(i)}</div>
+            </div>
+            <button class="delete-item-btn" onclick="deleteEntry('/delete/grocery/${encodeURIComponent(i.name)}', 'stock', 'Remove item from grocery list?')">🗑</button>
+          </div>
+        `).join('')}
+    </div>
+  `;
+}
+
+// ============================================================
+// HELPER FUNCTIONS
+// ============================================================
+function trackerCard(label, value, colorClass) {
+  return `<div class="tracker-card">
+    <div class="tracker-card-label">${label}</div>
+    <div class="tracker-card-value ${colorClass||''}">${value}</div>
+  </div>`;
+}
+
+function fmt(num) {
+  if (num == null) return '0.00';
+  return parseFloat(num).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
+}
+
+// ============================================================
+// PUSH NOTIFICATIONS
+// ============================================================
+async function getVapidPublicKey() {
+  const res = await fetch(`${BASE_URL}/mobile/push/vapid-public-key`, {
+    headers: { 'Authorization': `Bearer ${token}` }
+  });
+  const data = await res.json();
+  return data.public_key;
+}
+
+function hexToUint8Array(hex) {
+  const bytes = new Uint8Array(hex.length / 2);
+  for (let i = 0; i < hex.length; i += 2) {
+    bytes[i / 2] = parseInt(hex.substr(i, 2), 16);
+  }
+  return bytes;
+}
+
+function urlBase64ToUint8Array(base64String) {
+  // Add padding if needed
+  let b64 = base64String.trim();
+  while (b64.length % 4 !== 0) b64 += '=';
+  // Convert base64url to standard base64
+  b64 = b64.replace(/-/g, '+').replace(/_/g, '/');
+  // Decode to binary string
+  const binary = atob(b64);
+  // Convert to Uint8Array
+  const buffer = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) {
+    buffer[i] = binary.charCodeAt(i);
+  }
+  // Validate: uncompressed EC point must be 65 bytes starting with 0x04
+  if (buffer.length !== 65 || buffer[0] !== 0x04) {
+    console.error('Invalid VAPID key length or format:', buffer.length, buffer[0]);
+  }
+  return buffer;
+}
+
+async function registerPushNotifications() {
+  if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+    console.log('Push notifications not supported');
+    return;
+  }
+
+  try {
+    // Register service worker
+    const reg = await navigator.serviceWorker.register('/sw.js');
+    console.log('Service worker registered');
+
+    // Request permission
+    const permission = await Notification.requestPermission();
+    if (permission !== 'granted') {
+      console.log('Notification permission denied');
+      return;
+    }
+
+    // Get VAPID public key
+    const res = await fetch(`${BASE_URL}/mobile/push/vapid-public-key`, {
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    const data = await res.json();
+    const keyString = data.public_key;
+    localStorage.setItem('vapid_key_received', keyString);
+    localStorage.setItem('vapid_key_length', keyString.length);
+    const vapidPublicKey = urlBase64ToUint8Array(keyString);
+    localStorage.setItem('vapid_array_length', vapidPublicKey.length);
+    localStorage.setItem('vapid_first_byte', vapidPublicKey[0]);
+
+    // Subscribe to push
+    const subscription = await reg.pushManager.subscribe({
+      userVisibleOnly: true,
+      applicationServerKey: vapidPublicKey
+    });
+
+    // Send subscription to backend
+    await fetch(`${BASE_URL}/mobile/push/subscribe`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body: JSON.stringify({ subscription: subscription.toJSON() })
+    });
+
+    console.log('Push notifications registered successfully');
+  } catch(e) {
+    console.error('Push registration failed:', e);
+    // Show error visibly for debugging
+    document.title = 'ERR: ' + (e.message || e.toString()).substring(0, 100);
+    localStorage.setItem('push_error', e.toString() + ' | ' + (e.stack||''));
+  }
+}
+
+// ============================================================
+// STARTUP
+// ============================================================
+window.addEventListener('load', () => {
+  checkToken();
+});
+
+// ============================================================
+// DRIVE MODAL
+// ============================================================
+let currentDriveTab = 'maintenance';
+
+function openDriveModal() {
+  const today = new Date().toISOString().split('T')[0];
+  document.getElementById('dm-date').value = today;
+  document.getElementById('dg-date').value = today;
+  document.getElementById('di-date').value = today;
+  document.getElementById('drive-modal-error').textContent = '';
+  document.getElementById('drive-modal').classList.remove('hidden');
+  switchDriveTab('maintenance');
+}
+
+function closeDriveModal() {
+  document.getElementById('drive-modal').classList.add('hidden');
+}
+
+function switchDriveTab(tab) {
+  currentDriveTab = tab;
+  ['maintenance', 'gas', 'issue', 'mileage'].forEach(t => {
+    document.getElementById(`dtab-${t}`).classList.toggle('active', t === tab);
+    document.getElementById(`dform-${t}`).classList.toggle('hidden', t !== tab);
+  });
+}
+
+function calcGasTotal() {
+  const gallons = parseFloat(document.getElementById('dg-gallons').value) || 0;
+  const price = parseFloat(document.getElementById('dg-price').value) || 0;
+  if (gallons > 0 && price > 0) {
+    document.getElementById('dg-total').value = (gallons * price).toFixed(2);
+  }
+}
+
+async function submitDriveForm() {
+  const errorEl = document.getElementById('drive-modal-error');
+  errorEl.textContent = '';
+
+  try {
+    let endpoint = '';
+    let body = {};
+
+    if (currentDriveTab === 'maintenance') {
+      const service_type = document.getElementById('dm-service').value;
+      const date = document.getElementById('dm-date').value;
+      const mileage = parseInt(document.getElementById('dm-mileage').value);
+      const shop = document.getElementById('dm-shop').value.trim();
+      const cost = parseFloat(document.getElementById('dm-cost').value) || 0;
+      const performed_by = document.getElementById('dm-performed-by').value;
+      const notes = document.getElementById('dm-notes').value.trim();
+
+      if (!date) { errorEl.textContent = 'Date is required'; return; }
+      if (isNaN(mileage) || mileage <= 0) { errorEl.textContent = 'Mileage is required — got: ' + document.getElementById('dm-mileage').value; return; }
+
+      endpoint = '/log/maintenance';
+      body = { service_type, date, mileage, shop, cost, notes, performed_by };
+
+    } else if (currentDriveTab === 'gas') {
+      const date = document.getElementById('dg-date').value;
+      const mileage = parseInt(document.getElementById('dg-mileage').value);
+      const gallons = parseFloat(document.getElementById('dg-gallons').value);
+      const price_per_gallon = parseFloat(document.getElementById('dg-price').value);
+      const total_cost = parseFloat(document.getElementById('dg-total').value) || (gallons * price_per_gallon);
+
+      if (!date) { errorEl.textContent = 'Date is required'; return; }
+      if (isNaN(mileage) || mileage <= 0) { errorEl.textContent = 'Mileage is required'; return; }
+      if (isNaN(gallons) || gallons <= 0) { errorEl.textContent = 'Gallons is required'; return; }
+      if (isNaN(price_per_gallon) || price_per_gallon <= 0) { errorEl.textContent = 'Price per gallon is required'; return; }
+
+      endpoint = '/log/gas';
+      body = { date, mileage, gallons, price_per_gallon, total_cost };
+
+    } else if (currentDriveTab === 'issue') {
+      const description = document.getElementById('di-desc').value.trim();
+      const severity = document.getElementById('di-severity').value;
+      const date = document.getElementById('di-date').value;
+      const notes = document.getElementById('di-notes').value.trim();
+
+      if (!description) { errorEl.textContent = 'Description is required'; return; }
+      if (!date) { errorEl.textContent = 'Date is required'; return; }
+
+      endpoint = '/log/issue';
+      body = { description, severity, date, notes };
+
+    } else if (currentDriveTab === 'mileage') {
+      const mileage = parseInt(document.getElementById('dmi-mileage').value);
+      if (isNaN(mileage) || mileage <= 0) { errorEl.textContent = 'Mileage is required'; return; }
+
+      endpoint = '/log/mileage';
+      body = { mileage };
+    }
+
+    const res = await fetch(`${BASE_URL}${endpoint}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body: JSON.stringify(body)
+    });
+
+    const result = await res.json();
+    if (!res.ok || result.status === 'error') {
+      errorEl.textContent = result.detail || result.message || 'Failed to save';
+      return;
+    }
+
+    closeDriveModal();
+    loadTrackerData('drive');
+
+  } catch(e) {
+    errorEl.textContent = 'Error: ' + e.message;
+  }
+}
+
+// ============================================================
+// TRAINING MODAL
+// ============================================================
+let currentTrainTab = 'swim';
+let swimSetCount = 0;
+let gymExerciseCount = 0;
+
+function openTrainModal() {
+  const today = new Date().toISOString().split('T')[0];
+  document.getElementById('sw-date').value = today;
+  document.getElementById('gy-date').value = today;
+  document.getElementById('inj-date').value = today;
+  document.getElementById('train-modal-error').textContent = '';
+
+  // Reset sets and exercises
+  swimSetCount = 0;
+  gymExerciseCount = 0;
+  document.getElementById('sw-sets-list').innerHTML = '';
+  document.getElementById('gy-exercises-list').innerHTML = '';
+
+  document.getElementById('train-modal').classList.remove('hidden');
+  switchTrainTab('swim');
+}
+
+function closeTrainModal() {
+  document.getElementById('train-modal').classList.add('hidden');
+}
+
+function switchTrainTab(tab) {
+  currentTrainTab = tab;
+  ['swim', 'gym', 'injury'].forEach(t => {
+    document.getElementById(`ttab-${t}`).classList.toggle('active', t === tab);
+    document.getElementById(`tform-${t}`).classList.toggle('hidden', t !== tab);
+  });
+}
+
+function addSwimSet() {
+  swimSetCount++;
+  const id = swimSetCount;
+  const container = document.getElementById('sw-sets-list');
+  const row = document.createElement('div');
+  row.className = 'set-row';
+  row.id = `swim-set-${id}`;
+  row.innerHTML = `
+    <input type="number" placeholder="Yards" id="ss-dist-${id}">
+    <input type="text" placeholder="Stroke" id="ss-stroke-${id}">
+    <button type="button" class="remove-row-btn" onclick="removeSwimSet(${id})">✕</button>
+  `;
+  container.appendChild(row);
+}
+
+function removeSwimSet(id) {
+  const row = document.getElementById(`swim-set-${id}`);
+  if (row) row.remove();
+}
+
+function addGymExercise() {
+  gymExerciseCount++;
+  const id = gymExerciseCount;
+  const container = document.getElementById('gy-exercises-list');
+  const row = document.createElement('div');
+  row.className = 'exercise-row';
+  row.id = `gym-ex-${id}`;
+  row.innerHTML = `
+    <div style="display:flex;flex-direction:column;gap:6px">
+      <input type="text" placeholder="Exercise name" id="ge-name-${id}">
+      <div class="exercise-row-details" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px">
+        <input type="number" placeholder="Sets" id="ge-sets-${id}">
+        <input type="number" placeholder="Reps" id="ge-reps-${id}">
+        <input type="number" step="0.5" placeholder="lbs" id="ge-weight-${id}">
+      </div>
+      <input type="text" placeholder="Notes (optional)" id="ge-notes-${id}">
+    </div>
+    <button type="button" class="remove-row-btn" onclick="removeGymExercise(${id})" style="align-self:flex-start;margin-top:4px">✕</button>
+  `;
+  container.appendChild(row);
+}
+
+function removeGymExercise(id) {
+  const row = document.getElementById(`gym-ex-${id}`);
+  if (row) row.remove();
+}
+
+async function submitTrainForm() {
+  const errorEl = document.getElementById('train-modal-error');
+  errorEl.textContent = '';
+
+  try {
+    let endpoint = '';
+    let body = {};
+
+    if (currentTrainTab === 'swim') {
+      const date = document.getElementById('sw-date').value;
+      const distance = parseFloat(document.getElementById('sw-distance').value);
+      const duration = parseFloat(document.getElementById('sw-duration').value);
+      const strokesRaw = document.getElementById('sw-strokes').value;
+      const difficulty = parseInt(document.getElementById('sw-difficulty').value) || 5;
+      const form_notes = document.getElementById('sw-form-notes').value.trim();
+      const weaknesses = document.getElementById('sw-weaknesses').value.trim();
+      const coach_notes = document.getElementById('sw-coach-notes').value.trim();
+
+      if (!date) { errorEl.textContent = 'Date is required'; return; }
+      if (isNaN(distance) || distance <= 0) { errorEl.textContent = 'Distance is required'; return; }
+      if (isNaN(duration) || duration <= 0) { errorEl.textContent = 'Duration is required'; return; }
+
+      // Collect strokes
+      const strokes = strokesRaw.split(',').map(s => s.trim()).filter(Boolean);
+
+      // Collect sets
+      const sets = [];
+      document.querySelectorAll('[id^="swim-set-"]').forEach(row => {
+        const setId = row.id.replace('swim-set-', '');
+        const dist = parseFloat(document.getElementById(`ss-dist-${setId}`)?.value) || 0;
+        const stroke = document.getElementById(`ss-stroke-${setId}`)?.value.trim() || '';
+        if (dist > 0 || stroke) sets.push({ distance_yards: dist, stroke });
+      });
+
+      endpoint = '/log/swim';
+      body = {
+        date,
+        total_distance_yards: distance,
+        duration_minutes: duration,
+        strokes,
+        sets,
+        difficulty_1_to_10: difficulty,
+        form_notes,
+        weaknesses,
+        coach_notes
+      };
+
+    } else if (currentTrainTab === 'gym') {
+      const date = document.getElementById('gy-date').value;
+      const duration = parseFloat(document.getElementById('gy-duration').value);
+      const difficulty = parseInt(document.getElementById('gy-difficulty').value) || 5;
+      const form_notes = document.getElementById('gy-form-notes').value.trim();
+      const weaknesses = document.getElementById('gy-weaknesses').value.trim();
+      const coach_notes = document.getElementById('gy-coach-notes').value.trim();
+
+      if (!date) { errorEl.textContent = 'Date is required'; return; }
+      if (isNaN(duration) || duration <= 0) { errorEl.textContent = 'Duration is required'; return; }
+
+      // Collect exercises
+      const exercises = [];
+      document.querySelectorAll('[id^="gym-ex-"]').forEach(row => {
+        const exId = row.id.replace('gym-ex-', '');
+        const name = document.getElementById(`ge-name-${exId}`)?.value.trim() || '';
+        const sets = parseInt(document.getElementById(`ge-sets-${exId}`)?.value) || 0;
+        const reps = parseInt(document.getElementById(`ge-reps-${exId}`)?.value) || 0;
+        const weight_lbs = parseFloat(document.getElementById(`ge-weight-${exId}`)?.value) || 0;
+        const notes = document.getElementById(`ge-notes-${exId}`)?.value.trim() || '';
+        if (name) exercises.push({ name, sets, reps, weight_lbs, notes });
+      });
+
+      if (exercises.length === 0) { errorEl.textContent = 'Add at least one exercise'; return; }
+
+      endpoint = '/log/gym';
+      body = {
+        date,
+        exercises,
+        duration_minutes: duration,
+        difficulty_1_to_10: isNaN(difficulty) ? 5 : difficulty,
+        form_notes,
+        weaknesses,
+        coach_notes
+      };
+
+    } else if (currentTrainTab === 'injury') {
+      const description = document.getElementById('inj-desc').value.trim();
+      const severity = document.getElementById('inj-severity').value;
+      const date = document.getElementById('inj-date').value;
+      const notes = document.getElementById('inj-notes').value.trim();
+
+      if (!description) { errorEl.textContent = 'Description is required'; return; }
+      if (!date) { errorEl.textContent = 'Date is required'; return; }
+
+      endpoint = '/log/injury';
+      body = { description, severity, date, notes };
+    }
+
+    const res = await fetch(`${BASE_URL}${endpoint}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body: JSON.stringify(body)
+    });
+
+    const result = await res.json();
+    if (!res.ok || result.status === 'error') {
+      errorEl.textContent = result.detail || result.message || 'Failed to save';
+      return;
+    }
+
+    closeTrainModal();
+    loadTrackerData('train');
+
+  } catch(e) {
+    errorEl.textContent = 'Error: ' + e.message;
+  }
+}
+
+// ============================================================
+// STOCK MODAL
+// ============================================================
+let currentStockTab = 'add';
+let stockDataCache = null;
+
+// ============================================================
+// CONTAINER GROUPS (multiple package sizes per item)
+// Shared between the Add Item and Add to Grocery List forms
+// prefix is either 'sa' (add pantry) or 'sg' (add grocery)
+// ============================================================
+function buildContainerGroupRowHTML(prefix, group) {
+  const count = group?.count ?? '';
+  const label = group?.container_label ?? '';
+  const size = group?.size ?? '';
+  const sizeUnit = group?.size_unit ?? '';
+  return `<div class="container-group-row" data-prefix="${prefix}" style="display:grid;grid-template-columns:55px 1fr 55px 1fr 26px;gap:6px;align-items:center;margin-bottom:6px;">
+    <input type="number" step="0.1" class="cg-count" placeholder="Count" value="${count}">
+    <input type="text" class="cg-label" placeholder="bottle" value="${label}">
+    <input type="number" step="0.1" class="cg-size" placeholder="Size" value="${size}">
+    <input type="text" class="cg-unit" placeholder="gal" value="${sizeUnit}">
+    <button type="button" onclick="removeContainerGroupRow(this)" style="background:none;border:none;color:var(--text2);font-size:14px;cursor:pointer;">✕</button>
+  </div>`;
+}
+
+function addContainerGroupRow(prefix, group) {
+  const rows = document.getElementById(`${prefix}-cg-rows`);
+  rows.insertAdjacentHTML('beforeend', buildContainerGroupRowHTML(prefix, group || {}));
+}
+
+function removeContainerGroupRow(btn) {
+  const row = btn.closest('.container-group-row');
+  const rows = row.parentElement;
+  if (rows.children.length > 1) {
+    row.remove();
+  } else {
+    row.querySelectorAll('input').forEach(input => input.value = '');
+  }
+}
+
+function resetContainerGroupRows(prefix) {
+  const rows = document.getElementById(`${prefix}-cg-rows`);
+  rows.innerHTML = '';
+  addContainerGroupRow(prefix, {});
+}
+
+function collectContainerGroups(prefix) {
+  const groups = [];
+  document.querySelectorAll(`#${prefix}-cg-rows .container-group-row`).forEach(row => {
+    const count = row.querySelector('.cg-count').value.trim();
+    const label = row.querySelector('.cg-label').value.trim();
+    const size = row.querySelector('.cg-size').value.trim();
+    const sizeUnit = row.querySelector('.cg-unit').value.trim();
+    if (!count && !label && !size && !sizeUnit) return;
+    groups.push({
+      count: count === '' ? null : parseFloat(count),
+      container_label: label,
+      size: size === '' ? null : parseFloat(size),
+      size_unit: sizeUnit
+    });
+  });
+  return groups;
+}
+
+async function openStockModal() {
+  document.getElementById('stock-modal-error').textContent = '';
+  // Clear dropdowns so stale data doesn't show while loading
+  document.getElementById('so-name').innerHTML = '<option value="">Loading...</option>';
+  document.getElementById('sb-name').innerHTML = '<option value="">Loading...</option>';
+  resetContainerGroupRows('sa');
+  resetContainerGroupRows('sg');
+  document.getElementById('stock-modal').classList.remove('hidden');
+  switchStockTab('add');
+  await loadStockModalData();
+}
+
+function closeStockModal() {
+  document.getElementById('stock-modal').classList.add('hidden');
+}
+
+function switchStockTab(tab) {
+  currentStockTab = tab;
+  ['add', 'out', 'grocery', 'bought'].forEach(t => {
+    document.getElementById(`stab-${t}`).classList.toggle('active', t === tab);
+    document.getElementById(`sform-${t}`).classList.toggle('hidden', t !== tab);
+  });
+}
+
+async function loadStockModalData() {
+  try {
+    const res = await fetch(`${BASE_URL}/mobile/data/stock`, {
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    stockDataCache = await res.json();
+
+    // Populate out-of-stock datalist with all pantry items
+    const pantryItems = [
+      ...(stockDataCache.pantry?.in_stock || []),
+      ...(stockDataCache.pantry?.out_of_stock || [])
+    ];
+    const outList = document.getElementById('so-name-list');
+    outList.innerHTML = pantryItems.map(item => `<option value="${item.name}">`).join('');
+
+    // Populate mark-bought datalist with grocery list items
+    const groceryItems = stockDataCache.grocery_list || [];
+    const boughtList = document.getElementById('sb-name-list');
+    boughtList.innerHTML = groceryItems.map(item => `<option value="${item.name}">`).join('');
+
+    // Pre-fill quantity and unit when a grocery item name is typed/selected
+    document.getElementById('sb-name').addEventListener('input', () => {
+      const typed = document.getElementById('sb-name').value;
+      const match = groceryItems.find(i => i.name.toLowerCase() === typed.toLowerCase());
+      if (match) {
+        document.getElementById('sb-quantity').value = match.quantity || '';
+        document.getElementById('sb-unit').value = match.unit || '';
+      }
+    });
+
+    // Pre-fill image search with item name
+    document.getElementById('sa-name').addEventListener('input', () => {
+      document.getElementById('sa-image-query').value = document.getElementById('sa-name').value;
+    });
+
+  } catch(e) {
+    console.error('Failed to load stock data:', e);
+  }
+}
+
+async function searchItemImage(prefix) {
+  const query = document.getElementById(`${prefix}-image-query`).value.trim();
+  if (!query) return;
+
+  const resultsEl = document.getElementById(`${prefix}-image-results`);
+  resultsEl.innerHTML = '<div style="color:var(--text2);font-size:12px;text-align:center;grid-column:span 2">Searching...</div>';
+
+  try {
+    const res = await fetch(`${BASE_URL}/mobile/search/image?q=${encodeURIComponent(query + ' walmart')}`, {
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    const data = await res.json();
+    const images = data.images || [];
+
+    if (images.length === 0) {
+      resultsEl.innerHTML = '<div style="color:var(--text2);font-size:12px;text-align:center;grid-column:span 2">No images found</div>';
+      return;
+    }
+
+    resultsEl.innerHTML = images.slice(0, 4).map((img, i) => `
+      <div class="image-option" onclick="selectImage('${prefix}', '${img.url}', this)">
+        <img src="${img.url}" onerror="this.parentElement.style.display='none'">
+      </div>
+    `).join('') + `
+      <div class="image-option-none" onclick="selectImage('${prefix}', '', this)">📦 No image</div>
+    `;
+
+  } catch(e) {
+    resultsEl.innerHTML = '<div style="color:var(--red);font-size:12px;text-align:center;grid-column:span 2">Search failed</div>';
+  }
+}
+
+function selectImage(prefix, url, el) {
+  document.querySelectorAll(`#${prefix}-image-results .image-option, #${prefix}-image-results .image-option-none`)
+    .forEach(el => el.classList.remove('selected'));
+  el.classList.add('selected');
+  document.getElementById(`${prefix}-image-url`).value = url;
+}
+
+async function submitStockForm() {
+  const errorEl = document.getElementById('stock-modal-error');
+  errorEl.textContent = '';
+
+  try {
+    let endpoint = '';
+    let body = {};
+
+    if (currentStockTab === 'add') {
+      const name = document.getElementById('sa-name').value.trim();
+      const quantity = parseFloat(document.getElementById('sa-quantity').value) || null;
+      const unit = document.getElementById('sa-unit').value.trim();
+      const notes = document.getElementById('sa-notes').value.trim();
+      const image = document.getElementById('sa-image-url').value;
+      const container_groups = collectContainerGroups('sa');
+
+      if (!name) { errorEl.textContent = 'Item name is required'; return; }
+
+      endpoint = '/log/pantry_add';
+      body = { name, quantity, unit, notes, image, container_groups };
+
+    } else if (currentStockTab === 'out') {
+      const name = document.getElementById('so-name').value.trim();
+      if (!name) { errorEl.textContent = 'Enter an item name'; return; }
+
+      endpoint = '/log/out_of_stock';
+      body = { name };
+
+    } else if (currentStockTab === 'grocery') {
+      const name = document.getElementById('sg-name').value.trim();
+      const quantity = parseFloat(document.getElementById('sg-quantity').value) || null;
+      const unit = document.getElementById('sg-unit').value.trim();
+      const notes = document.getElementById('sg-notes').value.trim();
+      const container_groups = collectContainerGroups('sg');
+
+      if (!name) { errorEl.textContent = 'Item name is required'; return; }
+
+      endpoint = '/log/add_grocery';
+      body = { name, quantity, unit, notes, container_groups };
+
+    } else if (currentStockTab === 'bought') {
+      const name = document.getElementById('sb-name').value.trim();
+      const quantity = parseFloat(document.getElementById('sb-quantity').value) || null;
+      const unit = document.getElementById('sb-unit').value.trim();
+
+      if (!name) { errorEl.textContent = 'Enter an item name'; return; }
+
+      endpoint = '/log/mark_bought';
+      body = { name, quantity, unit };
+    }
+
+    const res = await fetch(`${BASE_URL}${endpoint}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body: JSON.stringify(body)
+    });
+
+    const result = await res.json();
+    if (!res.ok || result.status === 'error') {
+      errorEl.textContent = result.detail || result.message || 'Failed to save';
+      return;
+    }
+
+    closeStockModal();
+    loadTrackerData('stock');
+
+  } catch(e) {
+    errorEl.textContent = 'Connection error — try again';
+  }
+}
+
+// ============================================================
+// DELETE HELPERS
+// ============================================================
+async function deleteEntry(endpoint, reloadTab, confirmMsg) {
+  if (!confirm(confirmMsg || 'Delete this entry?')) return;
+  try {
+    const res = await fetch(`${BASE_URL}${endpoint}`, {
+      method: 'DELETE',
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    const result = await res.json();
+    if (result.status === 'ok') {
+      loadTrackerData(reloadTab);
+    } else {
+      alert('Delete failed: ' + (result.message || 'Unknown error'));
+    }
+  } catch(e) {
+    alert('Connection error');
+  }
+}
+
+// ============================================================
+// BACK BUTTON HANDLING
+// ============================================================
+let exitConfirmVisible = false;
+
+function handleBackButton() {
+  // If exit confirm is already showing, do nothing — buttons handle it
+  if (exitConfirmVisible) return;
+
+  // Always re-push so the next back press also fires popstate
+  history.pushState(null, '', window.location.href);
+
+  // Priority 1 — close any open modal
+  const financeModal = document.getElementById('finance-modal');
+  const driveModal = document.getElementById('drive-modal');
+  const trainModal = document.getElementById('train-modal');
+  const stockModal = document.getElementById('stock-modal');
+
+  if (financeModal && !financeModal.classList.contains('hidden')) {
+    closeFinanceModal();
+    return;
+  }
+  if (driveModal && !driveModal.classList.contains('hidden')) {
+    closeDriveModal();
+    return;
+  }
+  if (trainModal && !trainModal.classList.contains('hidden')) {
+    closeTrainModal();
+    return;
+  }
+  if (stockModal && !stockModal.classList.contains('hidden')) {
+    closeStockModal();
+    return;
+  }
+
+  // Priority 2 — close history view if open
+  const historyView = document.getElementById('history-view');
+  if (historyView && !historyView.classList.contains('hidden')) {
+    closeHistory();
+    return;
+  }
+
+  // Priority 3 — go back to chat if on a tracker tab
+  const chatTab = document.getElementById('tab-chat');
+  if (chatTab && !chatTab.classList.contains('active')) {
+    switchTab('chat');
+    return;
+  }
+
+  // Priority 4 — on chat tab, show exit confirmation
+  exitConfirmVisible = true;
+  document.getElementById('exit-confirm').style.display = 'flex';
+}
+
+function cancelExit() {
+  exitConfirmVisible = false;
+  document.getElementById('exit-confirm').style.display = 'none';
+  history.pushState(null, '', window.location.href);
+}
+
+function confirmExit() {
+  exitConfirmVisible = false;
+  document.getElementById('exit-confirm').style.display = 'none';
+  // Give Android a moment then close
+  setTimeout(() => {
+    if (navigator.app && navigator.app.exitApp) {
+      navigator.app.exitApp();
+    } else {
+      window.removeEventListener('popstate', handleBackButton);
+      history.go(-history.length);
+    }
+  }, 100);
+}
+
+window.addEventListener('popstate', handleBackButton);
+
+// Push initial state after page loads so back button fires popstate
+window.addEventListener('load', () => {
+  history.pushState(null, '', window.location.href);
+});
+
+// Enter key on login
+document.getElementById('login-password').addEventListener('keydown', e => {
+  if (e.key === 'Enter') doLogin();
+});
+</script>
+</body>
+</html>
