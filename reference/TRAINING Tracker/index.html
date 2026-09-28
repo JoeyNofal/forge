@@ -1,0 +1,1359 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>TRAINING Tracker</title>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet"/>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #0d0d0f;
+    --surface: #16161a;
+    --surface2: #1e1e24;
+    --border: #2a2a35;
+    --accent: #2a9d8f;
+    --accent-bright: #3dbdad;
+    --accent-dim: #1a5f57;
+    --text: #e8e8f0;
+    --text-dim: #888899;
+    --green: #6db891;
+    --red: #e07070;
+    --gold: #c8a96e;
+    --orange: #e09060;
+    --blue: #6a9fd8;
+  }
+
+  body {
+    font-family: 'DM Mono', monospace;
+    background: var(--bg);
+    color: var(--text);
+    display: flex;
+    height: 100vh;
+    overflow: hidden;
+  }
+
+  /* SIDEBAR */
+  .sidebar {
+    width: 200px;
+    background: var(--surface);
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    padding: 24px 0;
+    flex-shrink: 0;
+  }
+
+  .sidebar-logo {
+    font-family: 'Syne', sans-serif;
+    font-size: 20px;
+    font-weight: 800;
+    color: var(--accent-bright);
+    padding: 0 20px 24px;
+    border-bottom: 1px solid var(--border);
+    letter-spacing: 2px;
+  }
+
+  .sidebar-logo span {
+    display: block;
+    font-size: 11px;
+    color: var(--text-dim);
+    font-weight: 400;
+    letter-spacing: 1px;
+    margin-top: 4px;
+  }
+
+  .nav-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 20px;
+    cursor: pointer;
+    color: var(--text-dim);
+    font-size: 13px;
+    transition: all 0.2s;
+    border-left: 3px solid transparent;
+    margin-top: 8px;
+  }
+
+  .nav-item:hover { color: var(--text); background: var(--surface2); }
+  .nav-item.active { color: var(--accent-bright); border-left-color: var(--accent); background: var(--surface2); }
+  .nav-item .nav-icon { font-size: 18px; }
+
+  /* MAIN */
+  .main {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  .topbar {
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    padding: 16px 28px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-shrink: 0;
+  }
+
+  .topbar-title {
+    font-family: 'Syne', sans-serif;
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--text);
+  }
+
+  .topbar-sub {
+    font-size: 12px;
+    color: var(--text-dim);
+    margin-top: 2px;
+  }
+
+  .btn {
+    padding: 8px 16px;
+    border-radius: 6px;
+    border: none;
+    cursor: pointer;
+    font-family: 'DM Mono', monospace;
+    font-size: 13px;
+    transition: all 0.2s;
+  }
+
+  .btn-primary { background: var(--accent); color: white; }
+  .btn-primary:hover { background: var(--accent-bright); }
+  .btn-secondary { background: var(--surface2); color: var(--text); border: 1px solid var(--border); }
+  .btn-secondary:hover { border-color: var(--accent); color: var(--accent-bright); }
+  .btn-danger { background: transparent; color: var(--red); border: 1px solid var(--red); }
+  .btn-danger:hover { background: var(--red); color: white; }
+
+  .content {
+    flex: 1;
+    overflow-y: auto;
+    padding: 28px;
+  }
+
+  /* STAT CARDS */
+  .stat-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 16px;
+    margin-bottom: 28px;
+  }
+
+  .stat-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 20px;
+  }
+
+  .stat-label {
+    font-size: 11px;
+    color: var(--text-dim);
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    margin-bottom: 8px;
+  }
+
+  .stat-value {
+    font-family: 'Syne', sans-serif;
+    font-size: 28px;
+    font-weight: 700;
+    color: var(--accent-bright);
+  }
+
+  .stat-sub {
+    font-size: 11px;
+    color: var(--text-dim);
+    margin-top: 4px;
+  }
+
+  /* SECTION */
+  .section-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 16px;
+  }
+
+  .section-title {
+    font-family: 'Syne', sans-serif;
+    font-size: 15px;
+    font-weight: 700;
+    color: var(--text);
+  }
+
+  /* CONTROLS */
+  .controls-row {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 20px;
+    flex-wrap: wrap;
+    align-items: center;
+  }
+
+  .search-input {
+    flex: 1;
+    min-width: 200px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 9px 14px;
+    border-radius: 6px;
+    font-family: 'DM Mono', monospace;
+    font-size: 13px;
+    outline: none;
+    transition: border-color 0.2s;
+  }
+  .search-input:focus { border-color: var(--accent); }
+  .search-input::placeholder { color: var(--text-dim); }
+
+  .filter-select {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 9px 14px;
+    border-radius: 6px;
+    font-family: 'DM Mono', monospace;
+    font-size: 13px;
+    outline: none;
+    cursor: pointer;
+  }
+  .filter-select:focus { border-color: var(--accent); }
+
+  /* TABLE */
+  .data-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+  }
+
+  .data-table th {
+    text-align: left;
+    padding: 10px 14px;
+    color: var(--text-dim);
+    font-size: 11px;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface);
+  }
+
+  .data-table td {
+    padding: 12px 14px;
+    border-bottom: 1px solid var(--border);
+    color: var(--text);
+    vertical-align: middle;
+  }
+
+  .data-table tr:hover td { background: var(--surface2); }
+
+  .table-wrap {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    overflow: hidden;
+  }
+
+  /* EXPANDABLE ROW */
+  .expand-row td {
+    background: var(--surface2);
+    padding: 16px 20px;
+  }
+
+  .expand-content {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 12px;
+  }
+
+  .expand-block {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px;
+  }
+
+  .expand-block-title {
+    font-size: 11px;
+    color: var(--text-dim);
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    margin-bottom: 8px;
+  }
+
+  .expand-block-content {
+    font-size: 12px;
+    color: var(--text);
+    line-height: 1.6;
+  }
+
+  /* BADGES */
+  .badge {
+    display: inline-block;
+    padding: 3px 10px;
+    border-radius: 20px;
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 0.5px;
+  }
+
+  .badge-green { background: rgba(109,184,145,0.15); color: var(--green); }
+  .badge-red { background: rgba(224,112,112,0.15); color: var(--red); }
+  .badge-gold { background: rgba(200,169,110,0.15); color: var(--gold); }
+  .badge-grey { background: rgba(136,136,153,0.15); color: var(--text-dim); }
+  .badge-teal { background: rgba(42,157,143,0.15); color: var(--accent-bright); }
+  .badge-blue { background: rgba(106,159,216,0.15); color: var(--blue); }
+
+  /* DASHBOARD CARDS */
+  .dash-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+    margin-bottom: 28px;
+  }
+
+  .dash-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 20px;
+  }
+
+  .dash-card-title {
+    font-family: 'Syne', sans-serif;
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--text-dim);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-bottom: 16px;
+  }
+
+  .workout-detail-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 6px 0;
+    border-bottom: 1px solid var(--border);
+    font-size: 13px;
+  }
+
+  .workout-detail-row:last-child { border-bottom: none; }
+  .workout-detail-label { color: var(--text-dim); }
+  .workout-detail-value { color: var(--text); }
+
+  /* MODAL */
+  .modal-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.7);
+    z-index: 1000;
+    align-items: center;
+    justify-content: center;
+  }
+  .modal-overlay.open { display: flex; }
+
+  .modal {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 28px;
+    width: 560px;
+    max-width: 95vw;
+    max-height: 88vh;
+    overflow-y: auto;
+  }
+
+  .modal-title {
+    font-family: 'Syne', sans-serif;
+    font-size: 17px;
+    font-weight: 700;
+    margin-bottom: 20px;
+    color: var(--text);
+  }
+
+  .form-group { margin-bottom: 16px; }
+
+  .form-label {
+    display: block;
+    font-size: 11px;
+    color: var(--text-dim);
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    margin-bottom: 6px;
+  }
+
+  .form-input {
+    width: 100%;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 10px 14px;
+    border-radius: 6px;
+    font-family: 'DM Mono', monospace;
+    font-size: 13px;
+    outline: none;
+    transition: border-color 0.2s;
+  }
+  .form-input:focus { border-color: var(--accent); }
+
+  .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+
+  .modal-actions {
+    display: flex;
+    gap: 10px;
+    justify-content: flex-end;
+    margin-top: 24px;
+  }
+
+  /* SETS / EXERCISES BUILDER */
+  .set-item {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px;
+    margin-bottom: 8px;
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr auto;
+    gap: 8px;
+    align-items: center;
+  }
+
+  .set-item input {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 6px 10px;
+    border-radius: 4px;
+    font-family: 'DM Mono', monospace;
+    font-size: 12px;
+    outline: none;
+    width: 100%;
+  }
+  .set-item input:focus { border-color: var(--accent); }
+
+  .set-remove-btn {
+    background: none;
+    border: none;
+    color: var(--red);
+    cursor: pointer;
+    font-size: 16px;
+    padding: 4px;
+  }
+
+  .add-set-btn {
+    background: none;
+    border: 1px dashed var(--border);
+    color: var(--text-dim);
+    padding: 8px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-family: 'DM Mono', monospace;
+    font-size: 12px;
+    width: 100%;
+    text-align: center;
+    transition: all 0.2s;
+    margin-top: 4px;
+  }
+  .add-set-btn:hover { border-color: var(--accent); color: var(--accent-bright); }
+
+  /* EMPTY STATE */
+  .empty-state {
+    text-align: center;
+    padding: 60px 20px;
+    color: var(--text-dim);
+  }
+  .empty-state .empty-icon { font-size: 48px; margin-bottom: 16px; }
+  .empty-state .empty-text { font-size: 14px; }
+
+  /* SCROLLBAR */
+  ::-webkit-scrollbar { width: 6px; }
+  ::-webkit-scrollbar-track { background: var(--bg); }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+  ::-webkit-scrollbar-thumb:hover { background: var(--accent-dim); }
+
+  .hidden { display: none !important; }
+
+  .clickable-row { cursor: pointer; }
+</style>
+</head>
+<body>
+
+<!-- SIDEBAR -->
+<div class="sidebar">
+  <div class="sidebar-logo">ATLAS<span>Training Tracker</span></div>
+  <div class="nav-item active" onclick="showView('dashboard', this)">
+    <span class="nav-icon">📊</span> Dashboard
+  </div>
+  <div class="nav-item" onclick="showView('swim', this)">
+    <span class="nav-icon">🏊</span> Swim Log
+  </div>
+  <div class="nav-item" onclick="showView('gym', this)">
+    <span class="nav-icon">🏋️</span> Gym Log
+  </div>
+  <div class="nav-item" onclick="showView('injuries', this)">
+    <span class="nav-icon">🩹</span> Injuries
+  </div>
+</div>
+
+<!-- MAIN -->
+<div class="main">
+  <div class="topbar">
+    <div>
+      <div class="topbar-title" id="viewTitle">Dashboard</div>
+      <div class="topbar-sub" id="viewSub">Your training overview</div>
+    </div>
+    <div class="topbar-right" style="display:flex;gap:10px;">
+      <button class="btn btn-primary" id="addBtn" onclick="openAddModal()">+ Log Workout</button>
+    </div>
+  </div>
+  <div class="content" id="mainContent"></div>
+</div>
+
+<!-- ADD WORKOUT MODAL -->
+<div class="modal-overlay" id="addModal">
+  <div class="modal">
+    <div class="modal-title" id="addModalTitle">Log Workout</div>
+    <div id="addModalBody"></div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="closeModal('addModal')">Cancel</button>
+      <button class="btn btn-primary" onclick="saveWorkout()">Save Workout</button>
+    </div>
+  </div>
+</div>
+
+<!-- ADD INJURY MODAL -->
+<div class="modal-overlay" id="injuryModal">
+  <div class="modal">
+    <div class="modal-title">Log Injury</div>
+    <div class="form-group">
+      <label class="form-label">Description</label>
+      <input class="form-input" id="inj_description" placeholder="e.g. Left shoulder pain"/>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">Severity</label>
+        <select class="form-input" id="inj_severity">
+          <option value="mild">Mild</option>
+          <option value="moderate">Moderate</option>
+          <option value="severe">Severe</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Date</label>
+        <input class="form-input" type="date" id="inj_date"/>
+      </div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Notes</label>
+      <input class="form-input" id="inj_notes" placeholder="Optional notes..."/>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="closeModal('injuryModal')">Cancel</button>
+      <button class="btn btn-primary" onclick="saveInjury()">Save Injury</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ============================================================
+// DATA & STATE
+// ============================================================
+let fitnessData = null;
+let currentView = 'dashboard';
+let addModalType = 'swim';
+let expandedRows = new Set();
+
+// ============================================================
+// STARTUP
+// ============================================================
+async function init() {
+  // Listen for data from NEXUS when opened as child window
+  window.trainingApp.onInitialData((data) => {
+    fitnessData = data;
+    renderView(currentView);
+  });
+
+  // Listen for live updates when fitness.json changes on disk (e.g. mobile edits)
+  window.trainingApp.onDataUpdated((data) => {
+    fitnessData = data;
+    renderView(currentView);
+  });
+
+  // Also try loading directly (works when opened standalone)
+  const data = await window.trainingApp.loadData();
+  if (data.error) {
+    console.log('Direct load failed, waiting for NEXUS:', data.error);
+    return;
+  }
+  fitnessData = data;
+  renderView(currentView);
+}
+
+// ============================================================
+// NAVIGATION
+// ============================================================
+function showView(view, el) {
+  currentView = view;
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  el.classList.add('active');
+
+  const addBtn = document.getElementById('addBtn');
+  if (view === 'injuries') {
+    addBtn.textContent = '+ Log Injury';
+    addBtn.onclick = openInjuryModal;
+  } else {
+    addBtn.textContent = '+ Log Workout';
+    addBtn.onclick = openAddModal;
+  }
+
+  const meta = {
+    dashboard: { title: 'Dashboard',  sub: 'Your training overview' },
+    swim:      { title: 'Swim Log',   sub: 'All swim sessions' },
+    gym:       { title: 'Gym Log',    sub: 'All gym sessions' },
+    injuries:  { title: 'Injuries',   sub: 'Injury tracking' }
+  };
+  document.getElementById('viewTitle').textContent = meta[view].title;
+  document.getElementById('viewSub').textContent = meta[view].sub;
+
+  expandedRows.clear();
+  renderView(view);
+}
+
+function renderView(view) {
+  if (view === 'dashboard') renderDashboard();
+  if (view === 'swim')      renderSwim();
+  if (view === 'gym')       renderGym();
+  if (view === 'injuries')  renderInjuries();
+}
+
+// ============================================================
+// HELPERS
+// ============================================================
+function getWorkouts() {
+  return (fitnessData && fitnessData.workouts) ? fitnessData.workouts : [];
+}
+
+function getInjuries() {
+  return (fitnessData && fitnessData.injuries) ? fitnessData.injuries : [];
+}
+
+function formatDate(dateStr) {
+  if (!dateStr) return '—';
+  const d = new Date(dateStr);
+  if (isNaN(d)) return dateStr;
+  return d.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
+}
+
+function timeAgo(dateStr) {
+  if (!dateStr) return '';
+  const diff = Date.now() - new Date(dateStr).getTime();
+  const days = Math.floor(diff / 86400000);
+  if (days === 0) return 'Today';
+  if (days === 1) return 'Yesterday';
+  if (days < 30) return `${days} days ago`;
+  if (days < 365) return `${Math.floor(days/30)} mo ago`;
+  return `${Math.floor(days/365)} yr ago`;
+}
+
+async function saveFitnessData() {
+  const result = await window.trainingApp.saveData(fitnessData);
+  if (!result.ok) alert('Save failed: ' + result.error);
+}
+
+function deleteWorkout(id) {
+  if (!confirm('Delete this workout?')) return;
+  fitnessData.workouts = (fitnessData.workouts || []).filter(w => w.id !== id);
+  saveFitnessData();
+  renderSwim();
+  renderGym();
+}
+
+function deleteInjury(id) {
+  if (!confirm('Delete this injury entry?')) return;
+  fitnessData.injuries = (fitnessData.injuries || []).filter(i => i.id !== id);
+  saveFitnessData();
+  renderInjuries();
+}
+
+function difficultyColor(d) {
+  if (!d) return 'var(--text-dim)';
+  if (d <= 3) return 'var(--green)';
+  if (d <= 6) return 'var(--gold)';
+  return 'var(--red)';
+}
+
+// ============================================================
+// DASHBOARD VIEW
+// ============================================================
+function renderDashboard() {
+  const workouts = getWorkouts();
+  const injuries = getInjuries();
+  const swims = workouts.filter(w => w.type === 'swim');
+  const gyms  = workouts.filter(w => w.type === 'gym');
+
+  const totalYards = swims.reduce((s, w) => s + (w.total_distance_yards || 0), 0);
+  const openInjuries = injuries.filter(i => i.status === 'open');
+
+  const lastWorkout = [...workouts].sort((a,b) => new Date(b.date) - new Date(a.date))[0] || null;
+
+  document.getElementById('mainContent').innerHTML = `
+    <div class="stat-grid">
+      <div class="stat-card">
+        <div class="stat-label">Total Workouts</div>
+        <div class="stat-value">${workouts.length}</div>
+        <div class="stat-sub">${swims.length} swim · ${gyms.length} gym</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Total Yards Swum</div>
+        <div class="stat-value">${totalYards.toLocaleString()}</div>
+        <div class="stat-sub">${swims.length} sessions</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Gym Sessions</div>
+        <div class="stat-value">${gyms.length}</div>
+        <div class="stat-sub">total logged</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Open Injuries</div>
+        <div class="stat-value" style="color:${openInjuries.length > 0 ? 'var(--red)' : 'var(--green)'}">${openInjuries.length}</div>
+        <div class="stat-sub">${openInjuries.length === 0 ? 'All clear' : 'Need attention'}</div>
+      </div>
+    </div>
+
+    <div class="dash-grid">
+      <div class="dash-card">
+        <div class="dash-card-title">Last Workout</div>
+        ${lastWorkout ? `
+          <div class="workout-detail-row">
+            <span class="workout-detail-label">Type</span>
+            <span class="workout-detail-value"><span class="badge ${lastWorkout.type === 'swim' ? 'badge-blue' : 'badge-teal'}">${lastWorkout.type}</span></span>
+          </div>
+          <div class="workout-detail-row">
+            <span class="workout-detail-label">Date</span>
+            <span class="workout-detail-value">${formatDate(lastWorkout.date)} · ${timeAgo(lastWorkout.date)}</span>
+          </div>
+          ${lastWorkout.type === 'swim' ? `
+            <div class="workout-detail-row">
+              <span class="workout-detail-label">Distance</span>
+              <span class="workout-detail-value">${(lastWorkout.total_distance_yards || 0).toLocaleString()} yards</span>
+            </div>
+          ` : `
+            <div class="workout-detail-row">
+              <span class="workout-detail-label">Exercises</span>
+              <span class="workout-detail-value">${(lastWorkout.exercises || []).length} exercises</span>
+            </div>
+          `}
+          <div class="workout-detail-row">
+            <span class="workout-detail-label">Duration</span>
+            <span class="workout-detail-value">${lastWorkout.duration_minutes || '—'} min</span>
+          </div>
+          <div class="workout-detail-row">
+            <span class="workout-detail-label">Difficulty</span>
+            <span class="workout-detail-value" style="color:${difficultyColor(lastWorkout.difficulty_1_to_10)}">${lastWorkout.difficulty_1_to_10 || '—'} / 10</span>
+          </div>
+          ${lastWorkout.coach_notes ? `
+            <div class="workout-detail-row">
+              <span class="workout-detail-label">Notes</span>
+              <span class="workout-detail-value" style="font-size:12px;">${lastWorkout.coach_notes}</span>
+            </div>
+          ` : ''}
+        ` : `<div style="color:var(--text-dim);font-size:13px;">No workouts logged yet.</div>`}
+      </div>
+
+      <div class="dash-card">
+        <div class="dash-card-title">Current Injuries</div>
+        ${openInjuries.length === 0
+          ? `<div style="color:var(--green);font-size:13px;">✅ No active injuries</div>`
+          : openInjuries.map(i => `
+            <div class="workout-detail-row">
+              <span class="workout-detail-label">${i.description || 'Injury'}</span>
+              <span class="workout-detail-value">
+                <span class="badge ${i.severity === 'severe' ? 'badge-red' : i.severity === 'moderate' ? 'badge-gold' : 'badge-grey'}">${i.severity || 'mild'}</span>
+              </span>
+            </div>
+          `).join('')
+        }
+      </div>
+    </div>
+  `;
+}
+
+// ============================================================
+// SWIM LOG VIEW
+// ============================================================
+function renderSwim(searchVal='', sortVal='newest') {
+  let entries = getWorkouts().filter(w => w.type === 'swim');
+
+  if (searchVal) {
+    const s = searchVal.toLowerCase();
+    entries = entries.filter(e =>
+      (e.strokes || []).join(' ').toLowerCase().includes(s) ||
+      (e.form_notes || '').toLowerCase().includes(s) ||
+      (e.coach_notes || '').toLowerCase().includes(s) ||
+      (e.date || '').includes(s)
+    );
+  }
+
+  if (sortVal === 'newest')   entries.sort((a,b) => new Date(b.date) - new Date(a.date));
+  if (sortVal === 'oldest')   entries.sort((a,b) => new Date(a.date) - new Date(b.date));
+  if (sortVal === 'distance') entries.sort((a,b) => (b.total_distance_yards||0) - (a.total_distance_yards||0));
+  if (sortVal === 'duration') entries.sort((a,b) => (b.duration_minutes||0) - (a.duration_minutes||0));
+  if (sortVal === 'hardest')  entries.sort((a,b) => (b.difficulty_1_to_10||0) - (a.difficulty_1_to_10||0));
+
+  document.getElementById('mainContent').innerHTML = `
+    <div class="controls-row">
+      <input class="search-input" placeholder="🔍 Search swim sessions..." value="${searchVal}"
+        oninput="renderSwim(this.value, document.getElementById('swimSort').value)"/>
+      <select class="filter-select" id="swimSort"
+        onchange="renderSwim(document.querySelector('.search-input').value, this.value)">
+        <option value="newest"   ${sortVal==='newest'?'selected':''}>Newest First</option>
+        <option value="oldest"   ${sortVal==='oldest'?'selected':''}>Oldest First</option>
+        <option value="distance" ${sortVal==='distance'?'selected':''}>Longest Distance</option>
+        <option value="duration" ${sortVal==='duration'?'selected':''}>Longest Duration</option>
+        <option value="hardest"  ${sortVal==='hardest'?'selected':''}>Hardest First</option>
+      </select>
+    </div>
+    ${entries.length === 0
+      ? `<div class="empty-state"><div class="empty-icon">🏊</div><div class="empty-text">No swim sessions logged yet.</div></div>`
+      : `<div class="table-wrap"><table class="data-table">
+          <thead><tr>
+            <th>Date</th><th>Distance</th><th>Duration</th><th>Strokes</th><th>Difficulty</th><th>Sets</th><th></th><th></th>
+          </tr></thead>
+          <tbody id="swimTbody">
+            ${entries.map((e, i) => buildSwimRows(e, i)).join('')}
+          </tbody>
+        </table></div>`
+    }
+  `;
+}
+
+function buildSwimRows(e, i) {
+  const rowId = 'swim_' + (e.id || i);
+  const isExpanded = expandedRows.has(rowId);
+  const sets = e.sets || [];
+  const strokes = (e.strokes || []).join(', ') || '—';
+
+  let expandHtml = '';
+  if (isExpanded) {
+    expandHtml = `
+      <tr class="expand-row" id="expand_${rowId}">
+        <td colspan="7">
+          <div class="expand-content">
+            ${sets.length > 0 ? `
+              <div class="expand-block" style="grid-column: 1 / -1;">
+                <div class="expand-block-title">Sets</div>
+                <div class="expand-block-content">
+                  ${sets.map((s, si) => `<div style="margin-bottom:4px;">${si+1}. ${s.distance_yards ? s.distance_yards + ' yds' : ''} ${s.stroke || ''} ${s.notes ? '— ' + s.notes : ''}</div>`).join('')}
+                </div>
+              </div>
+            ` : ''}
+            ${e.form_notes ? `
+              <div class="expand-block">
+                <div class="expand-block-title">Form Notes</div>
+                <div class="expand-block-content">${e.form_notes}</div>
+              </div>
+            ` : ''}
+            ${e.weaknesses ? `
+              <div class="expand-block">
+                <div class="expand-block-title">Weaknesses</div>
+                <div class="expand-block-content">${Array.isArray(e.weaknesses) ? e.weaknesses.join(', ') : e.weaknesses}</div>
+              </div>
+            ` : ''}
+            ${e.coach_notes ? `
+              <div class="expand-block">
+                <div class="expand-block-title">Coach Notes</div>
+                <div class="expand-block-content">${e.coach_notes}</div>
+              </div>
+            ` : ''}
+          </div>
+        </td>
+      </tr>
+    `;
+  }
+
+  return `
+    <tr class="clickable-row" onclick="toggleRow('${rowId}', 'swim')">
+      <td>${formatDate(e.date)}</td>
+      <td>${e.total_distance_yards ? e.total_distance_yards.toLocaleString() + ' yds' : '—'}</td>
+      <td>${e.duration_minutes ? e.duration_minutes + ' min' : '—'}</td>
+      <td style="font-size:12px;">${strokes}</td>
+      <td style="color:${difficultyColor(e.difficulty_1_to_10)}">${e.difficulty_1_to_10 || '—'}/10</td>
+      <td>${sets.length}</td>
+      <td style="color:var(--text-dim);font-size:16px;">${isExpanded ? '▲' : '▼'}</td>
+      <td onclick="event.stopPropagation()"><button onclick="deleteWorkout('${e.id}')" style="background:none;border:none;color:#e07b7b;cursor:pointer;font-size:16px;padding:2px 6px">🗑</button></td>
+    </tr>
+    ${expandHtml}
+  `;
+}
+
+// ============================================================
+// GYM LOG VIEW
+// ============================================================
+function renderGym(searchVal='', sortVal='newest') {
+  let entries = getWorkouts().filter(w => w.type === 'gym');
+
+  if (searchVal) {
+    const s = searchVal.toLowerCase();
+    entries = entries.filter(e =>
+      (e.exercises || []).some(ex => (ex.name||'').toLowerCase().includes(s)) ||
+      (e.form_notes || '').toLowerCase().includes(s) ||
+      (e.coach_notes || '').toLowerCase().includes(s) ||
+      (e.date || '').includes(s)
+    );
+  }
+
+  if (sortVal === 'newest')    entries.sort((a,b) => new Date(b.date) - new Date(a.date));
+  if (sortVal === 'oldest')    entries.sort((a,b) => new Date(a.date) - new Date(b.date));
+  if (sortVal === 'duration')  entries.sort((a,b) => (b.duration_minutes||0) - (a.duration_minutes||0));
+  if (sortVal === 'exercises') entries.sort((a,b) => (b.exercises||[]).length - (a.exercises||[]).length);
+  if (sortVal === 'hardest')   entries.sort((a,b) => (b.difficulty_1_to_10||0) - (a.difficulty_1_to_10||0));
+
+  document.getElementById('mainContent').innerHTML = `
+    <div class="controls-row">
+      <input class="search-input" placeholder="🔍 Search gym sessions..." value="${searchVal}"
+        oninput="renderGym(this.value, document.getElementById('gymSort').value)"/>
+      <select class="filter-select" id="gymSort"
+        onchange="renderGym(document.querySelector('.search-input').value, this.value)">
+        <option value="newest"    ${sortVal==='newest'?'selected':''}>Newest First</option>
+        <option value="oldest"    ${sortVal==='oldest'?'selected':''}>Oldest First</option>
+        <option value="duration"  ${sortVal==='duration'?'selected':''}>Longest Duration</option>
+        <option value="exercises" ${sortVal==='exercises'?'selected':''}>Most Exercises</option>
+        <option value="hardest"   ${sortVal==='hardest'?'selected':''}>Hardest First</option>
+      </select>
+    </div>
+    ${entries.length === 0
+      ? `<div class="empty-state"><div class="empty-icon">🏋️</div><div class="empty-text">No gym sessions logged yet.</div></div>`
+      : `<div class="table-wrap"><table class="data-table">
+          <thead><tr>
+            <th>Date</th><th>Duration</th><th>Exercises</th><th>Difficulty</th><th></th><th></th>
+          </tr></thead>
+          <tbody>
+            ${entries.map((e, i) => buildGymRows(e, i)).join('')}
+          </tbody>
+        </table></div>`
+    }
+  `;
+}
+
+function buildGymRows(e, i) {
+  const rowId = 'gym_' + (e.id || i);
+  const isExpanded = expandedRows.has(rowId);
+  const exercises = e.exercises || [];
+
+  let expandHtml = '';
+  if (isExpanded) {
+    expandHtml = `
+      <tr class="expand-row" id="expand_${rowId}">
+        <td colspan="5">
+          <div class="expand-content">
+            ${exercises.length > 0 ? `
+              <div class="expand-block" style="grid-column: 1 / -1;">
+                <div class="expand-block-title">Exercises</div>
+                <div class="expand-block-content">
+                  ${exercises.map(ex => `
+                    <div style="margin-bottom:6px;">
+                      <strong style="color:var(--accent-bright);">${ex.name || 'Exercise'}</strong>
+                      ${ex.sets ? ` · ${ex.sets} sets` : ''}
+                      ${ex.reps ? ` × ${ex.reps} reps` : ''}
+                      ${ex.weight_lbs ? ` · ${ex.weight_lbs} lbs` : ''}
+                      ${ex.notes ? ` — ${ex.notes}` : ''}
+                    </div>
+                  `).join('')}
+                </div>
+              </div>
+            ` : ''}
+            ${e.form_notes ? `
+              <div class="expand-block">
+                <div class="expand-block-title">Form Notes</div>
+                <div class="expand-block-content">${e.form_notes}</div>
+              </div>
+            ` : ''}
+            ${e.weaknesses ? `
+              <div class="expand-block">
+                <div class="expand-block-title">Weaknesses</div>
+                <div class="expand-block-content">${Array.isArray(e.weaknesses) ? e.weaknesses.join(', ') : e.weaknesses}</div>
+              </div>
+            ` : ''}
+            ${e.coach_notes ? `
+              <div class="expand-block">
+                <div class="expand-block-title">Coach Notes</div>
+                <div class="expand-block-content">${e.coach_notes}</div>
+              </div>
+            ` : ''}
+          </div>
+        </td>
+      </tr>
+    `;
+  }
+
+  return `
+    <tr class="clickable-row" onclick="toggleRow('${rowId}', 'gym')">
+      <td>${formatDate(e.date)}</td>
+      <td>${e.duration_minutes ? e.duration_minutes + ' min' : '—'}</td>
+      <td>${exercises.length} exercises</td>
+      <td style="color:${difficultyColor(e.difficulty_1_to_10)}">${e.difficulty_1_to_10 || '—'}/10</td>
+      <td style="color:var(--text-dim);font-size:16px;">${isExpanded ? '▲' : '▼'}</td>
+      <td onclick="event.stopPropagation()"><button onclick="deleteWorkout('${e.id}')" style="background:none;border:none;color:#e07b7b;cursor:pointer;font-size:16px;padding:2px 6px">🗑</button></td>
+    </tr>
+    ${expandHtml}
+  `;
+}
+
+function toggleRow(rowId, type) {
+  if (expandedRows.has(rowId)) {
+    expandedRows.delete(rowId);
+  } else {
+    expandedRows.add(rowId);
+  }
+  if (type === 'swim') renderSwim(
+    document.querySelector('.search-input')?.value || '',
+    document.getElementById('swimSort')?.value || 'newest'
+  );
+  if (type === 'gym') renderGym(
+    document.querySelector('.search-input')?.value || '',
+    document.getElementById('gymSort')?.value || 'newest'
+  );
+}
+
+// ============================================================
+// INJURIES VIEW
+// ============================================================
+function renderInjuries(searchVal='', filterVal='all', sortVal='newest') {
+  let entries = getInjuries();
+
+  if (filterVal === 'open')     entries = entries.filter(e => e.status === 'open');
+  if (filterVal === 'resolved') entries = entries.filter(e => e.status === 'resolved');
+
+  if (searchVal) {
+    const s = searchVal.toLowerCase();
+    entries = entries.filter(e =>
+      (e.description || '').toLowerCase().includes(s) ||
+      (e.severity || '').toLowerCase().includes(s)
+    );
+  }
+
+  if (sortVal === 'newest') entries.sort((a,b) => new Date(b.date||b.logged_at||0) - new Date(a.date||a.logged_at||0));
+  if (sortVal === 'oldest') entries.sort((a,b) => new Date(a.date||a.logged_at||0) - new Date(b.date||b.logged_at||0));
+  if (sortVal === 'severity') {
+    const sev = { severe: 0, moderate: 1, mild: 2 };
+    entries.sort((a,b) => (sev[a.severity]??3) - (sev[b.severity]??3));
+  }
+
+  document.getElementById('mainContent').innerHTML = `
+    <div class="controls-row">
+      <input class="search-input" placeholder="🔍 Search injuries..." value="${searchVal}"
+        oninput="renderInjuries(this.value, document.getElementById('injFilter').value, document.getElementById('injSort').value)"/>
+      <select class="filter-select" id="injFilter"
+        onchange="renderInjuries(document.querySelector('.search-input').value, this.value, document.getElementById('injSort').value)">
+        <option value="all"      ${filterVal==='all'?'selected':''}>All</option>
+        <option value="open"     ${filterVal==='open'?'selected':''}>Open</option>
+        <option value="resolved" ${filterVal==='resolved'?'selected':''}>Resolved</option>
+      </select>
+      <select class="filter-select" id="injSort"
+        onchange="renderInjuries(document.querySelector('.search-input').value, document.getElementById('injFilter').value, this.value)">
+        <option value="newest"   ${sortVal==='newest'?'selected':''}>Newest First</option>
+        <option value="oldest"   ${sortVal==='oldest'?'selected':''}>Oldest First</option>
+        <option value="severity" ${sortVal==='severity'?'selected':''}>By Severity</option>
+      </select>
+    </div>
+    ${entries.length === 0
+      ? `<div class="empty-state"><div class="empty-icon">🩹</div><div class="empty-text">No injuries logged.</div></div>`
+      : `<div class="table-wrap"><table class="data-table">
+          <thead><tr>
+            <th>Date</th><th>Description</th><th>Severity</th><th>Status</th><th>Notes</th><th></th>
+          </tr></thead>
+          <tbody>
+            ${entries.map(e => `
+              <tr>
+                <td>${formatDate(e.date || e.logged_at)}</td>
+                <td>${e.description || '—'}</td>
+                <td><span class="badge ${e.severity==='severe'?'badge-red':e.severity==='moderate'?'badge-gold':'badge-grey'}">${e.severity || 'mild'}</span></td>
+                <td><span class="badge ${e.status==='open'?'badge-red':'badge-green'}">${e.status || 'open'}</span></td>
+                <td style="font-size:12px;color:var(--text-dim);">${e.notes || '—'}</td>
+                <td><button onclick="deleteInjury('${e.id}')" style="background:none;border:none;color:#e07b7b;cursor:pointer;font-size:16px;padding:2px 6px">🗑</button></td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table></div>`
+    }
+  `;
+}
+
+// ============================================================
+// ADD WORKOUT MODAL
+// ============================================================
+function openAddModal() {
+  addModalType = 'swim';
+  document.getElementById('addModalTitle').textContent = 'Log Workout';
+  renderAddForm();
+  document.getElementById('addModal').classList.add('open');
+}
+
+function renderAddForm() {
+  const today = new Date().toISOString().split('T')[0];
+  const tabs = `
+    <div style="display:flex;gap:8px;margin-bottom:20px;">
+      <button class="btn ${addModalType==='swim'?'btn-primary':'btn-secondary'}" onclick="setWorkoutType('swim')">🏊 Swim</button>
+      <button class="btn ${addModalType==='gym'?'btn-primary':'btn-secondary'}" onclick="setWorkoutType('gym')">🏋️ Gym</button>
+    </div>
+  `;
+
+  if (addModalType === 'swim') {
+    document.getElementById('addModalBody').innerHTML = `
+      ${tabs}
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Date</label>
+          <input class="form-input" type="date" id="w_date" value="${today}"/>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Total Distance (yards)</label>
+          <input class="form-input" type="number" id="w_distance" placeholder="e.g. 1500"/>
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Duration (minutes)</label>
+          <input class="form-input" type="number" id="w_duration" placeholder="e.g. 45"/>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Difficulty (1–10)</label>
+          <input class="form-input" type="number" min="1" max="10" id="w_difficulty" placeholder="e.g. 7"/>
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Strokes (comma separated)</label>
+        <input class="form-input" id="w_strokes" placeholder="e.g. freestyle, breaststroke"/>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Sets</label>
+        <div id="setsContainer"></div>
+        <button class="add-set-btn" onclick="addSet()">+ Add Set</button>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Form Notes</label>
+        <input class="form-input" id="w_form_notes" placeholder="Optional..."/>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Weaknesses</label>
+        <input class="form-input" id="w_weaknesses" placeholder="e.g. flip turns, breathing timing"/>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Coach Notes</label>
+        <input class="form-input" id="w_coach_notes" placeholder="Optional..."/>
+      </div>
+    `;
+  } else {
+    document.getElementById('addModalBody').innerHTML = `
+      ${tabs}
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Date</label>
+          <input class="form-input" type="date" id="w_date" value="${today}"/>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Duration (minutes)</label>
+          <input class="form-input" type="number" id="w_duration" placeholder="e.g. 60"/>
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Difficulty (1–10)</label>
+        <input class="form-input" type="number" min="1" max="10" id="w_difficulty" placeholder="e.g. 6"/>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Exercises</label>
+        <div id="exercisesContainer"></div>
+        <button class="add-set-btn" onclick="addExercise()">+ Add Exercise</button>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Form Notes</label>
+        <input class="form-input" id="w_form_notes" placeholder="Optional..."/>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Weaknesses</label>
+        <input class="form-input" id="w_weaknesses" placeholder="Optional..."/>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Coach Notes</label>
+        <input class="form-input" id="w_coach_notes" placeholder="Optional..."/>
+      </div>
+    `;
+  }
+}
+
+function setWorkoutType(type) {
+  addModalType = type;
+  renderAddForm();
+}
+
+// SETS BUILDER (swim)
+let setCount = 0;
+function addSet() {
+  setCount++;
+  const id = 'set_' + setCount;
+  const container = document.getElementById('setsContainer');
+  const div = document.createElement('div');
+  div.className = 'set-item';
+  div.id = id;
+  div.style.gridTemplateColumns = '1fr 1fr auto';
+  div.innerHTML = `
+    <input placeholder="Distance (yds)" type="number" id="${id}_dist"/>
+    <input placeholder="Stroke" id="${id}_stroke"/>
+    <button class="set-remove-btn" onclick="document.getElementById('${id}').remove()">✕</button>
+  `;
+  container.appendChild(div);
+}
+
+// EXERCISES BUILDER (gym)
+let exCount = 0;
+function addExercise() {
+  exCount++;
+  const id = 'ex_' + exCount;
+  const container = document.getElementById('exercisesContainer');
+  const div = document.createElement('div');
+  div.className = 'set-item';
+  div.id = id;
+  div.innerHTML = `
+    <input placeholder="Exercise name" id="${id}_name" style="grid-column:1/3;"/>
+    <input placeholder="Sets" type="number" id="${id}_sets"/>
+    <input placeholder="Reps" type="number" id="${id}_reps"/>
+    <input placeholder="Weight (lbs)" type="number" id="${id}_weight"/>
+    <button class="set-remove-btn" onclick="document.getElementById('${id}').remove()">✕</button>
+  `;
+  div.style.gridTemplateColumns = '1fr 1fr 1fr 1fr auto';
+  container.appendChild(div);
+}
+
+async function saveWorkout() {
+  if (!fitnessData) return;
+  if (!fitnessData.workouts) fitnessData.workouts = [];
+
+  const date = document.getElementById('w_date')?.value || new Date().toISOString().split('T')[0];
+  const duration = parseInt(document.getElementById('w_duration')?.value) || null;
+  const difficulty = parseInt(document.getElementById('w_difficulty')?.value) || null;
+  const formNotes = document.getElementById('w_form_notes')?.value.trim() || '';
+  const coachNotes = document.getElementById('w_coach_notes')?.value.trim() || '';
+  const weaknessesRaw = document.getElementById('w_weaknesses')?.value.trim() || '';
+  const weaknesses = weaknessesRaw ? weaknessesRaw.split(',').map(s => s.trim()).filter(Boolean) : [];
+
+  if (addModalType === 'swim') {
+    const distance = parseInt(document.getElementById('w_distance')?.value) || null;
+    const strokesRaw = document.getElementById('w_strokes')?.value.trim() || '';
+    const strokes = strokesRaw ? strokesRaw.split(',').map(s => s.trim()).filter(Boolean) : [];
+
+    // Collect sets
+    const sets = [];
+    document.querySelectorAll('#setsContainer .set-item').forEach(item => {
+      const id = item.id;
+      const dist = parseInt(document.getElementById(id + '_dist')?.value) || null;
+      const stroke = document.getElementById(id + '_stroke')?.value.trim() || '';
+      if (dist || stroke) sets.push({ distance_yards: dist, stroke });
+    });
+
+    fitnessData.workouts.push({
+      id: 'swim_' + Date.now(),
+      type: 'swim',
+      date,
+      logged_at: new Date().toISOString(),
+      total_distance_yards: distance,
+      duration_minutes: duration,
+      strokes,
+      sets,
+      difficulty_1_to_10: difficulty,
+      form_notes: formNotes,
+      weaknesses,
+      coach_notes: coachNotes
+    });
+
+  } else {
+    // Collect exercises
+    const exercises = [];
+    document.querySelectorAll('#exercisesContainer .set-item').forEach(item => {
+      const id = item.id;
+      const name = document.getElementById(id + '_name')?.value.trim() || '';
+      const sets = parseInt(document.getElementById(id + '_sets')?.value) || null;
+      const reps = parseInt(document.getElementById(id + '_reps')?.value) || null;
+      const weight = parseFloat(document.getElementById(id + '_weight')?.value) || null;
+      if (name) exercises.push({ name, sets, reps, weight_lbs: weight, notes: '' });
+    });
+
+    fitnessData.workouts.push({
+      id: 'gym_' + Date.now(),
+      type: 'gym',
+      date,
+      logged_at: new Date().toISOString(),
+      exercises,
+      duration_minutes: duration,
+      difficulty_1_to_10: difficulty,
+      form_notes: formNotes,
+      weaknesses,
+      coach_notes: coachNotes
+    });
+  }
+
+  await saveFitnessData();
+  closeModal('addModal');
+  setCount = 0;
+  exCount = 0;
+  renderView(currentView);
+}
+
+// ============================================================
+// INJURY MODAL
+// ============================================================
+function openInjuryModal() {
+  const today = new Date().toISOString().split('T')[0];
+  document.getElementById('inj_date').value = today;
+  document.getElementById('inj_description').value = '';
+  document.getElementById('inj_notes').value = '';
+  document.getElementById('injuryModal').classList.add('open');
+}
+
+async function saveInjury() {
+  if (!fitnessData) return;
+  if (!fitnessData.injuries) fitnessData.injuries = [];
+
+  const desc = document.getElementById('inj_description').value.trim();
+  if (!desc) { alert('Please describe the injury.'); return; }
+
+  fitnessData.injuries.push({
+    id: 'injury_' + Date.now(),
+    description: desc,
+    severity: document.getElementById('inj_severity').value,
+    status: 'open',
+    date: document.getElementById('inj_date').value,
+    logged_at: new Date().toISOString(),
+    notes: document.getElementById('inj_notes').value.trim()
+  });
+
+  await saveFitnessData();
+  closeModal('injuryModal');
+  renderView(currentView);
+}
+
+// ============================================================
+// MODAL CLOSE
+// ============================================================
+function closeModal(id) {
+  document.getElementById(id).classList.remove('open');
+}
+
+document.querySelectorAll('.modal-overlay').forEach(overlay => {
+  overlay.addEventListener('click', (e) => {
+    if (e.target === overlay) overlay.classList.remove('open');
+  });
+});
+
+// ============================================================
+// START
+// ============================================================
+init();
+</script>
+</body>
+</html>
