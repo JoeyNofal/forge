@@ -113,3 +113,92 @@ ASSET_NEWS_TRIGGERS = [
     "news", "rate", "rates", "market", "economy", "inflation",
     "fed", "federal reserve", "stock market",
 ]
+
+
+
+# ───────────────────────── ATLAS (Phase 4) ─────────────────────────
+
+# ATLAS's web search is trigger-gated, like CIPHER's — it only fires when
+# the message looks like a research/technique question. Carried over from
+# the old code's RESEARCH_SIGNALS (plain substring matching there; whole
+# word/phrase matching now — Lesson #6).
+ATLAS_SEARCH_TRIGGERS = [
+    "technique", "how to", "best way", "research", "tips", "recommend",
+    "should i eat", "nutrition", "recovery", "what's the best",
+    "how do i improve",
+]
+
+# "Show me my logged data" questions are answered DIRECTLY from the data
+# file with no model call at all (old design: this is what stops ATLAS
+# from ever inventing a workout count). The old check was a bare
+# substring match on things like "how much" / "total" / "overall", which
+# turned real coaching questions ("how much should I bench") into a data
+# dump. Now a history question needs EITHER an explicit history phrase,
+# OR a quantity word AND a logged-data subject together — and never fires
+# when the message is asking for advice or reporting a new workout.
+ATLAS_HISTORY_PHRASES = [
+    "logged so far", "past workouts", "my workouts", "my swims",
+    "my sessions", "my injuries", "my history", "swim history",
+    "gym history", "injury history", "workout history", "all-time",
+    "all time", "what have i done", "what have i logged",
+    "progress so far",
+]
+ATLAS_HISTORY_QUANTITY = ["how many", "how much", "total", "overall", "in total", "so far"]
+ATLAS_HISTORY_SUBJECTS = ["workouts", "sessions", "swims", "yards", "injuries", "logged", "swum"]
+ATLAS_ADVICE_SIGNALS = [
+    "should i", "can i", "how do i", "how should i", "how can i",
+    "what's the best", "what is the best", "is it ok", "is it okay",
+]
+ATLAS_REPORT_PHRASES = [
+    "just did", "just finished", "i did", "i swam", "i went", "did a",
+    "finished a", "completed", "done with", "i lifted", "went to the gym",
+    "just swam", "just lifted",
+]
+
+# Which slice of the data a history question is about.
+ATLAS_SWIM_WORDS = ["swim", "swims", "swimming", "swam", "swum"]
+ATLAS_GYM_WORDS = ["gym", "lift", "lifts", "lifting", "lifted"]
+ATLAS_INJURY_WORDS = ["injury", "injuries", "injured"]
+
+
+
+# ───────────────────────── DRIVE (Phase 4) ─────────────────────────
+
+# DRIVE's web search is trigger-gated (the old code searched on EVERY
+# message, wrapped in a bare except: pass — a live Lesson #2/#12 phantom-
+# search risk). Now it only fires on things a search actually helps with.
+DRIVE_SEARCH_TRIGGERS = [
+    "recall", "how do i", "should i", "best way", "which", "compare",
+    "review", "worth it", "how much does", "how much should", "safe to",
+]
+
+# "Show me my logged data" — answered directly from the data file, no
+# model call, same reasoning as ATLAS: a model can't invent a number it
+# never gets to write. Needs an explicit history phrase, or a quantity
+# word AND a logged-data subject together — never on advice or a new
+# report of work just done.
+DRIVE_HISTORY_PHRASES = [
+    "maintenance history", "maintenance log", "service history",
+    "gas history", "gas log", "fill-up history", "my mileage",
+    "current mileage", "open issues", "what have i logged",
+    "what's due", "what is due", "upcoming maintenance",
+    "all-time", "all time",
+]
+DRIVE_HISTORY_QUANTITY = ["how many", "how much", "total", "overall", "in total", "so far"]
+DRIVE_HISTORY_SUBJECTS = ["oil changes", "fill-ups", "fillups", "services", "logged", "spent on gas"]
+DRIVE_ADVICE_SIGNALS = [
+    "should i", "can i", "how do i", "how should i", "how can i",
+    "what's the best", "what is the best", "is it ok", "is it okay",
+    "worth it", "recommend",
+]
+DRIVE_REPORT_PHRASES = [
+    "just did", "just got", "just filled", "just topped", "i got",
+    "i did", "i filled", "i topped", "i added", "got an", "got a",
+    "just changed", "just replaced", "finished", "completed",
+    "done with", "went to the", "they did", "they changed", "they rotated",
+]
+
+# Which slice of the data a history question is about.
+DRIVE_MAINTENANCE_WORDS = ["maintenance", "service", "oil change", "tire rotation", "repair"]
+DRIVE_GAS_WORDS = ["gas", "fuel", "fill-up", "fillup", "mpg", "gallon"]
+DRIVE_ISSUE_WORDS = ["issue", "issues", "problem", "noise", "warning light"]

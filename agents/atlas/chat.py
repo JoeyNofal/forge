@@ -1,0 +1,114 @@
+"""
+ATLAS — Phase 4, increment (a): core chat.
+
+Deliberately NOT here yet (each is its own tested increment):
+  (b) logging workouts/injuries and generating workout template files
+  (c) permanent memory
+  (d) workout photo scan
+
+What this does:
+- Refuses non-fitness questions with the word-boundary gate (Lesson #6),
+  in Goggins' voice.
+- "Show me my logged data" questions are answered directly from the
+  fitness file with NO model call — the old system's own design, kept
+  because a model can't invent a workout count it never gets to write.
+  The trigger is tighter than the old one (see agent_topics.py).
+- Everything else: the live fitness summary goes into the prompt, the
+  model answers in voice. A real data-load failure becomes an explicit
+  "unavailable" note (Lesson #12) instead of a crash or a silent skip.
+- Web search only when the message looks like a research question, using
+  shared/web_search.py; a failed search is passed through as a failure,
+  never hidden (Lesson #2).
+- Goes through stream_by_tier — the same shared model path as every other
+  agent (Lesson #1/#11). model_tier=None means "ATLAS's live default"
+  (free_cloud). The caller owns conversation history.
+"""
+from typing import Optional
+
+from shared.keyword_gate import should_refuse, contains_keyword
+from shared.agent_topics import (
+    ATLAS_NON_TOPIC, ATLAS_INTENT, ATLAS_SEARCH_TRIGGERS,
+    ATLAS_HISTORY_PHRASES, ATLAS_HISTORY_QUANTITY, ATLAS_HISTORY_SUBJECTS,
+    ATLAS_ADVICE_SIGNALS, ATLAS_REPORT_PHRASES,
+    ATLAS_SWIM_WORDS, ATLAS_GYM_WORDS, ATLAS_INJURY_WORDS,
+)
+from shared.web_search import web_search, WEB_SEARCH_FAILED_PREFIX
+from shared.model_client import stream_by_tier
+from shared.memory_context import format_memory_context
+from agents.atlas.prompt import ATLAS_PROMPT
+from agents.atlas import atlas_tools
+
+# Same line ATLAS's own prompt already uses for off-topic questions.
+REFUSAL_MESSAGE = "That's not my lane — hit up NEXUS."
+
+
+def is_history_question(message: str) -> bool:
+    """True when the message is asking to SEE logged data (answered with no model call)."""
+    if contains_keyword(message, ATLAS_REPORT_PHRASES):
+        return False  # reporting a new workout, not asking for history
+    if contains_keyword(message, ATLAS_ADVICE_SIGNALS):
+        return False  # asking for coaching, not a data dump
+    if contains_keyword(message, ATLAS_HISTORY_PHRASES):
+        return True
+    return (
+        contains_keyword(message, ATLAS_HISTORY_QUANTITY)
+        and contains_keyword(message, ATLAS_HISTORY_SUBJECTS)
+    )
+
+
+def history_answer(message: str) -> str:
+    """Picks which slice of the data to show. May raise RuntimeError if the data can't be read."""
+    if contains_keyword(message, ATLAS_INJURY_WORDS):
+        return atlas_tools.get_injury_history()
+    swim = contains_keyword(message, ATLAS_SWIM_WORDS)
+    gym = contains_keyword(message, ATLAS_GYM_WORDS)
+    if swim and not gym:
+        return atlas_tools.get_swim_history()
+    if gym and not swim:
+        return atlas_tools.get_gym_history()
+    return (
+        atlas_tools.get_recent_workouts(10) + "\n\n"
+        + atlas_tools.get_swim_history() + "\n\n"
+        + atlas_tools.get_gym_history()
+    )
+
+
+def stream_atlas(message: str, history: Optional[list] = None, location: str = "",
+                 model_tier: Optional[str] = None):
+    """
+    history: list of {"role": "user"|"assistant", "content": str}, or None
+    Yields text chunks. The caller owns conversation-history persistence.
+    """
+    if should_refuse(message, ATLAS_NON_TOPIC, ATLAS_INTENT):
+        yield REFUSAL_MESSAGE
+        return
+
+    if is_history_question(message):
+        try:
+            yield history_answer(message)
+        except RuntimeError as e:
+            yield f"I can't read your fitness data right now: {e}"
+        return
+
+    context_blocks = []
+
+    try:
+        context_blocks.append(
+            f"[Live fitness data from Joey's log:\n{atlas_tools.get_data_summary_for_llm()}]"
+        )
+    except RuntimeError as e:
+        context_blocks.append(f"[FITNESS DATA UNAVAILABLE: {e}]")
+
+    if contains_keyword(message, ATLAS_SEARCH_TRIGGERS):
+        search_result = web_search(message)
+        if search_result.startswith(WEB_SEARCH_FAILED_PREFIX):
+            context_blocks.append(search_result)
+        else:
+            context_blocks.append(format_memory_context([search_result], label="web search results"))
+
+    full_message = "\n\n".join(context_blocks + [f"Joey says: {message}"])
+
+    messages = list(history) if history else []
+    messages.append({"role": "user", "content": full_message})
+
+    yield from stream_by_tier("atlas", model_tier, ATLAS_PROMPT, messages, location)
