@@ -4,6 +4,7 @@ Pulls the working FileLock pattern already proven in the old
 pending_tasks.py / atlas_tools.py into one reusable function, instead
 of it being re-copy-pasted (and potentially re-broken) per file.
 """
+import copy
 import json
 import os
 from filelock import FileLock
@@ -11,7 +12,11 @@ from filelock import FileLock
 def load_json(path: str, default):
     """Reads a JSON file. Returns `default` if the file doesn't exist yet."""
     if not os.path.exists(path):
-        return default
+        # A COPY, never the caller's own object: update functions modify what
+        # they are given, and a shared module-level default (like
+        # pending_actions._DEFAULT) would otherwise accumulate every change
+        # ever made and resurface it whenever the file is missing.
+        return copy.deepcopy(default)
     with open(path, "r", encoding="utf-8") as f:
         return json.load(f)
 

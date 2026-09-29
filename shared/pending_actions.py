@@ -20,11 +20,23 @@ import os
 import uuid
 from datetime import datetime
 
+from filelock import FileLock
+
 from shared.file_store import load_json, update_json
 
 PENDING_ACTIONS_PATH = os.getenv("PENDING_ACTIONS_PATH", r"D:\Projects\forge\data\pending_actions.json")
 
 _DEFAULT = {"actions": []}
+
+
+def _locked_load() -> dict:
+    """
+    Read the queue under the SAME lock the writers hold. Writers rewrite the
+    whole file in place, so an unlocked reader can catch it half-written and
+    crash with a JSON error (found by ATLAS's 20-thread approval test).
+    """
+    with FileLock(PENDING_ACTIONS_PATH + ".lock", timeout=10):
+        return load_json(PENDING_ACTIONS_PATH, _DEFAULT)
 
 
 def create_pending_action(agent: str, action_type: str, details: dict) -> str:
@@ -56,7 +68,7 @@ def create_pending_action(agent: str, action_type: str, details: dict) -> str:
 
 
 def get_pending_action(action_id: str) -> dict | None:
-    data = load_json(PENDING_ACTIONS_PATH, _DEFAULT)
+    data = _locked_load()
     for action in data.get("actions", []):
         if action["id"] == action_id:
             return action
@@ -117,7 +129,7 @@ def finalize_action(action_id: str, status: str, result: str | None = None) -> N
 
 
 def list_pending_actions(agent: str | None = None) -> list[dict]:
-    data = load_json(PENDING_ACTIONS_PATH, _DEFAULT)
+    data = _locked_load()
     actions = [a for a in data.get("actions", []) if a["status"] == "pending"]
     if agent:
         actions = [a for a in actions if a["agent"] == agent]
