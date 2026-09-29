@@ -23,6 +23,9 @@ build/
 # Agent memory (personal data — never belongs in a public repo)
 memory/
 
+# Local data files (fitness, budget DB, etc. — personal, never upload)
+data/
+
 # OS junk
 .DS_Store
 Thumbs.db
