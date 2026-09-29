@@ -281,3 +281,344 @@ Not yet decided / still open
 Exact shape of NEXUS's core-chat increment (what stays in scope vs. gets deferred beyond what's listed above) — not yet worked out in detail.
 Reel idea-extractor, task scheduler/crontab, expert/sub-agent spawning, plugin/skill marketplace — still scoped from Session 1, not started for any agent.
 NEXUS's approval workflow (Tier 1/Tier 2) — not started; this is also what unblocks CIPHER's last remaining piece.
+
+## Session 5 — Phase 2: NEXUS (core chat, memory, model-tier switching, bridges) + CIPHER real actions
+
+### NEXUS Phase 2 — Core chat
+Built: agents/nexus/prompt.py (NEXUS_PROMPT_DEFAULT, Alfred Pennyworth
+voice, carried over completely unchanged — including its
+reminder/app/file/bridge/record-keeping tool-command instructions,
+which FORGE hasn't built processors for yet), agents/nexus/chat.py
+(strip_unexecuted_action_markers() replaces every unbuilt marker type
+with one clear placeholder before saving to history; web search fires
+on nearly every message, matching the old system's real behavior, made
+safe via shared/web_search.py's WEB_SEARCH_FAILED_PREFIX marker so a
+real failure is never silently swallowed).
+
+Decision: NEXUS's live default model tier changed from the old
+system's paid_cloud to free_cloud.
+
+Tested — CONFIRMED CLOSED, L1 through L5:
+- L1/L2: 12/12 mocked.
+- L3: real Gemini + real SerpApi — Alfred voice confirmed natural, real
+  weather search hit a real South Bend-area PWS station and hedged
+  appropriately on unclear data, SET_REMINDER/ASK_ASSET markers
+  correctly stripped for history, no invented figures, multi-turn
+  history recall correct.
+- L4/L5: 100 sequential + 20 concurrent calls clean (including a
+  NEXUS-specific per-call-search cross-talk check since NEXUS searches
+  every message, unlike CIPHER); empty/50k-char/unicode/None all
+  handled correctly; malformed history fails loudly with a clear
+  KeyError (confirmed for real by fixing an initially-too-lenient
+  mock); all 17 marker types stripped correctly at once.
+
+### NEXUS Phase 2 — Memory
+Decisions: 7 of 8 shared categories accepted (all except
+financial_fact — ASSET's exclusive domain); retrieval fires
+near-universally like search, not trigger-gated like CIPHER's; same
+inline MEMORY_SAVE marker mechanism as CIPHER.
+
+Refactor alongside this build: OllamaEmbeddingFunction +
+OLLAMA_EMBED_URL/OLLAMA_EMBED_MODEL/MAX_MEMORY_CONTENT_CHARS extracted
+out of shared/cipher_memory.py into new shared/ollama_embeddings.py
+(Lesson #9 — merged while it was still just 2 files). shared/nexus_memory.py
+built on top of the shared module — own ChromaDB collection, isolated
+from CIPHER's per Lesson #3.
+
+Real bug found and fixed: financial_fact's exclusion only lived in
+chat.py's extractor, not in save_memory() itself — a direct call with
+that category would have succeeded. Fixed by enforcing the exclusion
+at the storage layer too (defense in depth).
+
+Tested — CONFIRMED CLOSED, L1 through L5:
+- L1/L2: 20/20.
+- L3: 6/6 real Ollama embeddings + real Gemini — semantic search
+  correctly ranked the relevant saved fact over an unrelated one, real
+  response used retrieved memory unprompted with no trigger keyword
+  present, a real $4,300 balance mention correctly routed to
+  ASK_ASSET and never saved to NEXUS's own memory.
+- L4/L5: 12/12 (11/12 first pass, one real gap — see above — found and
+  fixed).
+
+### NEXUS Phase 2 — Model-tier switching
+Needed zero new code — stream_by_tier/record_usage were already
+agent-generic from CIPHER's Session 4 build. Confirmed real
+end-to-end (7/7): Local/Free Cloud/Paid Cloud all work, usage
+correctly attributed to agent='nexus', memory+search still work when
+routed through Paid Cloud.
+
+### Scope expansion: CIPHER's real file-write/command-execution
+Originally deferred to "Phase 2's approval workflow" — built now
+since NEXUS exists, but SIMPLIFIED from the old system's tiered
+permission model to ONE rule (Youssef's decision): approval required
+ONLY for creating a file or running a command, nothing else, no
+allow/deny command lists, no Tier 1/Tier 2 distinction.
+
+Built: shared/pending_actions.py (generic locked JSON queue, reusable
+by future agents, uses shared/file_store.py's Lesson #4 locking) +
+agents/cipher/cipher_tools.py (propose_create_file/propose_run_command
+create a pending action with zero real effect; approve_and_execute()
+is the ONLY function that touches disk/runs a process; deny_action()).
+agents/cipher/chat.py updated: SAVE_FILE/RUN_COMMAND markers now go
+through extract_pending_actions()/strip_action_markers() (real,
+proposes+waits for approval) instead of being placeholder-stripped.
+
+Real race condition found and fixed: approve_and_execute() read
+status, executed, then resolved — no atomic claim step, so two
+near-simultaneous approvals of the SAME action could both pass the
+pending check and both execute for real. Fixed with
+claim_action()/finalize_action() (atomic claim before execution).
+Confirmed under a real 20-thread race test: exactly one execution, 19
+correctly blocked.
+
+Real bug caught in review (not by a failing test): deny_action() was
+left calling resolve_action() after that import got swapped for
+claim_action/finalize_action — a NameError waiting to happen. Fixed by
+keeping resolve_action imported alongside the new two.
+
+Systemic bug found and fixed everywhere: on Windows, plain
+open(f).read() defaults to cp1252, not UTF-8 — broke the instant
+chat.py gained a ⏳ emoji. Fixed across every L1 static-parse test with
+encoding="utf-8" explicitly (test_cipher_actions.py, test_cipher.py,
+test_nexus.py, test_cipher_memory.py, test_nexus_memory.py).
+
+Tested — CONFIRMED CLOSED, L1 through L5 (24/24, 9/9, 10/10 across the
+tiers) — real file writes and real harmless commands, always against
+throwaway temp paths in testing.
+
+### NEXUS's ASK_CIPHER bridge
+The only bridge built — CIPHER is the only other agent that exists.
+Two trigger paths, matching the old system's real design: (1)
+Python-side keyword pre-check (new shared/agent_topics.py
+NEXUS_CIPHER_BRIDGE_KEYWORDS, word-boundary safe via
+keyword_gate.py's contains_keyword — Lesson #6, the old system used
+plain substring matching here) tells NEXUS's own model to write one
+brief acknowledgment only; (2) fallback scan of NEXUS's own response
+for a real ASK_CIPHER: line (backtick-guarded against mere mentions).
+Either path calls agents.cipher.chat.stream_cipher() directly —
+Lesson #1, no separate implementation.
+
+Tested — CONFIRMED CLOSED, L1 through L5:
+- L1/L2: 20/20 (both stream_by_tier and stream_cipher mocked to
+  isolate NEXUS's own bridge logic).
+- L3: 9/9 real end-to-end — both trigger paths routed to real CIPHER
+  correctly; a real SAVE_FILE proposal surfaced through the bridge
+  exactly like direct CIPHER chat, landed in CIPHER's own real
+  pending-actions queue, and a real approval created the real file —
+  Lesson #1 proven end-to-end, not just by design.
+- L4/L5: 7/7 final (one real bug found and fixed along the way — see
+  below).
+
+Real cold-start race found via this test (not a mock artifact):
+shared/nexus_memory.py's _get_collection() had no lock — 20 threads
+hitting an uninitialized ChromaDB collection at once threw a real
+AttributeError deep in ChromaDB's Rust bindings, never caught before
+because every earlier test happened to warm the singleton sequentially
+first. Fixed with double-checked locking (threading.Lock); identical
+bug found and fixed in shared/cipher_memory.py too (Lesson #9 — same
+code shape, same fix). Both re-confirmed under a real forced
+cold-start test in their own memory L4/L5 suites, not assumed fixed by
+similarity.
+
+One flawed test assertion caught and fixed: a test checked NEXUS's raw
+streamed text for "only the first ASK_CIPHER task," but that text
+legitimately contains both lines verbatim (never live-stripped) — the
+real check needed was what stream_cipher was actually CALLED with.
+Fixed with a call-logging fake.
+
+Real safety observation from testing (not a bug): when Joey doesn't
+specify a path, CIPHER's real model picks one on its own — in testing
+it picked a real path inside the actual D:\Projects\NEXUS SYSTEM\
+folder. The approval step is what catches this.
+
+Decision: conversational approve/deny (chatting with NEXUS to approve
+a pending action) deferred to the future dashboard (Phase 5) — the
+real gating is what mattered, and it's done. Item #3 (approval
+workflow) considered DONE as-is.
+
+### Phase 2 (NEXUS) status: COMPLETE
+Core chat, memory, model-tier switching, bridge, and approval workflow
+all done and fully tested L1-L5.
+
+---
+
+## Session 6 — Phase 3: ASSET (core chat + memory)
+
+### Research
+Pulled reference/asset_tools.py (9 real financial data-getter tools)
+and reference/asset_memory.py — confirmed ASSET's prompt identical
+between reference/agent_prompts.json and chat_streaming.py's
+ASSET_PROMPT_DEFAULT (Walter White/Heisenberg voice, finance-only, no
+tool/bridge markers of its own).
+
+Real schema confirmed (financial-tracker-data.json — confirmed by
+Youssef as the genuinely live/current source via LastWriteTime, not a
+stale migration-export snapshot as first suspected): accounts, settings,
+transactions, paychecks, creditScores, groceries, fixedExpenses,
+fundsSubAccounts.
+
+### Real bugs found in the old code (fixed during the build)
+- NON_FINANCE refusal check and all live-data tool-selection keyword
+  checks used plain substring matching (Lesson #6).
+- Fetching live financial data was wrapped in a bare try/except: pass
+  — a real Lesson #2/#12 violation.
+- The old code's own comment claimed BREX was excluded from net worth,
+  but the actual math never excluded it (comment was wrong, not the
+  math) — confirmed with Youssef that BREX SHOULD count.
+- Net worth math: cc/cc2 balances were silently skipped entirely
+  regardless of sign; an overdraft on an ordinary account was also
+  silently dropped. Both real gaps, not intentional.
+
+### Real net-worth math, confirmed with Youssef
+cc/cc2 sign is flipped (positive=liability/owed,
+negative=asset/credit-in-favor); car_loan always a liability (abs());
+BREX counts as a normal asset; an overdraft on an ordinary account now
+correctly counts as a liability.
+
+### Built
+- agents/asset/asset_tools.py — all 9 tools ported and fixed: env-var
+  FINANCIAL_DATA_PATH, load_data() now raises specific errors (missing
+  file / mid-write-retry-once / real corruption) instead of silently
+  returning None, fixed net-worth logic, search_financial_news removed
+  entirely in favor of the already-tested shared/web_search.py
+  (Lesson #9).
+- agents/asset/prompt.py — ASSET_PROMPT carried over unchanged.
+- shared/asset_memory.py — own category vocabulary (advice/goal/
+  market/summary/conversation), NOT the CIPHER/NEXUS shared list; now
+  uses shared/ollama_embeddings.py, fixing the old code's use of
+  ChromaDB's default embedding function (a real gap for the one agent
+  where local-first matters most); the ChromaDB cold-start-race fix
+  (found the hard way in NEXUS/CIPHER) applied here from the start.
+- agents/asset/chat.py — reuses Phase-0's ASSET_NON_TOPIC/ASSET_INTENT
+  refusal gate, word-boundary-safe tool selection via new
+  shared/agent_topics.py ASSET_TOOL_KEYWORDS dict, a real load-failure
+  surfaced as an explicit context note instead of the old bare
+  except:pass, narrow trigger-gated web search via new
+  ASSET_NEWS_TRIGGERS (unlike NEXUS's near-universal search).
+
+Confirmed as a hard rule: ASSET is permanently local-only (Ollama) —
+stream_asset() has no model_tier parameter at all, unlike every other
+agent, not even offered as a default.
+
+### Two real false-refusal bugs found and fixed in ASSET_INTENT
+1. "How much do I spend on food" would wrongly refuse ("food" is in
+   ASSET_NON_TOPIC, nothing overrode it) — fixed by adding
+   spend/spent/cost/grocery/groceries.
+2. Found by an ACTUAL L2 test this session: "pay off the car loan"
+   wrongly refused ("car" is in ASSET_NON_TOPIC/DRIVE's topic, nothing
+   overrode it) — fixed by adding loan/car loan/car payment.
+
+Both the same bug shape as the "workout program" example already
+documented in agent_topics.py's own header.
+
+### Real data quirk found during L3 (not a code bug)
+carLoanMonthlyTarget and carFundTarget are two separate settings keys
+representing the SAME real target ($1,500 — the car fund IS the
+monthly car loan payment). A local model blurred them into "two
+things, one needing correction" during a real L3 run. Confirmed with
+Youssef as a genuine data redundancy — the real fix (consolidating the
+schema) is out of scope, that's the separate Financial Tracker app.
+Fixed within scope: get_account_settings() now explicitly states
+they're the same target under two names; manually re-verified in a
+follow-up real run, no longer described as two separate things.
+
+Flagged as an ongoing consideration: ASSET's permanently-local design
+makes it more prone to this kind of adjacent-number blurring than a
+cloud model — worth periodically re-checking, not assuming this one
+fix covers every future case.
+
+### Tested — ASSET core chat CONFIRMED CLOSED, L1 through L5
+- L1/L2: 25/25, synthetic data throughout.
+- L3: 7/7 mechanical + manual read-through, real Ollama + real
+  financial-tracker-data.json — real numbers correct, both
+  false-refusal fixes hold under real load, correctly said "not broken
+  down by category" instead of guessing a food-spending figure, real
+  memory save+recall worked.
+- L4/L5: 12/12, mocked — 100 sequential + 20 concurrent clean, net
+  worth fully deterministic, empty/50k-char/unicode/None all handled
+  (None fails loudly), malformed data degrades gracefully, real Ollama
+  failure propagates rather than being swallowed.
+
+### Tested — ASSET memory CONFIRMED CLOSED, L1 through L5
+- L1/L2: 12/12 (fake embeddings) — one self-caught test bug (os.environ
+  reassignment doesn't affect an already-imported module constant),
+  fixed.
+- L3: 4/4 real Ollama embeddings — real semantic ranking correctly
+  favored the relevant memory over an unrelated one, multi-category
+  saves all retrievable, a realistic full-length response saved and
+  read back intact.
+- L4/L5: 8/8 — real forced cold-start race test confirmed the lock
+  (built in from the start here, unlike CIPHER/NEXUS where it was
+  found after the fact) actually holds under real conditions.
+
+Minor known gap, low real-world risk: save_conversation_turn(None,
+None) doesn't crash but DOES save the literal string "Joey: None\n
+ASSET: None" as real memory content. chat.py's only real call site
+never passes None, so practical risk is low — flagged, not fixed.
+
+### Phase 3 (ASSET) status: COMPLETE
+Core chat and memory both fully closed L1 through L5.
+
+## Not yet decided / still open
+- Phase 4 build order confirmed (ATLAS, DRIVE, STOCK, FLAME, CASE,
+  PULSE, one at a time) but no agent-specific decisions made yet.
+- ATLAS is next — needs reference/atlas_tools.py and
+  reference/atlas_memory.py confirmed current (both already exist in
+  reference/ from Session 2's research; need to verify they're still
+  accurate/complete before building against them).
+- Instagram reel idea-extractor, task scheduler/crontab,
+  expert/sub-agent spawning, plugin/skill marketplace — still scoped
+  from Session 1, not started for any agent.
+- Reel idea-extractor's "how it's saved" detail still not worked out.
+
+## Session 7 — Phase 4: ATLAS (core chat)
+
+Built: agents/atlas/prompt.py (Goggins prompt, unchanged, 2,786 chars,
+verified against reference/agent_prompts.json), agents/atlas/atlas_tools.py
+(read-only fitness data engine — env-var FITNESS_DATA_PATH, auto-creates
+a starting file under a lock if missing, both old-ATLAS and Training
+tracker data shapes tolerated, corrupt/mid-write files fail loudly or
+retry once), agents/atlas/chat.py (stream_atlas() — word-boundary refusal
+gate in Goggins voice, tightened "show my logged data" shortcut answered
+directly with no model call, live data summary in context, trigger-gated
+web search via shared/web_search.py, routes through stream_by_tier).
+shared/agent_topics.py extended with ATLAS's trigger/history keyword
+lists (word-boundary, Lesson #6).
+
+Real fixes vs the old code: old plain-substring "how much/total/overall"
+shortcut wrongly caught real coaching questions like "how much should I
+bench" — now needs an explicit history phrase or a quantity+subject pair,
+and never fires on advice or workout-report phrasing. Duplicate SerpApi
+implementation in atlas_tools.py removed in favor of shared/web_search.py
+(Lesson #9). Old code crashed on missing dates and printed raw Python
+lists for weaknesses — every reader now shape-checks (Lesson #5).
+
+Tested — CONFIRMED CLOSED, L1 through L5:
+- L1/L2 (atlas_tools.py): 14/14 — prompt exact-match, no hardcoded old
+  path or secret, mixed real-world shapes (old ATLAS + Training tracker,
+  including the exact plain-string-exercise crash) never break a reader,
+  corrupt JSON fails loudly, mid-write file recovers on retry, 20
+  threads creating the file at once produce exactly one clean file.
+- L1/L2 (chat.py): 15/15 — old "food"/"car"/"program" substring
+  false-refusals confirmed fixed, history-question table correct,
+  failed search passed through as a failure not hidden, history never
+  mutated by the caller.
+- L4/L5: 15/15 (mocked) — 100 sequential + 20 concurrent zero cross-talk,
+  a simulated non-atomic tracker rewrite caught readers mid-write and the
+  retry recovered every time (deliberately verified: disabling the retry
+  made all 160 reads fail, confirming the test can actually catch this),
+  20,000-workout file stayed fast and the prompt summary stayed bounded,
+  empty/50k-char/unicode/None/malformed-history/regex-special-chars all
+  handled, a real model failure propagates rather than being swallowed,
+  deleted data file auto-recreates mid-session.
+- L3: 10/10 real end-to-end (real Gemini, real SerpApi, real Ollama, one
+  real Sonnet 5 call ~$0.017) — grounded, in-voice responses across
+  coaching, empty-log honesty, refusal, direct data lookup, search-backed
+  technique advice, real multi-turn recall of an injury and a stated
+  goal, coaching through an unreadable data file, and all three model
+  tiers. One non-blocking observation: the local-tier model sometimes
+  prints its internal mode label ("PUSH MODE") as a literal heading —
+  a model-behavior quirk, not a code bug, left as-is / fixed per Joey's
+  call.
+
+ATLAS Phase 4 core chat status: complete
