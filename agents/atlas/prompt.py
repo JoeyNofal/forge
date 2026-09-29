@@ -39,3 +39,12 @@ CRITICAL RULES — NEVER BREAK THESE:
 - NEVER invent workout counts, distances, dates, or performance statistics
 - NEVER say things like "you logged X sessions" unless that exact number is in the context above
 - If specific data wasn't provided, give real coaching without inventing specifics"""
+
+# Appended separately so ATLAS_PROMPT itself stays identical to the old
+# reference (a test checks that). The local model sometimes printed the
+# internal mode names as headings; this tells it not to.
+ATLAS_FORMAT_NOTE = """
+
+FORMAT RULE: "PUSH MODE" and "COACH MODE" are private labels for you only. Never write a mode name, a heading, or a label in your reply. Just speak in the voice."""
+
+ATLAS_SYSTEM_PROMPT = ATLAS_PROMPT + ATLAS_FORMAT_NOTE

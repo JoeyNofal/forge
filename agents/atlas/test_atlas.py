@@ -13,7 +13,7 @@ import tempfile
 
 from agents.atlas import chat
 from agents.atlas import atlas_tools
-from agents.atlas.prompt import ATLAS_PROMPT
+from agents.atlas.prompt import ATLAS_PROMPT, ATLAS_SYSTEM_PROMPT
 from shared import agent_topics
 from shared.web_search import WEB_SEARCH_FAILED_PREFIX
 
@@ -159,7 +159,9 @@ def _():
     out = run("give me a leg day plan")
     assert out == "Get moving."
     c = model_calls[0]
-    assert c["agent"] == "atlas" and c["system"] == ATLAS_PROMPT
+    assert c["agent"] == "atlas" and c["system"] == ATLAS_SYSTEM_PROMPT
+    assert c["system"].startswith(ATLAS_PROMPT)
+    assert "Never write a mode name" in c["system"]
     last = c["messages"][-1]
     assert last["role"] == "user"
     assert "ATLAS DATA SUMMARY" in last["content"] and "Swim sessions: 2" in last["content"]

@@ -35,7 +35,7 @@ from shared.agent_topics import (
 from shared.web_search import web_search, WEB_SEARCH_FAILED_PREFIX
 from shared.model_client import stream_by_tier
 from shared.memory_context import format_memory_context
-from agents.atlas.prompt import ATLAS_PROMPT
+from agents.atlas.prompt import ATLAS_SYSTEM_PROMPT
 from agents.atlas import atlas_tools
 
 # Same line ATLAS's own prompt already uses for off-topic questions.
@@ -111,4 +111,4 @@ def stream_atlas(message: str, history: Optional[list] = None, location: str = "
     messages = list(history) if history else []
     messages.append({"role": "user", "content": full_message})
 
-    yield from stream_by_tier("atlas", model_tier, ATLAS_PROMPT, messages, location)
+    yield from stream_by_tier("atlas", model_tier, ATLAS_SYSTEM_PROMPT, messages, location)
