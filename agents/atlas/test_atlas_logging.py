@@ -106,7 +106,24 @@ def _():
     assert w["strokes"] == ["freestyle", "breaststroke"]
     assert w["sets"] == ["4x100", "200 easy"]
     assert w["difficulty_1_to_10"] == 10
-    assert L.normalize_swim(swim(difficulty=0))["difficulty_1_to_10"] == 5   # unknown -> default 5
+    assert L.normalize_swim(swim(difficulty=0))["difficulty_1_to_10"] is None   # unknown stays unknown, never an invented 5
+
+
+@check("L2 unstated difficulty/duration/distance are saved as null (never 0 or 5) and the readers say 'unknown'")
+def _():
+    path, d = fresh_path()
+    L.log_gym({"exercises": ["squat"]})
+    L.log_swim({"duration_minutes": 30})
+    L.log_swim({"total_distance_yards": 500})
+    g, s1, s2 = read(path)["workouts"]
+    assert g["difficulty_1_to_10"] is None and g["duration_minutes"] is None
+    assert s1["total_distance_yards"] is None and s1["duration_minutes"] == 30 and s1["difficulty_1_to_10"] is None
+    assert s2["duration_minutes"] is None and s2["total_distance_yards"] == 500
+    assert "unknown min" in t.get_gym_history() and "Difficulty: unknown/10" in t.get_gym_history()
+    assert "0 min" not in t.get_gym_history()
+    msg = L.log_swim({"duration_minutes": 20})
+    assert "distance not stated" in msg and "20 min" in msg
+    shutil.rmtree(d)
 
 
 @check("L2 dates: future and garbage dates become today, a real past date is kept")
@@ -368,7 +385,7 @@ def _():
     path, d = fresh_path()
     w = L.normalize_swim({"total_distance_yards": 900, "duration_minutes": False, "strokes": {"a": 1},
                           "sets": ["s"] * 500, "difficulty": [], "form_notes": {"x": 1}, "weaknesses": None})
-    assert w["duration_minutes"] == 0 and w["strokes"] == [] and len(w["sets"]) == 30
+    assert w["duration_minutes"] is None and w["strokes"] == [] and len(w["sets"]) == 30
     assert isinstance(w["form_notes"], str)
     L.log_injury({"body_part": "knee (left) [ACL]+*?", "description": "regex chars"})
     ok, msg = L.update_injury_status({"body_part": "(left) [ACL]+*?", "new_status": "resolved"})

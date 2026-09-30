@@ -160,6 +160,50 @@ ATLAS_SWIM_WORDS = ["swim", "swims", "swimming", "swam", "swum"]
 ATLAS_GYM_WORDS = ["gym", "lift", "lifts", "lifting", "lifted"]
 ATLAS_INJURY_WORDS = ["injury", "injuries", "injured"]
 
+# ── ATLAS logging triggers (increment (b), Part 3) ──
+# These only decide whether ATLAS even TRIES to turn a message into a log
+# proposal (a cheap pre-filter, whole-word matching — Lesson #6). The local
+# model then decides whether it's really a report (it can answer "none"),
+# and nothing is saved until Youssef approves anyway.
+
+# "I already did a workout" phrasings. (ATLAS_ADVICE_SIGNALS blocks planning
+# questions like "what should I lift".)
+ATLAS_WORKOUT_REPORT_PHRASES = [
+    "just did", "just finished", "i did", "i swam", "i went", "did a",
+    "finished a", "completed", "done with", "i lifted", "went to the gym",
+    "just swam", "just lifted", "today i", "this morning i", "last night i",
+    "yesterday i", "i hit", "i benched", "i squatted", "i deadlifted",
+    "i pressed", "i trained", "i worked out", "got back from the gym",
+    "just got back from", "did chest", "did back", "did legs", "did arms",
+    "did shoulders", "hit chest", "hit back", "hit legs",
+]
+
+ATLAS_BODY_PARTS = [
+    "shoulder", "shoulders", "knee", "knees", "back", "lower back", "hip",
+    "hips", "elbow", "elbows", "wrist", "wrists", "ankle", "ankles", "neck",
+    "hamstring", "hamstrings", "quad", "quads", "calf", "calves", "groin",
+    "bicep", "biceps", "tricep", "triceps", "forearm", "forearms", "chest",
+    "pec", "pecs", "glute", "glutes", "rotator cuff", "achilles", "shin",
+    "shins", "foot", "feet", "hand", "hands", "thumb", "finger", "fingers",
+    "ribs", "lat", "lats", "trap", "traps", "hip flexor",
+]
+
+ATLAS_INJURY_REPORT_WORDS = [
+    "hurts", "hurt", "hurting", "sore", "soreness", "pulled", "strained",
+    "strain", "tweaked", "injured", "injury", "pain", "painful", "aches",
+    "aching", "ache", "pinch", "pinched", "sprained", "twisted", "swollen",
+    "clicking", "popping",
+]
+
+# "It's getting better" phrasings — these mean UPDATE an existing injury,
+# not log a new one.
+ATLAS_INJURY_RECOVERY_PHRASES = [
+    "better", "feels better", "feeling better", "getting better", "healed",
+    "recovered", "no longer", "doesn't hurt", "does not hurt", "not sore",
+    "no more pain", "back to normal", "resolved", "pain free", "pain-free",
+    "improving", "improved", "feels fine", "is fine", "are fine",
+]
+
 
 
 # ───────────────────────── DRIVE (Phase 4) ─────────────────────────

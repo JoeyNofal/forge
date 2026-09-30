@@ -38,16 +38,23 @@ TYPE_UPDATE_INJURY = "update_injury"
 # SECTION 1 — PLAIN-ENGLISH SUMMARIES
 # ─────────────────────────────────────────────
 
+def _stated(value, template: str, missing: str) -> str:
+    """'45 min' when Joey gave it, 'duration not stated' when he didn't — never a made-up 0 or 5."""
+    return template.format(value) if value else missing
+
+
 def describe(action_type: str, d: dict) -> str:
     """One readable line for a proposal. Never crashes on odd details."""
     try:
         if action_type == TYPE_LOG_SWIM:
-            return (f"log swim: {d['total_distance_yards']} yards, {d['duration_minutes']} min, "
-                    f"difficulty {d['difficulty_1_to_10']}/10, on {d['date']}")
+            return (f"log swim: {_stated(d['total_distance_yards'], '{} yards', 'distance not stated')}, "
+                    f"{_stated(d['duration_minutes'], '{} min', 'duration not stated')}, "
+                    f"{_stated(d['difficulty_1_to_10'], 'difficulty {}/10', 'difficulty not stated')}, on {d['date']}")
         if action_type == TYPE_LOG_GYM:
             names = ", ".join(e["name"] for e in d["exercises"])
             return (f"log gym workout: {len(d['exercises'])} exercise(s) ({names}), "
-                    f"{d['duration_minutes']} min, difficulty {d['difficulty_1_to_10']}/10, on {d['date']}")
+                    f"{_stated(d['duration_minutes'], '{} min', 'duration not stated')}, "
+                    f"{_stated(d['difficulty_1_to_10'], 'difficulty {}/10', 'difficulty not stated')}, on {d['date']}")
         if action_type == TYPE_LOG_INJURY:
             return f"log injury: {d['description']} ({d['severity']}), on {d['date']}"
         if action_type == TYPE_UPDATE_INJURY:

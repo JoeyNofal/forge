@@ -281,6 +281,18 @@ def _():
     shutil.rmtree(d)
 
 
+@check("L2 proposals say 'not stated' for anything Joey didn't give (never a made-up 0 min or 5/10)")
+def _():
+    path, d = fresh()
+    _, msg = A.propose_gym({"exercises": ["squat"]})
+    assert "duration not stated" in msg and "difficulty not stated" in msg and "0 min" not in msg and "5/10" not in msg
+    _, msg = A.propose_swim({"total_distance_yards": 1000})
+    assert "1000 yards" in msg and "duration not stated" in msg and "difficulty not stated" in msg
+    _, msg = A.propose_gym({"exercises": ["squat"], "duration_minutes": 45, "difficulty": 8})
+    assert "45 min" in msg and "difficulty 8/10" in msg
+    shutil.rmtree(d)
+
+
 @check("L2 describe never crashes on junk details")
 def _():
     for t_, d_ in (("log_swim", None), ("log_gym", {}), ("log_injury", "x"), ("update_injury", []), ("weird", 5)):

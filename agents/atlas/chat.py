@@ -2,9 +2,13 @@
 ATLAS — Phase 4, increment (a): core chat.
 
 Deliberately NOT here yet (each is its own tested increment):
-  (b) logging workouts/injuries and generating workout template files
   (c) permanent memory
   (d) workout photo scan
+  (e) fillable workout templates
+
+Increment (b), logging: when Joey REPORTS a workout or an injury, the reply
+ends with a proposal note (atlas_extract.extract_and_propose). Nothing is
+ever saved by chat.py — Joey approves or denies each proposal separately.
 
 What this does:
 - Refuses non-fitness questions with the word-boundary gate (Lesson #6),
@@ -37,6 +41,7 @@ from shared.model_client import stream_by_tier
 from shared.memory_context import format_memory_context
 from agents.atlas.prompt import ATLAS_SYSTEM_PROMPT
 from agents.atlas import atlas_tools
+from agents.atlas.atlas_extract import extract_and_propose
 
 # Same line ATLAS's own prompt already uses for off-topic questions.
 REFUSAL_MESSAGE = "That's not my lane — hit up NEXUS."
@@ -112,3 +117,9 @@ def stream_atlas(message: str, history: Optional[list] = None, location: str = "
     messages.append({"role": "user", "content": full_message})
 
     yield from stream_by_tier("atlas", model_tier, ATLAS_SYSTEM_PROMPT, messages, location)
+
+    # Only reached if the reply streamed fully (an error above propagates).
+    # Uses Joey's own message only — never ATLAS's reply (Lesson #3).
+    notes = extract_and_propose(message)
+    if notes:
+        yield "\n\n" + "\n\n".join(notes)

@@ -35,6 +35,9 @@ search_log = []
 # Count real calls without changing what they do.
 _real_stream = chat.stream_by_tier
 _real_search = chat.web_search
+# This file tests real COACHING replies. Real logging extraction has its own
+# real end-to-end test (test_atlas_extract_l3.py), so it's switched off here.
+chat.extract_and_propose = lambda message: []
 
 
 def counting_stream(agent, tier, system_prompt, messages, location=""):

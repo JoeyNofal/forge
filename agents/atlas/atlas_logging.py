@@ -74,9 +74,17 @@ def _str_list(v) -> list:
     return out[:MAX_LIST]
 
 
-def _difficulty(v) -> int:
-    n = _num(v, -10**6, 10**6, "difficulty") or 5
+def _difficulty(v):
+    """1-10 if Joey gave one; None if he didn't (never an invented default)."""
+    n = _num(v, -10**6, 10**6, "difficulty")
+    if not n:
+        return None
     return max(1, min(10, int(round(n))))
+
+
+def _or_none(n):
+    """A stated amount stays; 0 (= not stated) becomes None, which the readers show as 'unknown'."""
+    return n if n else None
 
 
 def _date(v) -> str:
@@ -103,8 +111,8 @@ def normalize_swim(raw) -> dict:
     return {
         "type": "swim",
         "date": _date(raw.get("date")),
-        "total_distance_yards": yards,
-        "duration_minutes": minutes,
+        "total_distance_yards": _or_none(yards),
+        "duration_minutes": _or_none(minutes),
         "strokes": [s.lower() for s in _str_list(raw.get("strokes"))],
         "sets": _str_list(raw.get("sets")),
         "difficulty_1_to_10": _difficulty(raw.get("difficulty")),
@@ -153,7 +161,7 @@ def normalize_gym(raw) -> dict:
         "type": "gym",
         "date": _date(raw.get("date")),
         "exercises": exercises,
-        "duration_minutes": _num(raw.get("duration_minutes"), 0, 1440, "duration"),
+        "duration_minutes": _or_none(_num(raw.get("duration_minutes"), 0, 1440, "duration")),
         "difficulty_1_to_10": _difficulty(raw.get("difficulty")),
         "form_notes": _text(raw.get("form_notes")),
         "weaknesses": _text(raw.get("weaknesses")),
@@ -213,7 +221,9 @@ def log_swim(raw) -> str:
     w = normalize_swim(raw)
     w.update(id=str(uuid.uuid4()), logged_at=datetime.now().isoformat())
     _append("workouts", w)
-    return f"Swim logged: {w['total_distance_yards']} yards in {w['duration_minutes']} min on {w['date']}."
+    dist = f"{w['total_distance_yards']} yards" if w["total_distance_yards"] else "distance not stated"
+    mins = f"{w['duration_minutes']} min" if w["duration_minutes"] else "duration not stated"
+    return f"Swim logged: {dist}, {mins}, on {w['date']}."
 
 
 def log_gym(raw) -> str:

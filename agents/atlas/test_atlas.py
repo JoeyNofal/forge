@@ -40,6 +40,9 @@ def fake_web_search(query, num_results=3):
 
 chat.stream_by_tier = fake_stream_by_tier
 chat.web_search = fake_web_search
+# Logging extraction has its OWN tests (test_atlas_extract.py); switched off here
+# so these chat tests stay about chat behavior and never touch a real model/queue.
+chat.extract_and_propose = lambda message: []
 
 
 def check(name):
@@ -120,10 +123,11 @@ def _():
         assert getattr(agent_topics, name), name
 
 
-@check("L1 ATLAS has no memory or logging yet (increments b/c not built)")
+@check("L1 ATLAS chat has no memory yet and never writes data itself (only asks extract_and_propose)")
 def _():
-    assert "save_memory" not in SRC and "search_memory" not in SRC
-    assert "log_swim_workout" not in SRC and "MEMORY_SAVE" not in SRC
+    assert "save_memory" not in SRC and "search_memory" not in SRC and "MEMORY_SAVE" not in SRC
+    assert "atlas_logging" not in SRC and "approve_and_execute" not in SRC and "log_swim_workout" not in SRC
+    assert "extract_and_propose" in SRC
 
 
 # ───────────────────────── L2 — SMOKE ─────────────────────────

@@ -132,6 +132,33 @@ def stream_ollama(system_prompt: str, messages: list, location: str = ""):
             yield text
 
 
+OLLAMA_JSON_TIMEOUT = 90.0
+
+
+def complete_ollama_json(system_prompt: str, user_text: str, timeout: float = OLLAMA_JSON_TIMEOUT) -> str:
+    """
+    Local tier, NOT streamed, JSON-only. For structured extraction (e.g.
+    ATLAS turning "did chest, bench 3x8 at 135" into a log entry). Same local
+    model as stream_ollama (Lesson #1: one place decides which model that is).
+    temperature 0 so the same message extracts the same way every time.
+
+    Returns the model's raw JSON text. ANY failure (Ollama not running, a
+    timeout, a bad response) raises — it never returns partial or empty text
+    dressed up as an answer (Lesson #12); the caller decides what to tell Joey.
+    """
+    client = ollama.Client(timeout=timeout)
+    response = client.chat(
+        model=OLLAMA_MODEL,
+        messages=[
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_text},
+        ],
+        format="json",
+        options={"temperature": 0, "num_predict": 1024},
+    )
+    return response.get("message", {}).get("content", "")
+
+
 def stream_claude(system_prompt: str, messages: list, location: str = "", agent: str = "cipher"):
     """
     Paid Cloud tier. Budget-gated: a real $0 balance is a deliberate,
