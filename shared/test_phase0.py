@@ -113,8 +113,21 @@ try:
     on_disk = file_store.load_json(test_path, default=None)
     check("data really persisted to disk", on_disk == {"items": ["first", "second"]})
 
-    # lock file was created
-    check("lock file was created alongside data file", os.path.exists(test_path + ".lock"))
+    # update_json really uses the lock. (The OLD version of this check looked
+    # for a leftover ".lock" file, but newer filelock versions on Windows
+    # delete the lock file when it's released, so that only tested a
+    # library detail. This proves the real thing: while someone else holds
+    # the lock, update_json must WAIT, and time out rather than write.)
+    from filelock import FileLock, Timeout
+    blocked = False
+    with FileLock(test_path + ".lock"):
+        try:
+            file_store.update_json(test_path, add_second, default={"items": []}, timeout=1)
+        except Timeout:
+            blocked = True
+    check("update_json waits on the lock while another holder has it (does not write)", blocked)
+    check("...and the data is untouched after that blocked attempt",
+          file_store.load_json(test_path, default=None) == {"items": ["first", "second"]})
 
 finally:
     shutil.rmtree(tmpdir, ignore_errors=True)
