@@ -1,0 +1,1487 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>DRIVE Tracker</title>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet"/>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #0d0d0f;
+    --surface: #16161a;
+    --surface2: #1e1e24;
+    --border: #2a2a35;
+    --accent: #6b7c8d;
+    --accent-bright: #8a9db0;
+    --accent-dim: #3a4a57;
+    --text: #e8e8f0;
+    --text-dim: #888899;
+    --green: #6db891;
+    --red: #e07070;
+    --gold: #c8a96e;
+    --orange: #e09060;
+  }
+
+  body {
+    font-family: 'DM Mono', monospace;
+    background: var(--bg);
+    color: var(--text);
+    display: flex;
+    height: 100vh;
+    overflow: hidden;
+  }
+
+  /* SIDEBAR */
+  .sidebar {
+    width: 200px;
+    background: var(--surface);
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    padding: 24px 0;
+    flex-shrink: 0;
+  }
+
+  .sidebar-logo {
+    font-family: 'Syne', sans-serif;
+    font-size: 20px;
+    font-weight: 800;
+    color: var(--accent-bright);
+    padding: 0 20px 24px;
+    border-bottom: 1px solid var(--border);
+    letter-spacing: 2px;
+  }
+
+  .sidebar-logo span {
+    display: block;
+    font-size: 11px;
+    color: var(--text-dim);
+    font-weight: 400;
+    letter-spacing: 1px;
+    margin-top: 4px;
+  }
+
+  .nav-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 20px;
+    cursor: pointer;
+    color: var(--text-dim);
+    font-size: 13px;
+    transition: all 0.2s;
+    border-left: 3px solid transparent;
+    margin-top: 8px;
+  }
+
+  .nav-item:hover { color: var(--text); background: var(--surface2); }
+  .nav-item.active { color: var(--accent-bright); border-left-color: var(--accent); background: var(--surface2); }
+  .nav-item .nav-icon { font-size: 18px; }
+
+  /* MAIN AREA */
+  .main {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  .topbar {
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    padding: 16px 28px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-shrink: 0;
+  }
+
+  .topbar-title {
+    font-family: 'Syne', sans-serif;
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--text);
+  }
+
+  .topbar-sub {
+    font-size: 12px;
+    color: var(--text-dim);
+    margin-top: 2px;
+  }
+
+  .topbar-right {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .btn {
+    padding: 8px 16px;
+    border-radius: 6px;
+    border: none;
+    cursor: pointer;
+    font-family: 'DM Mono', monospace;
+    font-size: 13px;
+    transition: all 0.2s;
+  }
+
+  .btn-primary {
+    background: var(--accent);
+    color: white;
+  }
+  .btn-primary:hover { background: var(--accent-bright); }
+
+  .btn-secondary {
+    background: var(--surface2);
+    color: var(--text);
+    border: 1px solid var(--border);
+  }
+  .btn-secondary:hover { border-color: var(--accent); color: var(--accent-bright); }
+
+  .btn-danger {
+    background: transparent;
+    color: var(--red);
+    border: 1px solid var(--red);
+  }
+  .btn-danger:hover { background: var(--red); color: white; }
+
+  .btn-green {
+    background: var(--green);
+    color: #0d0d0f;
+  }
+  .btn-green:hover { opacity: 0.85; }
+
+  .content {
+    flex: 1;
+    overflow-y: auto;
+    padding: 28px;
+  }
+
+  /* STAT CARDS */
+  .stat-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 16px;
+    margin-bottom: 28px;
+  }
+
+  .stat-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 20px;
+  }
+
+  .stat-label {
+    font-size: 11px;
+    color: var(--text-dim);
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    margin-bottom: 8px;
+  }
+
+  .stat-value {
+    font-family: 'Syne', sans-serif;
+    font-size: 28px;
+    font-weight: 700;
+    color: var(--accent-bright);
+  }
+
+  .stat-sub {
+    font-size: 11px;
+    color: var(--text-dim);
+    margin-top: 4px;
+  }
+
+  .stat-edit-btn {
+    background: none;
+    border: 1px solid var(--border);
+    color: var(--text-dim);
+    font-size: 11px;
+    padding: 3px 8px;
+    border-radius: 4px;
+    cursor: pointer;
+    margin-top: 8px;
+    font-family: 'DM Mono', monospace;
+    transition: all 0.2s;
+  }
+  .stat-edit-btn:hover { border-color: var(--accent); color: var(--accent-bright); }
+
+  /* SECTION HEADER */
+  .section-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 16px;
+  }
+
+  .section-title {
+    font-family: 'Syne', sans-serif;
+    font-size: 15px;
+    font-weight: 700;
+    color: var(--text);
+  }
+
+  /* CONTROLS ROW */
+  .controls-row {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 20px;
+    flex-wrap: wrap;
+    align-items: center;
+  }
+
+  .search-input {
+    flex: 1;
+    min-width: 200px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 9px 14px;
+    border-radius: 6px;
+    font-family: 'DM Mono', monospace;
+    font-size: 13px;
+    outline: none;
+    transition: border-color 0.2s;
+  }
+  .search-input:focus { border-color: var(--accent); }
+  .search-input::placeholder { color: var(--text-dim); }
+
+  .filter-select {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 9px 14px;
+    border-radius: 6px;
+    font-family: 'DM Mono', monospace;
+    font-size: 13px;
+    outline: none;
+    cursor: pointer;
+  }
+  .filter-select:focus { border-color: var(--accent); }
+
+  /* TABLE */
+  .data-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+  }
+
+  .data-table th {
+    text-align: left;
+    padding: 10px 14px;
+    color: var(--text-dim);
+    font-size: 11px;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface);
+  }
+
+  .data-table td {
+    padding: 12px 14px;
+    border-bottom: 1px solid var(--border);
+    color: var(--text);
+    vertical-align: middle;
+  }
+
+  .data-table tr:hover td { background: var(--surface2); }
+
+  .table-wrap {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    overflow: hidden;
+  }
+
+  /* BADGES */
+  .badge {
+    display: inline-block;
+    padding: 3px 10px;
+    border-radius: 20px;
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 0.5px;
+  }
+
+  .badge-green { background: rgba(109,184,145,0.15); color: var(--green); }
+  .badge-red { background: rgba(224,112,112,0.15); color: var(--red); }
+  .badge-gold { background: rgba(200,169,110,0.15); color: var(--gold); }
+  .badge-grey { background: rgba(136,136,153,0.15); color: var(--text-dim); }
+  .badge-orange { background: rgba(224,144,96,0.15); color: var(--orange); }
+  .badge-blue { background: rgba(107,124,141,0.2); color: var(--accent-bright); }
+
+  /* CHART CARD */
+  .chart-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 20px;
+    margin-bottom: 24px;
+  }
+
+  .chart-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 16px;
+  }
+
+  /* RECENT EVENTS */
+  .event-list { display: flex; flex-direction: column; gap: 10px; }
+
+  .event-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 14px 18px;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+  }
+
+  .event-icon { font-size: 22px; }
+
+  .event-info { flex: 1; }
+  .event-name { font-size: 14px; color: var(--text); margin-bottom: 3px; }
+  .event-detail { font-size: 12px; color: var(--text-dim); }
+  .event-date { font-size: 12px; color: var(--text-dim); text-align: right; }
+
+  /* UPCOMING ITEMS */
+  .upcoming-item {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 16px 20px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 10px;
+  }
+
+  .upcoming-name { font-size: 14px; color: var(--text); margin-bottom: 4px; }
+  .upcoming-detail { font-size: 12px; color: var(--text-dim); }
+  .upcoming-right { text-align: right; }
+
+  /* MODAL */
+  .modal-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.7);
+    z-index: 1000;
+    align-items: center;
+    justify-content: center;
+  }
+  .modal-overlay.open { display: flex; }
+
+  .modal {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 28px;
+    width: 500px;
+    max-width: 95vw;
+    max-height: 85vh;
+    overflow-y: auto;
+  }
+
+  .modal-title {
+    font-family: 'Syne', sans-serif;
+    font-size: 17px;
+    font-weight: 700;
+    margin-bottom: 20px;
+    color: var(--text);
+  }
+
+  .form-group { margin-bottom: 16px; }
+
+  .form-label {
+    display: block;
+    font-size: 11px;
+    color: var(--text-dim);
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    margin-bottom: 6px;
+  }
+
+  .form-input {
+    width: 100%;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 10px 14px;
+    border-radius: 6px;
+    font-family: 'DM Mono', monospace;
+    font-size: 13px;
+    outline: none;
+    transition: border-color 0.2s;
+  }
+  .form-input:focus { border-color: var(--accent); }
+
+  .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+
+  .modal-actions {
+    display: flex;
+    gap: 10px;
+    justify-content: flex-end;
+    margin-top: 24px;
+  }
+
+  /* UPLOAD AREA */
+  .upload-area {
+    border: 2px dashed var(--border);
+    border-radius: 8px;
+    padding: 32px;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.2s;
+    margin-bottom: 16px;
+  }
+  .upload-area:hover { border-color: var(--accent); background: var(--surface2); }
+  .upload-area .upload-icon { font-size: 36px; margin-bottom: 10px; }
+  .upload-area .upload-text { font-size: 13px; color: var(--text-dim); }
+  .upload-area .upload-hint { font-size: 11px; color: var(--text-dim); margin-top: 6px; }
+
+  .upload-status {
+    font-size: 13px;
+    color: var(--text-dim);
+    padding: 10px;
+    background: var(--surface2);
+    border-radius: 6px;
+    margin-top: 10px;
+    display: none;
+  }
+
+  /* PARSED ENTRIES */
+  .parsed-entry {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 14px;
+    margin-bottom: 10px;
+  }
+
+  .parsed-entry-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 10px;
+  }
+
+  .parsed-entry-title {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--accent-bright);
+  }
+
+  /* EMPTY STATE */
+  .empty-state {
+    text-align: center;
+    padding: 60px 20px;
+    color: var(--text-dim);
+  }
+  .empty-state .empty-icon { font-size: 48px; margin-bottom: 16px; }
+  .empty-state .empty-text { font-size: 14px; }
+
+  /* SCROLLBAR */
+  ::-webkit-scrollbar { width: 6px; }
+  ::-webkit-scrollbar-track { background: var(--bg); }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+  ::-webkit-scrollbar-thumb:hover { background: var(--accent-dim); }
+
+  .hidden { display: none !important; }
+</style>
+</head>
+<body>
+
+<!-- SIDEBAR -->
+<div class="sidebar">
+  <div class="sidebar-logo">DRIVE<span>Vehicle Tracker</span></div>
+  <div class="nav-item active" onclick="showView('dashboard')">
+    <span class="nav-icon">📊</span> Dashboard
+  </div>
+  <div class="nav-item" onclick="showView('maintenance')">
+    <span class="nav-icon">🔧</span> Maintenance
+  </div>
+  <div class="nav-item" onclick="showView('gas')">
+    <span class="nav-icon">⛽</span> Gas Log
+  </div>
+  <div class="nav-item" onclick="showView('issues')">
+    <span class="nav-icon">⚠️</span> Issues
+  </div>
+  <div class="nav-item" onclick="showView('upcoming')">
+    <span class="nav-icon">📅</span> Upcoming
+  </div>
+</div>
+
+<!-- MAIN -->
+<div class="main">
+  <div class="topbar">
+    <div>
+      <div class="topbar-title" id="viewTitle">Dashboard</div>
+      <div class="topbar-sub" id="viewSub">Overview of your vehicle</div>
+    </div>
+    <div class="topbar-right">
+      <button class="btn btn-secondary" onclick="openUploadModal()">📄 Upload Report</button>
+      <button class="btn btn-primary" onclick="openAddModal()">+ Add Entry</button>
+    </div>
+  </div>
+
+  <div class="content" id="mainContent">
+    <!-- Views rendered here by JS -->
+  </div>
+</div>
+
+<!-- MILEAGE EDIT MODAL -->
+<div class="modal-overlay" id="mileageModal">
+  <div class="modal">
+    <div class="modal-title">Update Current Mileage</div>
+    <div class="form-group">
+      <label class="form-label">Current Mileage (miles)</label>
+      <input class="form-input" type="number" id="mileageInput" placeholder="e.g. 87500"/>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="closeModal('mileageModal')">Cancel</button>
+      <button class="btn btn-primary" onclick="saveMileage()">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- ADD ENTRY MODAL -->
+<div class="modal-overlay" id="addModal">
+  <div class="modal">
+    <div class="modal-title" id="addModalTitle">Add Maintenance Entry</div>
+    <div id="addModalBody">
+      <!-- Filled by JS depending on entry type -->
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="closeModal('addModal')">Cancel</button>
+      <button class="btn btn-primary" onclick="saveEntry()">Save Entry</button>
+    </div>
+  </div>
+</div>
+
+<!-- UPLOAD REPORT MODAL -->
+<div class="modal-overlay" id="uploadModal">
+  <div class="modal">
+    <div class="modal-title">📄 Upload Service Report</div>
+    <p style="font-size:13px;color:var(--text-dim);margin-bottom:16px;">
+      Upload a Carfax HTML file (save page from browser) or any PDF/HTML service document.
+      The DRIVE agent will read it and extract all maintenance entries for you to confirm.
+    </p>
+    <div class="upload-area" onclick="triggerFileUpload()">
+      <div class="upload-icon">📂</div>
+      <div class="upload-text">Click to select a file</div>
+      <div class="upload-hint">Supports: HTML, PDF</div>
+    </div>
+    <input type="file" id="reportFileInput" accept=".html,.htm,.pdf" style="display:none" onchange="handleFileSelected(event)"/>
+    <div class="upload-status" id="uploadStatus"></div>
+    <div id="parsedEntriesArea"></div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="closeModal('uploadModal')">Close</button>
+      <button class="btn btn-green hidden" id="confirmAllBtn" onclick="confirmAllParsed()">✓ Save All Entries</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ============================================================
+// DATA
+// ============================================================
+let vehicleData = null;
+let currentView = 'dashboard';
+let addModalType = 'maintenance';
+let parsedEntries = [];
+let mpgChart = null;
+
+// ============================================================
+// STARTUP
+// ============================================================
+async function init() {
+  // Listen for data sent from NEXUS when opened as a child window
+  window.driveApp.onInitialData((data) => {
+    vehicleData = data;
+    renderView('dashboard');
+  });
+
+  // Listen for live updates when vehicle.json changes on disk (e.g. mobile edits)
+  window.driveApp.onDataUpdated((data) => {
+    vehicleData = data;
+    renderView(currentView || 'dashboard');
+  });
+
+  // Also try loading directly (works when opened standalone)
+  const data = await window.driveApp.loadData();
+  if (data.error) {
+    // Don't show error yet — may be getting data from NEXUS via onInitialData
+    console.log('Direct load failed, waiting for NEXUS data:', data.error);
+    return;
+  }
+  vehicleData = data;
+  renderView('dashboard');
+}
+
+// ============================================================
+// NAVIGATION
+// ============================================================
+function showView(view) {
+  currentView = view;
+  document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
+  event.currentTarget.classList.add('active');
+  renderView(view);
+}
+
+const viewMeta = {
+  dashboard:   { title: 'Dashboard',        sub: 'Overview of your vehicle' },
+  maintenance: { title: 'Maintenance Log',  sub: 'Full service history' },
+  gas:         { title: 'Gas Log',          sub: 'Fill-up history and MPG' },
+  issues:      { title: 'Issues',           sub: 'Open and resolved problems' },
+  upcoming:    { title: 'Upcoming',         sub: 'Scheduled maintenance' }
+};
+
+function renderView(view) {
+  const meta = viewMeta[view];
+  document.getElementById('viewTitle').textContent = meta.title;
+  document.getElementById('viewSub').textContent = meta.sub;
+
+  // Show/hide Add Entry button based on view
+  const addBtn = document.querySelector('.topbar-right .btn-primary');
+  addBtn.classList.toggle('hidden', view === 'upcoming');
+
+  if (view === 'dashboard')   renderDashboard();
+  if (view === 'maintenance') renderMaintenance();
+  if (view === 'gas')         renderGas();
+  if (view === 'issues')      renderIssues();
+  if (view === 'upcoming')    renderUpcoming();
+}
+
+// ============================================================
+// HELPERS
+// ============================================================
+function getVehicle() {
+  if (!vehicleData || !vehicleData.vehicles) return null;
+  return vehicleData.vehicles.find(v => v.active) || vehicleData.vehicles[0] || null;
+}
+
+function formatDate(dateStr) {
+  if (!dateStr) return '—';
+  const d = new Date(dateStr);
+  if (isNaN(d)) return dateStr;
+  return d.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
+}
+
+function formatCurrency(val) {
+  if (val === null || val === undefined || val === '') return '—';
+  return '$' + parseFloat(val).toFixed(2);
+}
+
+function timeAgo(dateStr) {
+  if (!dateStr) return '';
+  const d = new Date(dateStr);
+  const diff = Date.now() - d.getTime();
+  const days = Math.floor(diff / 86400000);
+  if (days === 0) return 'Today';
+  if (days === 1) return 'Yesterday';
+  if (days < 30) return `${days} days ago`;
+  if (days < 365) return `${Math.floor(days/30)} mo ago`;
+  return `${Math.floor(days/365)} yr ago`;
+}
+
+async function saveVehicleData() {
+  const result = await window.driveApp.saveData(vehicleData);
+  if (!result.ok) alert('Save failed: ' + result.error);
+}
+
+function getVehicleObj() {
+  return vehicleData.vehicles ? vehicleData.vehicles.find(v => v.active) || vehicleData.vehicles[0] : null;
+}
+
+function deleteMaintenanceEntry(id) {
+  if (!confirm('Delete this maintenance entry?')) return;
+  const v = getVehicleObj();
+  if (!v) return;
+  v.maintenance_log = (v.maintenance_log || []).filter(e => e.id !== id);
+  saveVehicleData();
+  renderMaintenance();
+}
+
+function deleteGasEntry(id) {
+  if (!confirm('Delete this gas entry?')) return;
+  const v = getVehicleObj();
+  if (!v) return;
+  v.gas_log = (v.gas_log || []).filter(e => e.id !== id);
+  saveVehicleData();
+  renderGas();
+}
+
+function deleteIssueEntry(id) {
+  if (!confirm('Delete this issue?')) return;
+  const v = getVehicleObj();
+  if (!v) return;
+  v.issues = (v.issues || []).filter(e => e.id !== id);
+  saveVehicleData();
+  renderIssues();
+}
+
+// ============================================================
+// DASHBOARD VIEW
+// ============================================================
+function renderDashboard() {
+  const v = getVehicle();
+  if (!v) {
+    document.getElementById('mainContent').innerHTML =
+      `<div class="empty-state"><div class="empty-icon">🚗</div><div class="empty-text">No vehicle data found. Run NEXUS and talk to DRIVE first.</div></div>`;
+    return;
+  }
+
+  const mileage = v.current_mileage || 0;
+
+  // Avg MPG from gas log
+  const gasEntries = (v.gas_log || []).filter(g => g.mpg);
+  const avgMpg = gasEntries.length
+    ? (gasEntries.reduce((s, g) => s + g.mpg, 0) / gasEntries.length).toFixed(1)
+    : '—';
+
+  // Next service due
+  const upcoming = (v.upcoming_maintenance || [])
+    .filter(u => u.due_date || u.due_mileage)
+    .sort((a, b) => {
+      const da = a.due_date ? new Date(a.due_date) : new Date('9999');
+      const db = b.due_date ? new Date(b.due_date) : new Date('9999');
+      return da - db;
+    });
+  const nextService = upcoming.length ? upcoming[0] : null;
+
+  // Open issues
+  const openIssues = (v.issues || []).filter(i => i.status === 'open').length;
+
+  // Recent maintenance (last 5)
+  const recentMaint = [...(v.maintenance_log || [])]
+    .sort((a, b) => new Date(b.date) - new Date(a.date))
+    .slice(0, 5);
+
+  document.getElementById('mainContent').innerHTML = `
+    <div class="stat-grid">
+      <div class="stat-card">
+        <div class="stat-label">Current Mileage</div>
+        <div class="stat-value">${mileage.toLocaleString()}</div>
+        <div class="stat-sub">miles</div>
+        <button class="stat-edit-btn" onclick="openMileageModal()">✏️ Update</button>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Next Service Due</div>
+        <div class="stat-value" style="font-size:18px;margin-top:4px;">${nextService ? nextService.service_type || nextService.display_name || 'Service' : '—'}</div>
+        <div class="stat-sub">${nextService ? (nextService.due_date ? formatDate(nextService.due_date) : '') + (nextService.due_mileage ? ' · ' + nextService.due_mileage.toLocaleString() + ' mi' : '') : 'No upcoming services'}</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Open Issues</div>
+        <div class="stat-value" style="color:${openIssues > 0 ? 'var(--red)' : 'var(--green)'}">${openIssues}</div>
+        <div class="stat-sub">${openIssues === 0 ? 'All clear' : 'Need attention'}</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Avg MPG</div>
+        <div class="stat-value">${avgMpg}</div>
+        <div class="stat-sub">${gasEntries.length} fill-ups logged</div>
+      </div>
+    </div>
+
+    <div class="section-header">
+      <div class="section-title">Recent Service History</div>
+    </div>
+    <div class="event-list">
+      ${recentMaint.length === 0
+        ? `<div class="empty-state"><div class="empty-icon">🔧</div><div class="empty-text">No maintenance logged yet.</div></div>`
+        : recentMaint.map(m => `
+          <div class="event-card">
+            <div class="event-icon">🔧</div>
+            <div class="event-info">
+              <div class="event-name">${m.display_name || m.service_type || 'Service'}</div>
+              <div class="event-detail">${m.shop || 'Shop not recorded'} · ${m.mileage ? m.mileage.toLocaleString() + ' mi' : ''} · ${formatCurrency(m.cost)}</div>
+            </div>
+            <div class="event-date">${timeAgo(m.date)}<br/><span style="font-size:11px;">${formatDate(m.date)}</span></div>
+          </div>
+        `).join('')}
+    </div>
+  `;
+}
+
+// ============================================================
+// MAINTENANCE VIEW
+// ============================================================
+function renderMaintenance(searchVal='', filterVal='all', sortVal='newest') {
+  const v = getVehicle();
+  let entries = v ? [...(v.maintenance_log || [])] : [];
+
+  // Filter
+  if (filterVal === 'diy') entries = entries.filter(e => e.performed_by === 'diy');
+  if (filterVal === 'shop') entries = entries.filter(e => e.performed_by !== 'diy');
+  if (filterVal === 'carfax') entries = entries.filter(e => e.source === 'carfax');
+
+  // Search
+  if (searchVal) {
+    const s = searchVal.toLowerCase();
+    entries = entries.filter(e =>
+      (e.display_name||'').toLowerCase().includes(s) ||
+      (e.service_type||'').toLowerCase().includes(s) ||
+      (e.shop||'').toLowerCase().includes(s) ||
+      (e.notes||'').toLowerCase().includes(s)
+    );
+  }
+
+  // Sort
+  if (sortVal === 'newest') entries.sort((a,b) => new Date(b.date) - new Date(a.date));
+  if (sortVal === 'oldest') entries.sort((a,b) => new Date(a.date) - new Date(b.date));
+  if (sortVal === 'expensive') entries.sort((a,b) => (b.cost||0) - (a.cost||0));
+  if (sortVal === 'cheap') entries.sort((a,b) => (a.cost||0) - (b.cost||0));
+  if (sortVal === 'mileage_high') entries.sort((a,b) => (b.mileage||0) - (a.mileage||0));
+  if (sortVal === 'mileage_low') entries.sort((a,b) => (a.mileage||0) - (b.mileage||0));
+
+  document.getElementById('mainContent').innerHTML = `
+    <div class="controls-row">
+      <input class="search-input" placeholder="🔍 Search maintenance..." value="${searchVal}"
+        oninput="renderMaintenance(this.value, document.getElementById('maintFilter').value, document.getElementById('maintSort').value)"/>
+      <select class="filter-select" id="maintFilter" onchange="renderMaintenance(document.querySelector('.search-input').value, this.value, document.getElementById('maintSort').value)">
+        <option value="all" ${filterVal==='all'?'selected':''}>All</option>
+        <option value="diy" ${filterVal==='diy'?'selected':''}>DIY Only</option>
+        <option value="shop" ${filterVal==='shop'?'selected':''}>Shop / Dealer</option>
+        <option value="carfax" ${filterVal==='carfax'?'selected':''}>Carfax History</option>
+      </select>
+      <select class="filter-select" id="maintSort" onchange="renderMaintenance(document.querySelector('.search-input').value, document.getElementById('maintFilter').value, this.value)">
+        <option value="newest" ${sortVal==='newest'?'selected':''}>Newest First</option>
+        <option value="oldest" ${sortVal==='oldest'?'selected':''}>Oldest First</option>
+        <option value="expensive" ${sortVal==='expensive'?'selected':''}>Most Expensive</option>
+        <option value="cheap" ${sortVal==='cheap'?'selected':''}>Cheapest First</option>
+        <option value="mileage_high" ${sortVal==='mileage_high'?'selected':''}>Highest Mileage</option>
+        <option value="mileage_low" ${sortVal==='mileage_low'?'selected':''}>Lowest Mileage</option>
+      </select>
+    </div>
+    ${entries.length === 0
+      ? `<div class="empty-state"><div class="empty-icon">🔧</div><div class="empty-text">No entries found.</div></div>`
+      : `<div class="table-wrap"><table class="data-table">
+          <thead><tr>
+            <th>Date</th><th>Service</th><th>Mileage</th><th>Shop</th><th>Cost</th><th>By</th><th>Source</th><th></th>
+          </tr></thead>
+          <tbody>
+            ${entries.map(e => `
+              <tr>
+                <td>${formatDate(e.date)}</td>
+                <td>${e.display_name || e.service_type || '—'}</td>
+                <td>${e.mileage ? e.mileage.toLocaleString() + ' mi' : '—'}</td>
+                <td>${e.shop || '—'}</td>
+                <td>${formatCurrency(e.cost)}</td>
+                <td><span class="badge ${e.performed_by==='diy'?'badge-blue':'badge-grey'}">${e.performed_by || 'shop'}</span></td>
+                <td><span class="badge ${e.source==='carfax'?'badge-gold':'badge-grey'}">${e.source || 'owner'}</span></td>
+                <td><button onclick="deleteMaintenanceEntry('${e.id}')" style="background:none;border:none;color:#e07b7b;cursor:pointer;font-size:16px;padding:2px 6px">🗑</button></td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table></div>`
+    }
+  `;
+}
+
+// ============================================================
+// GAS LOG VIEW
+// ============================================================
+function renderGas(searchVal='', sortVal='newest', chartMode='date') {
+  const v = getVehicle();
+  let entries = v ? [...(v.gas_log || [])] : [];
+
+  if (searchVal) {
+    const s = searchVal.toLowerCase();
+    entries = entries.filter(e => (e.date||'').includes(s) || String(e.mileage||'').includes(s));
+  }
+
+  if (sortVal === 'newest') entries.sort((a,b) => new Date(b.date) - new Date(a.date));
+  if (sortVal === 'oldest') entries.sort((a,b) => new Date(a.date) - new Date(b.date));
+  if (sortVal === 'mpg_high') entries.sort((a,b) => (b.mpg||0) - (a.mpg||0));
+  if (sortVal === 'mpg_low') entries.sort((a,b) => (a.mpg||0) - (b.mpg||0));
+  if (sortVal === 'expensive') entries.sort((a,b) => (b.total_cost||0) - (a.total_cost||0));
+
+  document.getElementById('mainContent').innerHTML = `
+    <div class="chart-card">
+      <div class="chart-header">
+        <div class="section-title">MPG Over Time</div>
+        <div style="display:flex;gap:8px;">
+          <button class="btn ${chartMode==='date'?'btn-primary':'btn-secondary'}" onclick="renderGas('${searchVal}','${sortVal}','date')">By Date</button>
+          <button class="btn ${chartMode==='mileage'?'btn-primary':'btn-secondary'}" onclick="renderGas('${searchVal}','${sortVal}','mileage')">By Mileage</button>
+        </div>
+      </div>
+      <canvas id="mpgChart" height="100"></canvas>
+    </div>
+
+    <div class="controls-row">
+      <input class="search-input" placeholder="🔍 Search gas log..." value="${searchVal}"
+        oninput="renderGas(this.value, document.getElementById('gasSort').value, '${chartMode}')"/>
+      <select class="filter-select" id="gasSort" onchange="renderGas(document.querySelector('.search-input').value, this.value, '${chartMode}')">
+        <option value="newest" ${sortVal==='newest'?'selected':''}>Newest First</option>
+        <option value="oldest" ${sortVal==='oldest'?'selected':''}>Oldest First</option>
+        <option value="mpg_high" ${sortVal==='mpg_high'?'selected':''}>Best MPG</option>
+        <option value="mpg_low" ${sortVal==='mpg_low'?'selected':''}>Worst MPG</option>
+        <option value="expensive" ${sortVal==='expensive'?'selected':''}>Most Expensive</option>
+      </select>
+    </div>
+
+    ${entries.length === 0
+      ? `<div class="empty-state"><div class="empty-icon">⛽</div><div class="empty-text">No gas fill-ups logged yet.</div></div>`
+      : `<div class="table-wrap"><table class="data-table">
+          <thead><tr>
+            <th>Date</th><th>Mileage</th><th>Gallons</th><th>Price/Gal</th><th>Total Cost</th><th>MPG</th><th></th>
+          </tr></thead>
+          <tbody>
+            ${entries.map(e => `
+              <tr>
+                <td>${formatDate(e.date)}</td>
+                <td>${e.mileage ? e.mileage.toLocaleString() + ' mi' : '—'}</td>
+                <td>${e.gallons ? parseFloat(e.gallons).toFixed(2) + ' gal' : '—'}</td>
+                <td>${e.price_per_gallon ? '$' + parseFloat(e.price_per_gallon).toFixed(3) : '—'}</td>
+                <td>${formatCurrency(e.total_cost)}</td>
+                <td><span class="badge ${e.mpg >= 35 ? 'badge-green' : e.mpg >= 28 ? 'badge-gold' : 'badge-red'}">${e.mpg ? parseFloat(e.mpg).toFixed(1) : '—'}</span></td>
+                <td><button onclick="deleteGasEntry('${e.id}')" style="background:none;border:none;color:#e07b7b;cursor:pointer;font-size:16px;padding:2px 6px">🗑</button></td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table></div>`
+    }
+  `;
+
+  // Draw chart
+  const chartEntries = [...(v ? (v.gas_log || []) : [])]
+    .filter(e => e.mpg)
+    .sort((a,b) => chartMode === 'date' ? new Date(a.date) - new Date(b.date) : (a.mileage||0) - (b.mileage||0));
+
+  if (chartEntries.length > 0) {
+    const ctx = document.getElementById('mpgChart').getContext('2d');
+    if (mpgChart) mpgChart.destroy();
+    mpgChart = new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels: chartEntries.map(e => chartMode === 'date' ? formatDate(e.date) : (e.mileage||0).toLocaleString() + ' mi'),
+        datasets: [{
+          label: 'MPG',
+          data: chartEntries.map(e => parseFloat(e.mpg).toFixed(1)),
+          borderColor: '#6b7c8d',
+          backgroundColor: 'rgba(107,124,141,0.1)',
+          pointBackgroundColor: '#8a9db0',
+          tension: 0.3,
+          fill: true
+        }]
+      },
+      options: {
+        responsive: true,
+        plugins: { legend: { display: false } },
+        scales: {
+          x: { ticks: { color: '#888899', font: { family: 'DM Mono', size: 11 } }, grid: { color: '#2a2a35' } },
+          y: { ticks: { color: '#888899', font: { family: 'DM Mono', size: 11 } }, grid: { color: '#2a2a35' } }
+        }
+      }
+    });
+  }
+}
+
+// ============================================================
+// ISSUES VIEW
+// ============================================================
+function renderIssues(searchVal='', filterVal='all', sortVal='newest') {
+  const v = getVehicle();
+  let entries = v ? [...(v.issues || [])] : [];
+
+  if (filterVal === 'open') entries = entries.filter(e => e.status === 'open');
+  if (filterVal === 'resolved') entries = entries.filter(e => e.status === 'resolved');
+
+  if (searchVal) {
+    const s = searchVal.toLowerCase();
+    entries = entries.filter(e =>
+      (e.description||'').toLowerCase().includes(s) ||
+      (e.severity||'').toLowerCase().includes(s)
+    );
+  }
+
+  if (sortVal === 'newest') entries.sort((a,b) => new Date(b.reported_date||b.date||0) - new Date(a.reported_date||a.date||0));
+  if (sortVal === 'oldest') entries.sort((a,b) => new Date(a.reported_date||a.date||0) - new Date(b.reported_date||b.date||0));
+  if (sortVal === 'severity') {
+    const sev = { high: 0, medium: 1, low: 2 };
+    entries.sort((a,b) => (sev[a.severity]??3) - (sev[b.severity]??3));
+  }
+
+  document.getElementById('mainContent').innerHTML = `
+    <div class="controls-row">
+      <input class="search-input" placeholder="🔍 Search issues..." value="${searchVal}"
+        oninput="renderIssues(this.value, document.getElementById('issueFilter').value, document.getElementById('issueSort').value)"/>
+      <select class="filter-select" id="issueFilter" onchange="renderIssues(document.querySelector('.search-input').value, this.value, document.getElementById('issueSort').value)">
+        <option value="all" ${filterVal==='all'?'selected':''}>All</option>
+        <option value="open" ${filterVal==='open'?'selected':''}>Open</option>
+        <option value="resolved" ${filterVal==='resolved'?'selected':''}>Resolved</option>
+      </select>
+      <select class="filter-select" id="issueSort" onchange="renderIssues(document.querySelector('.search-input').value, document.getElementById('issueFilter').value, this.value)">
+        <option value="newest" ${sortVal==='newest'?'selected':''}>Newest First</option>
+        <option value="oldest" ${sortVal==='oldest'?'selected':''}>Oldest First</option>
+        <option value="severity" ${sortVal==='severity'?'selected':''}>By Severity</option>
+      </select>
+    </div>
+    ${entries.length === 0
+      ? `<div class="empty-state"><div class="empty-icon">✅</div><div class="empty-text">No issues found.</div></div>`
+      : `<div class="table-wrap"><table class="data-table">
+          <thead><tr>
+            <th>Date</th><th>Description</th><th>Severity</th><th>Status</th><th></th>
+          </tr></thead>
+          <tbody>
+            ${entries.map(e => `
+              <tr>
+                <td>${formatDate(e.reported_date || e.date)}</td>
+                <td>${e.description || '—'}</td>
+                <td><span class="badge ${e.severity==='high'?'badge-red':e.severity==='medium'?'badge-orange':'badge-grey'}">${e.severity || 'unknown'}</span></td>
+                <td><span class="badge ${e.status==='open'?'badge-red':'badge-green'}">${e.status || 'open'}</span></td>
+                <td><button onclick="deleteIssueEntry('${e.id}')" style="background:none;border:none;color:#e07b7b;cursor:pointer;font-size:16px;padding:2px 6px">🗑</button></td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table></div>`
+    }
+  `;
+}
+
+// ============================================================
+// UPCOMING MAINTENANCE VIEW
+// ============================================================
+function renderUpcoming(filterVal='all') {
+  const v = getVehicle();
+  const mileage = v ? (v.current_mileage || 0) : 0;
+  let entries = v ? [...(v.upcoming_maintenance || [])] : [];
+
+  // Tag each entry with urgency
+  entries = entries.map(e => {
+    const milesDue = e.due_mileage ? e.due_mileage - mileage : null;
+    const dateDue = e.due_date ? (new Date(e.due_date) - Date.now()) / 86400000 : null;
+
+    let urgency = 'ok';
+    if (
+      (milesDue !== null && milesDue <= 0) ||
+      (dateDue !== null && dateDue <= 0)
+    ) urgency = 'overdue';
+    else if (
+      (milesDue !== null && milesDue <= 500) ||
+      (dateDue !== null && dateDue <= 30)
+    ) urgency = 'soon';
+
+    return { ...e, urgency, milesDue, dateDue };
+  });
+
+  if (filterVal === 'overdue') entries = entries.filter(e => e.urgency === 'overdue');
+  if (filterVal === 'soon') entries = entries.filter(e => e.urgency === 'soon');
+  if (filterVal === 'ok') entries = entries.filter(e => e.urgency === 'ok');
+
+  entries.sort((a,b) => {
+    const order = { overdue: 0, soon: 1, ok: 2 };
+    return (order[a.urgency]??3) - (order[b.urgency]??3);
+  });
+
+  document.getElementById('mainContent').innerHTML = `
+    <div class="controls-row">
+      <select class="filter-select" onchange="renderUpcoming(this.value)">
+        <option value="all" ${filterVal==='all'?'selected':''}>All</option>
+        <option value="overdue" ${filterVal==='overdue'?'selected':''}>Overdue</option>
+        <option value="soon" ${filterVal==='soon'?'selected':''}>Due Soon</option>
+        <option value="ok" ${filterVal==='ok'?'selected':''}>OK</option>
+      </select>
+    </div>
+    ${entries.length === 0
+      ? `<div class="empty-state"><div class="empty-icon">📅</div><div class="empty-text">No upcoming maintenance data.</div></div>`
+      : entries.map(e => {
+          const badgeClass = e.urgency === 'overdue' ? 'badge-red' : e.urgency === 'soon' ? 'badge-orange' : 'badge-green';
+          const milesText = e.due_mileage ? `Due at ${e.due_mileage.toLocaleString()} mi` + (e.milesDue !== null ? ` (${e.milesDue > 0 ? e.milesDue.toLocaleString() + ' mi away' : 'OVERDUE'})` : '') : '';
+          const dateText = e.due_date ? `Due ${formatDate(e.due_date)}` + (e.dateDue !== null ? ` (${e.dateDue > 0 ? Math.round(e.dateDue) + ' days' : 'OVERDUE'})` : '') : '';
+          return `
+            <div class="upcoming-item">
+              <div>
+                <div class="upcoming-name">${e.service_type || e.display_name || 'Service'}</div>
+                <div class="upcoming-detail">${[milesText, dateText].filter(Boolean).join(' · ')}</div>
+              </div>
+              <div class="upcoming-right">
+                <span class="badge ${badgeClass}">${e.urgency.toUpperCase()}</span>
+              </div>
+            </div>
+          `;
+        }).join('')
+    }
+  `;
+}
+
+// ============================================================
+// MILEAGE MODAL
+// ============================================================
+function openMileageModal() {
+  const v = getVehicle();
+  document.getElementById('mileageInput').value = v ? (v.current_mileage || '') : '';
+  document.getElementById('mileageModal').classList.add('open');
+}
+
+async function saveMileage() {
+  const val = parseInt(document.getElementById('mileageInput').value);
+  if (isNaN(val) || val < 0) { alert('Please enter a valid mileage.'); return; }
+  const v = getVehicle();
+  if (!v) return;
+  v.current_mileage = val;
+  v.mileage_last_updated = new Date().toISOString();
+  await saveVehicleData();
+  closeModal('mileageModal');
+  renderView(currentView);
+}
+
+// ============================================================
+// ADD ENTRY MODAL
+// ============================================================
+function openAddModal() {
+  addModalType = 'maintenance';
+  document.getElementById('addModalTitle').textContent = 'Add Entry';
+  renderAddForm();
+  document.getElementById('addModal').classList.add('open');
+}
+
+function renderAddForm() {
+  const tabs = `
+    <div style="display:flex;gap:8px;margin-bottom:16px;">
+      <button class="btn ${addModalType==='maintenance'?'btn-primary':'btn-secondary'}" onclick="setAddType('maintenance')">🔧 Maintenance</button>
+      <button class="btn ${addModalType==='gas'?'btn-primary':'btn-secondary'}" onclick="setAddType('gas')">⛽ Gas Fill-up</button>
+      <button class="btn ${addModalType==='issue'?'btn-primary':'btn-secondary'}" onclick="setAddType('issue')">⚠️ Issue</button>
+    </div>
+  `;
+
+  const today = new Date().toISOString().split('T')[0];
+
+  const forms = {
+    maintenance: `
+      ${tabs}
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Service Type</label>
+          <input class="form-input" id="f_service_type" placeholder="e.g. Oil Change"/>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Date</label>
+          <input class="form-input" type="date" id="f_date" value="${today}"/>
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Mileage</label>
+          <input class="form-input" type="number" id="f_mileage" placeholder="e.g. 87500"/>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Cost ($)</label>
+          <input class="form-input" type="number" id="f_cost" placeholder="e.g. 49.99"/>
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Shop / Location</label>
+          <input class="form-input" id="f_shop" placeholder="e.g. Honda Dealership"/>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Performed By</label>
+          <select class="form-input" id="f_performed_by">
+            <option value="shop">Shop / Dealer</option>
+            <option value="diy">DIY</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Notes</label>
+        <input class="form-input" id="f_notes" placeholder="Optional notes..."/>
+      </div>
+    `,
+    gas: `
+      ${tabs}
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Date</label>
+          <input class="form-input" type="date" id="f_date" value="${today}"/>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Mileage</label>
+          <input class="form-input" type="number" id="f_mileage" placeholder="e.g. 87500"/>
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Gallons</label>
+          <input class="form-input" type="number" step="0.001" id="f_gallons" placeholder="e.g. 11.5"/>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Price per Gallon ($)</label>
+          <input class="form-input" type="number" step="0.001" id="f_ppg" placeholder="e.g. 3.259"/>
+        </div>
+      </div>
+    `,
+    issue: `
+      ${tabs}
+      <div class="form-group">
+        <label class="form-label">Description</label>
+        <input class="form-input" id="f_description" placeholder="e.g. Brake noise when stopping"/>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Severity</label>
+          <select class="form-input" id="f_severity">
+            <option value="low">Low</option>
+            <option value="medium">Medium</option>
+            <option value="high">High</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Date Noticed</label>
+          <input class="form-input" type="date" id="f_date" value="${today}"/>
+        </div>
+      </div>
+    `
+  };
+
+  document.getElementById('addModalBody').innerHTML = forms[addModalType];
+}
+
+function setAddType(type) {
+  addModalType = type;
+  renderAddForm();
+}
+
+async function saveEntry() {
+  const v = getVehicle();
+  if (!v) return;
+
+  const dateVal = document.getElementById('f_date')?.value || new Date().toISOString().split('T')[0];
+
+  if (addModalType === 'maintenance') {
+    const serviceType = document.getElementById('f_service_type').value.trim();
+    if (!serviceType) { alert('Please enter a service type.'); return; }
+    const entry = {
+      id: 'maint_' + Date.now(),
+      source: 'owner',
+      service_type: serviceType,
+      display_name: serviceType,
+      date: dateVal,
+      logged_at: new Date().toISOString(),
+      mileage: parseInt(document.getElementById('f_mileage').value) || null,
+      shop: document.getElementById('f_shop').value.trim() || null,
+      cost: parseFloat(document.getElementById('f_cost').value) || null,
+      notes: document.getElementById('f_notes').value.trim() || '',
+      performed_by: document.getElementById('f_performed_by').value,
+      parts_used: []
+    };
+    if (!v.maintenance_log) v.maintenance_log = [];
+    v.maintenance_log.push(entry);
+
+  } else if (addModalType === 'gas') {
+    const mileage = parseInt(document.getElementById('f_mileage').value) || null;
+    const gallons = parseFloat(document.getElementById('f_gallons').value) || null;
+    const ppg = parseFloat(document.getElementById('f_ppg').value) || null;
+    const totalCost = (gallons && ppg) ? parseFloat((gallons * ppg).toFixed(2)) : null;
+
+    // Calculate MPG from previous fill-up
+    let mpg = null;
+    if (mileage && gallons) {
+      const prevFillups = [...(v.gas_log || [])].sort((a,b) => (b.mileage||0) - (a.mileage||0));
+      const prev = prevFillups.find(g => g.mileage && g.mileage < mileage);
+      if (prev) mpg = parseFloat(((mileage - prev.mileage) / gallons).toFixed(1));
+    }
+
+    const entry = {
+      id: 'gas_' + Date.now(),
+      date: dateVal,
+      logged_at: new Date().toISOString(),
+      mileage,
+      gallons,
+      price_per_gallon: ppg,
+      total_cost: totalCost,
+      mpg
+    };
+    if (!v.gas_log) v.gas_log = [];
+    v.gas_log.push(entry);
+
+  } else if (addModalType === 'issue') {
+    const desc = document.getElementById('f_description').value.trim();
+    if (!desc) { alert('Please describe the issue.'); return; }
+    const entry = {
+      id: 'issue_' + Date.now(),
+      description: desc,
+      severity: document.getElementById('f_severity').value,
+      status: 'open',
+      reported_date: dateVal,
+      logged_at: new Date().toISOString()
+    };
+    if (!v.issues) v.issues = [];
+    v.issues.push(entry);
+  }
+
+  await saveVehicleData();
+  closeModal('addModal');
+  renderView(currentView);
+}
+
+// ============================================================
+// UPLOAD REPORT MODAL
+// ============================================================
+function openUploadModal() {
+  document.getElementById('uploadStatus').style.display = 'none';
+  document.getElementById('uploadStatus').textContent = '';
+  document.getElementById('parsedEntriesArea').innerHTML = '';
+  document.getElementById('confirmAllBtn').classList.add('hidden');
+  document.getElementById('reportFileInput').value = '';
+  parsedEntries = [];
+  document.getElementById('uploadModal').classList.add('open');
+}
+
+function triggerFileUpload() {
+  document.getElementById('reportFileInput').click();
+}
+
+async function handleFileSelected(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+
+  const statusEl = document.getElementById('uploadStatus');
+  statusEl.style.display = 'block';
+  statusEl.textContent = `📄 Reading "${file.name}"...`;
+
+  const fileType = file.name.endsWith('.pdf') ? 'pdf' : 'html';
+  let fileContent = '';
+
+  if (fileType === 'html') {
+    fileContent = await file.text();
+    // Strip HTML tags to get plain text for the agent
+    const tmp = document.createElement('div');
+    tmp.innerHTML = fileContent;
+    fileContent = tmp.innerText || tmp.textContent || '';
+    // Trim to avoid sending massive files — keep first 15000 chars
+    if (fileContent.length > 15000) fileContent = fileContent.substring(0, 15000) + '\n[File trimmed for length]';
+  } else {
+    // PDF — read as base64 text (the agent will do its best with the raw content)
+    fileContent = await file.text();
+    if (fileContent.length > 15000) fileContent = fileContent.substring(0, 15000) + '\n[File trimmed for length]';
+  }
+
+  statusEl.textContent = '🤖 Sending to DRIVE agent for analysis... This may take 30–60 seconds.';
+
+  const result = await window.driveApp.uploadReport(fileContent, fileType);
+
+  if (!result.ok) {
+    statusEl.textContent = '❌ ' + result.error;
+    return;
+  }
+
+  statusEl.textContent = '✅ Analysis complete. Review the entries below.';
+
+  // Try to parse structured entries from the response
+  // The agent response is a streaming SSE string — extract text lines
+  const lines = result.response.split('\n').filter(l => l.startsWith('data: '));
+  const fullText = lines.map(l => l.replace('data: ', '')).join('');
+
+  // Try to find JSON arrays in the response
+  parsedEntries = tryParseEntries(fullText);
+
+  if (parsedEntries.length === 0) {
+    // Show raw response as text so user can read it
+    document.getElementById('parsedEntriesArea').innerHTML = `
+      <div style="margin-top:16px;padding:14px;background:var(--surface2);border-radius:8px;font-size:12px;color:var(--text-dim);white-space:pre-wrap;max-height:200px;overflow-y:auto;">${fullText.substring(0,2000)}</div>
+      <p style="font-size:12px;color:var(--text-dim);margin-top:8px;">No structured entries could be auto-extracted. You can add entries manually using the Add Entry button.</p>
+    `;
+    return;
+  }
+
+  renderParsedEntries();
+  document.getElementById('confirmAllBtn').classList.remove('hidden');
+}
+
+function tryParseEntries(text) {
+  try {
+    // Look for a JSON array in the text
+    const match = text.match(/\[[\s\S]*?\]/);
+    if (match) {
+      const arr = JSON.parse(match[0]);
+      if (Array.isArray(arr)) return arr;
+    }
+  } catch(e) {}
+  return [];
+}
+
+function renderParsedEntries() {
+  const area = document.getElementById('parsedEntriesArea');
+  area.innerHTML = `<p style="font-size:13px;color:var(--text-dim);margin:16px 0 10px;">Found ${parsedEntries.length} entries — review and confirm:</p>` +
+    parsedEntries.map((e, i) => `
+      <div class="parsed-entry">
+        <div class="parsed-entry-header">
+          <div class="parsed-entry-title">🔧 ${e.service_type || e.display_name || 'Service'}</div>
+          <button class="btn btn-danger" style="padding:4px 10px;font-size:11px;" onclick="removeParsedEntry(${i})">Remove</button>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:12px;color:var(--text-dim);">
+          <div>📅 ${formatDate(e.date)}</div>
+          <div>🔢 ${e.mileage ? e.mileage.toLocaleString() + ' mi' : '—'}</div>
+          <div>🏪 ${e.shop || '—'}</div>
+          <div>💰 ${formatCurrency(e.cost)}</div>
+        </div>
+        ${e.notes ? `<div style="font-size:12px;color:var(--text-dim);margin-top:6px;">📝 ${e.notes}</div>` : ''}
+      </div>
+    `).join('');
+}
+
+function removeParsedEntry(i) {
+  parsedEntries.splice(i, 1);
+  if (parsedEntries.length === 0) {
+    document.getElementById('parsedEntriesArea').innerHTML = '';
+    document.getElementById('confirmAllBtn').classList.add('hidden');
+  } else {
+    renderParsedEntries();
+  }
+}
+
+async function confirmAllParsed() {
+  const v = getVehicle();
+  if (!v) return;
+  if (!v.maintenance_log) v.maintenance_log = [];
+
+  parsedEntries.forEach(e => {
+    v.maintenance_log.push({
+      id: 'import_' + Date.now() + '_' + Math.random().toString(36).substr(2,5),
+      source: 'carfax',
+      service_type: e.service_type || e.display_name || 'Service',
+      display_name: e.display_name || e.service_type || 'Service',
+      date: e.date || '',
+      logged_at: new Date().toISOString(),
+      mileage: e.mileage || null,
+      shop: e.shop || null,
+      cost: e.cost || null,
+      notes: e.notes || '',
+      performed_by: e.performed_by || 'previous_owner',
+      parts_used: []
+    });
+  });
+
+  await saveVehicleData();
+  closeModal('uploadModal');
+  renderView(currentView);
+}
+
+// ============================================================
+// SHARED MODAL CLOSE
+// ============================================================
+function closeModal(id) {
+  document.getElementById(id).classList.remove('open');
+}
+
+// Close modal on overlay click
+document.querySelectorAll('.modal-overlay').forEach(overlay => {
+  overlay.addEventListener('click', (e) => {
+    if (e.target === overlay) overlay.classList.remove('open');
+  });
+});
+
+// ============================================================
+// START
+// ============================================================
+init();
+</script>
+</body>
+</html>
