@@ -200,6 +200,16 @@ def _entries(vehicle: dict, key: str) -> list:
     return [x for x in v if isinstance(x, dict)] if isinstance(v, list) else []
 
 
+def _first(item: dict, *keys):
+    """First non-None value among several possible field names. The DRIVE Tracker
+    and the old agent named some fields differently (due_mileage vs next_due_miles,
+    reported_date vs date_reported), so readers accept either."""
+    for k in keys:
+        if item.get(k) is not None:
+            return item.get(k)
+    return None
+
+
 def _vehicle_label(vehicle: dict) -> str:
     year = _show(vehicle.get("year"))
     make = vehicle.get("make") or ""
@@ -316,8 +326,8 @@ def get_upcoming_maintenance() -> str:
     warnings, schedule = [], []
     for item in upcoming:
         name = item.get("display_name") or item.get("service_type") or "Service"
-        due_miles = item.get("next_due_miles")
-        due_date = item.get("next_due_date")
+        due_miles = _first(item, "due_mileage", "next_due_miles")
+        due_date = _first(item, "due_date", "next_due_date")
         parts, urgent = [], False
 
         if isinstance(due_miles, (int, float)) and isinstance(current_mileage, (int, float)):
@@ -355,7 +365,7 @@ def get_open_issues() -> str:
     lines = [f"Open issues ({len(issues)}):"]
     for i in issues:
         sev = str(i.get("severity") or "unknown").upper()
-        lines.append(f"• [{sev}] {_show(i.get('description'))} — reported {_show(i.get('date_reported'))}")
+        lines.append(f"• [{sev}] {_show(i.get('description'))} — reported {_show(_first(i, 'reported_date', 'date_reported'))}")
     return "\n".join(lines)
 
 
