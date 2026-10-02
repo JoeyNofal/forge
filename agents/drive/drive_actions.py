@@ -44,6 +44,7 @@ TYPE_LOG_FILLUP = "log_fillup"
 TYPE_LOG_ISSUE = "log_issue"
 TYPE_UPDATE_ISSUE = "update_issue"
 TYPE_UPDATE_ISSUES = "update_issues"
+TYPE_ADD_BRAKE_REMINDER = "add_brake_reminder"
 
 
 # ─────────────────────────────────────────────
@@ -79,6 +80,8 @@ def describe(action_type: str, d: dict) -> str:
         if action_type == TYPE_UPDATE_ISSUES:
             names = d.get("issue_descriptions") or d["issue_ids"]
             return f"mark {len(d['issue_ids'])} issue(s) resolved: " + "; ".join(str(n) for n in names)
+        if action_type == TYPE_ADD_BRAKE_REMINDER:
+            return "add a brake reminder: Brake Inspection, due today (shows first on your tracker until you log brake work)"
     except (KeyError, TypeError, ValueError, AttributeError):
         pass
     return f"{action_type}: {d}"
@@ -143,6 +146,13 @@ def list_open_issues() -> list:
     return out
 
 
+def _has_brake_schedule_readonly() -> bool:
+    """True if a brake inspection is already scheduled. READ-ONLY; a real file problem raises RuntimeError."""
+    if not os.path.exists(get_data_path()):
+        return False
+    return log.has_brake_schedule(get_active_vehicle(load_data()))
+
+
 # ─────────────────────────────────────────────
 # SECTION 3 — PROPOSING (no effect on the vehicle file)
 # ─────────────────────────────────────────────
@@ -170,6 +180,16 @@ def propose_fillup(raw) -> tuple:
 
 def propose_issue(raw) -> tuple:
     return _propose(TYPE_LOG_ISSUE, log.normalize_issue(raw))
+
+
+def propose_brake_reminder() -> tuple:
+    """
+    Proposes the one-time 'Brake Inspection, due today' entry. Checks NOW (read-only) that a brake
+    inspection isn't already scheduled; returns (None, explanation) if so.
+    """
+    if _has_brake_schedule_readonly():
+        return None, "A brake inspection is already on your schedule — nothing to add."
+    return _propose(TYPE_ADD_BRAKE_REMINDER, {"service_type": "brake_inspection"})
 
 
 def propose_issue_update(raw) -> tuple:
@@ -268,6 +288,11 @@ def approve_and_execute(action_id: str) -> str:
                 return result
         elif t == TYPE_UPDATE_ISSUES:
             ok, result = log.update_issues_status(d)
+            if not ok:
+                finalize_action(real_id, "failed", result)
+                return result
+        elif t == TYPE_ADD_BRAKE_REMINDER:
+            ok, result = log.log_brake_reminder()
             if not ok:
                 finalize_action(real_id, "failed", result)
                 return result

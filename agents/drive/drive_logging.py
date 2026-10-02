@@ -32,6 +32,7 @@ import uuid
 from datetime import datetime, timedelta
 
 from shared.file_store import update_json
+from agents.drive import issue_match
 from agents.drive.drive_tools import (
     get_data_path, initialize_vehicle_data, get_active_vehicle,
     _starting_structure, MAINTENANCE_INTERVALS, SERVICE_DISPLAY_NAMES,
@@ -49,6 +50,15 @@ _GENERIC_SHOP_WORDS = frozenset({
     "a shop", "a dealership", "a garage", "a mechanic",
     "my shop", "my garage", "my mechanic",
 })
+
+# Brake work, worded differently by the real model every time ("brake pad replacement",
+# "brake repair", "brakes replaced"). Lights/bulbs/fluid/lines are NOT brake replacement.
+_BRAKE_WORK_WORDS = frozenset({"replacement", "replace", "replaced", "repair", "repaired",
+                               "pad", "rotor", "caliper"})
+_NOT_BRAKE_WORK = frozenset({"light", "bulb", "lamp", "fluid", "line", "hose", "sensor", "switch"})
+
+# A service that restarts ANOTHER service's schedule: new brakes restart the brake-inspection clock.
+SCHEDULE_RESETS = {"brake_replacement": "brake_inspection"}
 
 PERFORMED_BY_ALIASES = {
     "shop": "shop", "dealership": "shop", "dealer": "shop",
@@ -139,7 +149,10 @@ def _service(raw):
         raise ValueError("maintenance: gas fill-ups are logged as fill-ups, not maintenance")
     if key in SERVICE_DISPLAY_NAMES:
         return key, SERVICE_DISPLAY_NAMES[key]
-    if "_" in text and " " not in text:        # a model echoing snake_case: "brake_replacement"
+    words = issue_match.content_words(text)
+    if "brake" in words and words & _BRAKE_WORK_WORDS and not words & _NOT_BRAKE_WORK:
+        return "brake_replacement", SERVICE_DISPLAY_NAMES["brake_replacement"]
+    if "_" in text and " " not in text:        # a model echoing snake_case: "turbo_swap"
         text = text.replace("_", " ")
     return text, text
 
@@ -278,7 +291,7 @@ def _update_schedule(vehicle: dict, m: dict):
     Returns (status, entry): 'updated' / 'kept' (an equal-or-newer service is already
     on the schedule, so an older one never rewinds it) / 'none' (no schedule for this service).
     """
-    key = m["service_type"]
+    key = SCHEDULE_RESETS.get(m["service_type"], m["service_type"])
     interval = MAINTENANCE_INTERVALS.get(key)
     if not interval:
         return "none", None
@@ -387,7 +400,8 @@ def log_maintenance(raw) -> str:
         if entry["due_date"]:
             parts.append(entry["due_date"])
         if parts:
-            msg += " Next due: " + " / ".join(parts) + "."
+            label = "" if entry["service_type"] == m["service_type"] else f" for {entry['display_name']}"
+            msg += f" Next due{label}: " + " / ".join(parts) + "."
     elif status == "kept":
         msg += " (The upcoming schedule already reflects a newer service, so it was left alone.)"
     if raised:
@@ -541,5 +555,49 @@ def update_issues_status(raw) -> tuple:
         if skipped:
             msg += f" ({skipped} skipped: not found or already resolved.)"
         return True, (True, msg)
+
+    return _modify_vehicle(change)
+
+
+
+# ─────────────────────────────────────────────
+# SECTION 4 — THE BRAKE REMINDER (one approved entry)
+# ─────────────────────────────────────────────
+
+def has_brake_schedule(vehicle) -> bool:
+    """True if a brake inspection is already on this vehicle's schedule."""
+    if not isinstance(vehicle, dict):
+        return False
+    upcoming = vehicle.get("upcoming_maintenance")
+    return isinstance(upcoming, list) and any(
+        isinstance(u, dict) and u.get("service_type") == "brake_inspection" for u in upcoming)
+
+
+def log_brake_reminder() -> tuple:
+    """
+    Adds ONE 'Brake Inspection, due today' schedule entry so it sorts first on the tracker
+    until Joey logs brake work (which replaces it with the normal interval). Under the lock,
+    refuses to add a second one. Returns (ok, message).
+    """
+    today = datetime.now().strftime("%Y-%m-%d")
+
+    def change(vehicle):
+        upcoming = vehicle.get("upcoming_maintenance")
+        if upcoming is None:
+            upcoming = []
+        elif not isinstance(upcoming, list):
+            raise RuntimeError("vehicle file: 'upcoming_maintenance' is not a list — refusing to overwrite it")
+        if has_brake_schedule(vehicle):
+            return False, (False, "A brake inspection is already on your schedule, so nothing was added.")
+        vehicle["upcoming_maintenance"] = upcoming + [{
+            "service_type": "brake_inspection",
+            "display_name": SERVICE_DISPLAY_NAMES["brake_inspection"],
+            "last_done_mileage": None,
+            "last_done_date": None,
+            "due_mileage": None,
+            "due_date": today,
+        }]
+        return True, (True, f"Brake reminder added: Brake Inspection is due {today}, so it shows up first "
+                            "until you log a brake inspection or a brake replacement.")
 
     return _modify_vehicle(change)

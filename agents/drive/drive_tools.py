@@ -61,6 +61,7 @@ SERVICE_DISPLAY_NAMES = {
     "cabin_filter":        "Cabin Air Filter Replacement",
     "wiper_blades":        "Wiper Blade Replacement",
     "brake_inspection":    "Brake Inspection",
+    "brake_replacement":   "Brake Replacement",
     "coolant_flush":       "Coolant Flush",
     "transmission_fluid":  "Transmission Fluid Change",
     "spark_plugs":         "Spark Plug Replacement",

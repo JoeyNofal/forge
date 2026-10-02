@@ -455,7 +455,7 @@ def _():
     seed_issues(path, ["squeaky brakes", "tire light"])
     answers["maintenance"] = dict(MAINT_JSON, service_type="brake replacement", fixes_issue_numbers=[1])
     notes = X.extract_and_propose("got the brakes replaced")
-    assert len(notes) == 2 and "brake replacement" in notes[0] and "squeaky brakes" in notes[1]
+    assert len(notes) == 2 and "Brake Replacement" in notes[0] and "squeaky brakes" in notes[1]
     q = queue_actions()
     assert [a["type"] for a in q] == ["log_maintenance", "update_issue"] and q[1]["details"]["issue_id"] == "i1"
     shutil.rmtree(d)
@@ -715,6 +715,13 @@ def _():
     notes = X.extract_and_propose("the first one is fixed")
     assert "Bremsen quietschen 🔧 泳ぐ" in model_calls[0]["prompt"] and "Bremsen quietschen 🔧 泳ぐ" in notes[0]
     shutil.rmtree(d)
+
+
+@check("L1 the model is told to keep routine reports short: no speculating, no unrequested recommendations, no doing arithmetic itself")
+def _():
+    note = chat.LOGGING_NOTE.lower()
+    assert "do not speculate" in note and "do not recommend a service or a dealership" in note
+    assert "do not work out prices" in note and "few sentences" in note
 
 
 passed = sum(1 for n, ok, err in _results if ok)

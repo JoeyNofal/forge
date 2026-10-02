@@ -289,3 +289,9 @@ DRIVE_ISSUE_RESOLVED_PHRASES = [
     "not on anymore", "went off", "light is off", "repaired", "taken care of",
     "sorted", "gone now", "all clear",
 ]
+# A fixed command (no model call): proposes ONE "Brake Inspection, due today" reminder.
+DRIVE_BRAKE_REMINDER_PHRASES = [
+    "add a brake reminder", "set a brake reminder", "brake reminder",
+    "remind me about my brakes", "remind me about the brakes",
+    "remind me to check my brakes", "remind me to check the brakes",
+]

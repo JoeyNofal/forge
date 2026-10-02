@@ -37,6 +37,7 @@ from shared.keyword_gate import contains_keyword
 from shared.agent_topics import (
     DRIVE_ADVICE_SIGNALS, DRIVE_MILEAGE_WORDS, DRIVE_FILLUP_WORDS, DRIVE_SERVICE_WORDS,
     DRIVE_SERVICE_DONE_SIGNALS, DRIVE_ISSUE_SYMPTOM_WORDS, DRIVE_ISSUE_RESOLVED_PHRASES,
+    DRIVE_BRAKE_REMINDER_PHRASES,
 )
 from shared.model_client import complete_ollama_json
 from agents.drive import drive_actions
@@ -53,9 +54,10 @@ KIND_FILLUP = "fillup"
 KIND_MAINTENANCE = "maintenance"
 KIND_ISSUE = "issue"
 KIND_ISSUE_UPDATE = "issue_update"
+KIND_BRAKE_REMINDER = "brake_reminder"
 _LABELS = {
     KIND_MILEAGE: "a mileage update", KIND_FILLUP: "a fill-up", KIND_MAINTENANCE: "a service entry",
-    KIND_ISSUE: "an issue", KIND_ISSUE_UPDATE: "an issue update",
+    KIND_ISSUE: "an issue", KIND_ISSUE_UPDATE: "an issue update", KIND_BRAKE_REMINDER: "a brake reminder",
 }
 _ALL_FIXED_RE = re.compile(r"\b100\s*(?:%|percent)", re.I)
 
@@ -78,6 +80,8 @@ def detect_report_kinds(message: str) -> list:
     text = message.replace("\u2019", "'").strip()      # phone keyboards type curly apostrophes
     if not text:
         return []
+    if contains_keyword(text, DRIVE_BRAKE_REMINDER_PHRASES):
+        return [KIND_BRAKE_REMINDER]       # a direct command: nothing else in the message is a "report"
     advice = contains_keyword(text, DRIVE_ADVICE_SIGNALS)
     has_digit = any(c.isdigit() for c in text)
     kinds = []
@@ -336,6 +340,8 @@ def _handle_issue(data: dict, open_issues: list) -> list:
 
 def _handle(kind: str, message: str, today: str, open_issues: list, handled_ids: set) -> list:
     """One extraction. Returns a list of notes for Joey ([] when there's nothing to log)."""
+    if kind == KIND_BRAKE_REMINDER:        # a fixed command: no local-model call at all
+        return [drive_actions.propose_brake_reminder()[1]]
     data = _extract(kind, message, today, open_issues)
     found = data.get("kind")
     if found == "none":

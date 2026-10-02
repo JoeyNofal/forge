@@ -49,7 +49,10 @@ LOGGING_NOTE = (
     "[LOGGING: You cannot save, log or change any record yourself, and you do not know what, "
     "if anything, the system will offer to log. Never say you have logged, saved or recorded "
     "anything, and never mention or promise a proposal, an entry or an approval. "
-    "Just respond to what Joey said.]"
+    "When Joey is only reporting something routine (a fill-up, his mileage, a service that went fine), "
+    "react in character in a few sentences; do not speculate about problems he did not mention, "
+    "do not recommend a service or a dealership he did not ask about, and do not work out prices, "
+    "per-gallon figures or other numbers yourself. Just respond to what Joey said.]"
 )
 
 # DRIVE's own line, straight from its prompt — not a generic refusal.

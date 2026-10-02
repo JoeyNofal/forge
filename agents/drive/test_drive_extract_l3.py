@@ -292,6 +292,10 @@ reply = out.split("\n\nProposed:")[0]
 try:
     assert re.search(r"\b(i've|i have|i)\s+(just\s+)?(logged|saved|recorded)\b", reply, re.I) is None, "DRIVE claimed it saved something"
     assert "proposal" not in reply.lower() and "waiting for your approval" not in reply.lower(), "DRIVE promised/described a proposal"
+    assert len(reply.split()) < 250, f"reply to a routine fill-up is {len(reply.split())} words — too long/speculative"
+    # NOTE: "The dealership is the right call here" is a catchphrase written into DRIVE's own prompt
+    # (Clarkson's "opinions stated as facts"), so it is persona, not an invented claim — not checked.
+    assert not re.search(r"\b2\.50\b", reply), "quoted a wrong per-gallon price (10 gal for $30 is $3.00)"
     assert "Proposed: log fill-up" in out
     print(">>> MECHANICAL CHECKS: PASS")
     _passed += 1

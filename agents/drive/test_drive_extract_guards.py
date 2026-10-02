@@ -230,8 +230,8 @@ def _():
 
 @check("L2 a model-echoed snake_case service becomes readable ('brake replacement'); real keys and ordinary text are untouched")
 def _():
-    n = Lg.normalize_maintenance({"service_type": "brake_replacement"})
-    assert n["service_type"] == "brake replacement" and n["display_name"] == "brake replacement"
+    n = Lg.normalize_maintenance({"service_type": "turbo_swap"})
+    assert n["service_type"] == "turbo swap" and n["display_name"] == "turbo swap"
     assert Lg.normalize_maintenance({"service_type": "brake_inspection"})["service_type"] == "brake_inspection"
     assert Lg.normalize_maintenance({"service_type": "Replaced left headlight"})["service_type"] == "Replaced left headlight"
     assert Lg.normalize_maintenance({"service_type": "a_b c"})["service_type"] == "a_b c"
