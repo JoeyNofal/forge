@@ -246,3 +246,46 @@ DRIVE_REPORT_PHRASES = [
 DRIVE_MAINTENANCE_WORDS = ["maintenance", "service", "oil change", "tire rotation", "repair"]
 DRIVE_GAS_WORDS = ["gas", "fuel", "fill-up", "fillup", "mpg", "gallon"]
 DRIVE_ISSUE_WORDS = ["issue", "issues", "problem", "noise", "warning light"]
+
+# ── DRIVE logging (increment (b), Part 3b) ──
+# PRE-FILTERS ONLY: a cheap whole-word check on whether a message is worth a
+# local-model call. A false alarm costs one model call (the model still says
+# "none"); a miss means a report is never offered for logging, so these lean
+# generous. All matching goes through contains_keyword (Lesson #6).
+DRIVE_MILEAGE_WORDS = ["miles", "mileage", "odometer"]
+DRIVE_FILLUP_WORDS = [
+    "fueled up", "fuelled up", "filled up", "filled her up", "filled it up",
+    "filled the tank", "fill up", "fill-up", "fillup", "topped off", "topped up",
+    "pumped", "gallons", "gallon", "gal",
+]
+DRIVE_SERVICE_WORDS = [
+    "service", "services", "serviced", "oil change", "oil changed", "changed the oil",
+    "changed my oil", "tire rotation", "tires rotated", "rotated", "rotation", "new tires",
+    "tires", "brakes", "brake", "brake pads", "new brakes", "battery", "new battery",
+    "air filter", "cabin filter", "filter", "wiper blades", "wipers", "spark plugs",
+    "coolant", "transmission", "alignment", "tune-up", "tune up", "inspection",
+    "flushed", "repair", "repaired", "mechanic", "dealership",
+]
+DRIVE_SERVICE_DONE_SIGNALS = [
+    "got", "had", "just", "changed", "replaced", "rotated", "flushed", "serviced",
+    "installed", "done", "did", "finished", "completed", "bought", "put on",
+    "swapped", "fixed",
+]
+DRIVE_ISSUE_SYMPTOM_WORDS = [
+    "light is on", "light came on", "light's on", "warning light", "check engine",
+    "engine light", "tire pressure", "noise", "noises", "grinding", "squeaking",
+    "squealing", "squeaks", "rattling", "clunking", "buzzing", "vibrating",
+    "vibration", "shaking", "leaking", "leak", "won't start", "wont start",
+    "stalling", "stalled", "overheating", "smoke", "smoking", "smell", "smells",
+    "flat", "pulling", "dead battery", "slipping", "jerking", "rough idle",
+    "knocking", "ticking", "whining", "humming", "something wrong", "not working",
+    "broken",
+]
+# "100%" is handled separately in drive_extract (a percent sign has no word boundary).
+DRIVE_ISSUE_RESOLVED_PHRASES = [
+    "fixed", "got fixed", "is fixed", "resolved", "went away", "is gone", "are gone",
+    "no longer", "stopped", "all good", "all fixed", "everything's fixed",
+    "everything is fixed", "fully fixed", "working again", "back to normal",
+    "not on anymore", "went off", "light is off", "repaired", "taken care of",
+    "sorted", "gone now", "all clear",
+]

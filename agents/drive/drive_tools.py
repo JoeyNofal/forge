@@ -406,4 +406,7 @@ GAS LOG:
 
 UPCOMING MAINTENANCE:
 {get_upcoming_maintenance()}
+
+OPEN ISSUES:
+{get_open_issues()}
 === END OF VEHICLE DATA ===""".strip()

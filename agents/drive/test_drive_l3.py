@@ -50,6 +50,9 @@ def counting_search(query, num_results=3):
 chat.stream_by_tier = counting_stream
 chat.web_search = counting_search
 
+# Real logging extraction has its own real test (test_drive_extract_l3.py); switched off here.
+chat.extract_and_propose = lambda message: []
+
 DATA = {"vehicles": [{
     "id": "vehicle_001", "active": True, "make": "Honda", "model": "Civic", "year": 2016,
     "vin": "19XFC2F57GE016309", "current_mileage": 61500,

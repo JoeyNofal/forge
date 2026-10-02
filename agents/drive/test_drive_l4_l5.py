@@ -41,6 +41,9 @@ def fake_search(query, num_results=3):
 chat.stream_by_tier = echo_model
 chat.web_search = fake_search
 
+# Logging extraction has its OWN tests; switched off here.
+chat.extract_and_propose = lambda message: []
+
 
 def run(message, history=None):
     return "".join(chat.stream_drive(message, history))

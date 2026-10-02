@@ -41,6 +41,9 @@ def fake_web_search(query, num_results=3):
 chat.stream_by_tier = fake_stream_by_tier
 chat.web_search = fake_web_search
 
+# Logging extraction has its OWN tests (test_drive_extract.py, test_drive_chat_extract.py); switched off here.
+chat.extract_and_propose = lambda message: []
+
 
 def check(name):
     def deco(fn):

@@ -42,6 +42,14 @@ MAX_LIST = 30
 MAX_MILEAGE = 2_000_000
 _ISO_DATE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
+# A generic word in the "shop" field is not a business name ("at the dealership").
+_GENERIC_SHOP_WORDS = frozenset({
+    "shop", "dealership", "dealer", "garage", "mechanic",
+    "the shop", "the dealership", "the dealer", "the garage", "the mechanic",
+    "a shop", "a dealership", "a garage", "a mechanic",
+    "my shop", "my garage", "my mechanic",
+})
+
 PERFORMED_BY_ALIASES = {
     "shop": "shop", "dealership": "shop", "dealer": "shop",
     "mechanic": "shop", "garage": "shop",
@@ -131,6 +139,8 @@ def _service(raw):
         raise ValueError("maintenance: gas fill-ups are logged as fill-ups, not maintenance")
     if key in SERVICE_DISPLAY_NAMES:
         return key, SERVICE_DISPLAY_NAMES[key]
+    if "_" in text and " " not in text:        # a model echoing snake_case: "brake_replacement"
+        text = text.replace("_", " ")
     return text, text
 
 
@@ -146,15 +156,20 @@ def normalize_maintenance(raw) -> dict:
     _require_dict(raw, "maintenance")
     service_type, display_name = _service(raw)
     cost = _num(raw.get("cost"), 0, 1_000_000, "cost")
+    shop_text = _text(raw.get("shop"))
+    generic_shop = shop_text.lower() in _GENERIC_SHOP_WORDS
+    performed_by = PERFORMED_BY_ALIASES.get(_text(raw.get("performed_by")).lower())
+    if performed_by is None and generic_shop:
+        performed_by = "shop"        # he did say a shop did it; what he said about WHO did it always wins
     return {
         "service_type": service_type,
         "display_name": display_name,
         "date": _date(raw.get("date")),
         "mileage": _mileage(raw.get("mileage")),
-        "shop": _text(raw.get("shop")) or None,
+        "shop": None if generic_shop else (shop_text or None),
         "cost": cost or None,
         "notes": _text(raw.get("notes")),
-        "performed_by": PERFORMED_BY_ALIASES.get(_text(raw.get("performed_by")).lower()),
+        "performed_by": performed_by,
         "parts_used": _str_list(raw.get("parts_used")),
     }
 
@@ -460,5 +475,71 @@ def update_issue_status(raw) -> tuple:
         issue["resolved_date"] = u["date"]
         issue["resolution_notes"] = u["resolution_notes"] or None
         return True, (True, f"Issue marked resolved: {issue.get('description') or 'no description'}.")
+
+    return _modify_vehicle(change)
+
+
+
+# ─────────────────────────────────────────────
+# SECTION 3 — RESOLVE SEVERAL ISSUES AT ONCE ("everything is fixed")
+# ─────────────────────────────────────────────
+
+MAX_BULK_ISSUES = 50
+
+
+def normalize_issues_update(raw) -> dict:
+    _require_dict(raw, "issues update")
+    ids = raw.get("issue_ids")
+    if not isinstance(ids, list):
+        raise ValueError("issues update: issue_ids must be a list")
+    clean_ids = []
+    for x in ids:
+        s = _text(x)
+        if s and s not in clean_ids:
+            clean_ids.append(s)
+    if not clean_ids:
+        raise ValueError("issues update: no issue ids given")
+    if len(clean_ids) > MAX_BULK_ISSUES:
+        raise ValueError(f"issues update: too many issues at once (max {MAX_BULK_ISSUES})")
+    status = _text(raw.get("new_status")).lower()
+    if status != "resolved":
+        raise ValueError(f"issues update: new_status must be 'resolved', got {status!r}")
+    return {
+        "issue_ids": clean_ids,
+        "new_status": status,
+        "resolution_notes": _text(raw.get("resolution_notes") or raw.get("notes")),
+        "date": _date(raw.get("date")),
+    }
+
+
+def update_issues_status(raw) -> tuple:
+    """
+    Marks every listed issue that is still unresolved as resolved, all under ONE
+    lock. Unknown or already-resolved ids are skipped and reported. Returns
+    (ok, message); if nothing could be resolved, nothing is changed.
+    """
+    u = normalize_issues_update(raw)
+
+    def change(vehicle):
+        issues = vehicle.get("issues")
+        if not isinstance(issues, list):
+            return False, (False, "No issues are on file, so nothing was changed.")
+        by_id = {x["id"]: x for x in issues if isinstance(x, dict) and isinstance(x.get("id"), str)}
+        done, skipped = [], 0
+        for iid in u["issue_ids"]:
+            issue = by_id.get(iid)
+            if issue is None or (issue.get("status") or "open") == "resolved":
+                skipped += 1
+                continue
+            issue["status"] = "resolved"
+            issue["resolved_date"] = u["date"]
+            issue["resolution_notes"] = u["resolution_notes"] or None
+            done.append(str(issue.get("description") or "no description"))
+        if not done:
+            return False, (False, "None of those issues were still open, so nothing was changed.")
+        msg = f"Marked {len(done)} issue(s) resolved: " + "; ".join(done) + "."
+        if skipped:
+            msg += f" ({skipped} skipped: not found or already resolved.)"
+        return True, (True, msg)
 
     return _modify_vehicle(change)

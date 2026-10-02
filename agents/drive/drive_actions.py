@@ -43,6 +43,7 @@ TYPE_LOG_MAINTENANCE = "log_maintenance"
 TYPE_LOG_FILLUP = "log_fillup"
 TYPE_LOG_ISSUE = "log_issue"
 TYPE_UPDATE_ISSUE = "update_issue"
+TYPE_UPDATE_ISSUES = "update_issues"
 
 
 # ─────────────────────────────────────────────
@@ -75,6 +76,9 @@ def describe(action_type: str, d: dict) -> str:
         if action_type == TYPE_UPDATE_ISSUE:
             what = d.get("issue_description") or d["issue_id"]
             return f"mark issue resolved: {what}"
+        if action_type == TYPE_UPDATE_ISSUES:
+            names = d.get("issue_descriptions") or d["issue_ids"]
+            return f"mark {len(d['issue_ids'])} issue(s) resolved: " + "; ".join(str(n) for n in names)
     except (KeyError, TypeError, ValueError, AttributeError):
         pass
     return f"{action_type}: {d}"
@@ -129,6 +133,16 @@ def _issues_readonly() -> list:
     return issues if isinstance(issues, list) else []
 
 
+def list_open_issues() -> list:
+    """[(id, description)] of unresolved issues, in file order. READ-ONLY.
+    A missing file is just 'none'; a real file problem raises RuntimeError."""
+    out = []
+    for i in _issues_readonly():
+        if isinstance(i, dict) and isinstance(i.get("id"), str) and (i.get("status") or "open") != "resolved":
+            out.append((i["id"], str(i.get("description") or "")[:100]))
+    return out
+
+
 # ─────────────────────────────────────────────
 # SECTION 3 — PROPOSING (no effect on the vehicle file)
 # ─────────────────────────────────────────────
@@ -173,6 +187,25 @@ def propose_issue_update(raw) -> tuple:
         return None, "That issue is already resolved — nothing to update."
     clean = dict(clean, issue_description=str(issue.get("description") or "")[:200])
     return _propose(TYPE_UPDATE_ISSUE, clean)
+
+
+def propose_issues_update(raw) -> tuple:
+    """
+    'Everything is fixed.' Checks NOW (read-only) which of the listed issues
+    really exist and are still unresolved, and proposes resolving exactly those,
+    naming each one so you can see what you're approving. Returns (None,
+    explanation) when none qualify.
+    """
+    clean = log.normalize_issues_update(raw)
+    open_by_id = {i["id"]: i for i in _issues_readonly()
+                  if isinstance(i, dict) and isinstance(i.get("id"), str)
+                  and (i.get("status") or "open") != "resolved"}
+    wanted = [iid for iid in clean["issue_ids"] if iid in open_by_id]
+    if not wanted:
+        return None, "None of those issues are on file and still unresolved — nothing to update."
+    clean = dict(clean, issue_ids=wanted,
+                 issue_descriptions=[str(open_by_id[i].get("description") or "")[:100] for i in wanted])
+    return _propose(TYPE_UPDATE_ISSUES, clean)
 
 
 # ─────────────────────────────────────────────
@@ -230,6 +263,11 @@ def approve_and_execute(action_id: str) -> str:
             result = log.log_issue(d)
         elif t == TYPE_UPDATE_ISSUE:
             ok, result = log.update_issue_status(d)
+            if not ok:
+                finalize_action(real_id, "failed", result)
+                return result
+        elif t == TYPE_UPDATE_ISSUES:
+            ok, result = log.update_issues_status(d)
             if not ok:
                 finalize_action(real_id, "failed", result)
                 return result

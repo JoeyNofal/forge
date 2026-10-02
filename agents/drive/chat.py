@@ -2,7 +2,9 @@
 DRIVE — Phase 4, increment (a): core chat.
 
 Deliberately NOT here yet (each is its own tested increment):
-  (b) logging maintenance/gas/issues, recall search that saves results
+  (b) still to come: add/switch vehicle, typed Carfax entries, recall search
+      that saves results. (Logging mileage/services/fill-ups/issues is DONE:
+      proposals are appended after the reply — see drive_extract.py.)
   (c) permanent memory
   (d) photo/file support (dashboard warning lights, receipts — no image
       infrastructure exists in FORGE yet, same call as ATLAS)
@@ -39,6 +41,16 @@ from shared.model_client import stream_by_tier
 from shared.memory_context import format_memory_context
 from agents.drive.prompt import DRIVE_PROMPT
 from agents.drive import drive_tools
+from agents.drive.drive_extract import extract_and_propose
+
+# Context for the model: it cannot save anything itself. A model that says
+# "logged!" without a real save is making a false memory (Lesson #3).
+LOGGING_NOTE = (
+    "[LOGGING: You cannot save, log or change any record yourself, and you do not know what, "
+    "if anything, the system will offer to log. Never say you have logged, saved or recorded "
+    "anything, and never mention or promise a proposal, an entry or an approval. "
+    "Just respond to what Joey said.]"
+)
 
 # DRIVE's own line, straight from its prompt — not a generic refusal.
 REFUSAL_MESSAGE = "That's well outside my area of expertise — and my interest, frankly. NEXUS will sort you out."
@@ -101,6 +113,8 @@ def stream_drive(message: str, history: Optional[list] = None, location: str = "
     except RuntimeError as e:
         context_blocks.append(f"[VEHICLE DATA UNAVAILABLE: {e}]")
 
+    context_blocks.append(LOGGING_NOTE)
+
     if contains_keyword(message, DRIVE_SEARCH_TRIGGERS):
         search_result = web_search(message)
         if search_result.startswith(WEB_SEARCH_FAILED_PREFIX):
@@ -114,3 +128,13 @@ def stream_drive(message: str, history: Optional[list] = None, location: str = "
     messages.append({"role": "user", "content": full_message})
 
     yield from stream_by_tier("drive", model_tier, DRIVE_PROMPT, messages, location)
+
+    # Only reached if the reply streamed fully (an error above propagates).
+    # Uses Joey's own message only — never DRIVE's reply (Lesson #3). A failure
+    # here must never lose the reply he already has: it becomes a visible note.
+    try:
+        notes = extract_and_propose(message)
+    except Exception as e:
+        notes = [f"I couldn't check that message for anything to log ({type(e).__name__}: {e}). Nothing was proposed."]
+    if notes:
+        yield "\n\n" + "\n\n".join(notes)
