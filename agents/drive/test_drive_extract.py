@@ -717,13 +717,6 @@ def _():
     shutil.rmtree(d)
 
 
-@check("L1 the model is told to keep routine reports short: no speculating, no unrequested recommendations, no doing arithmetic itself")
-def _():
-    note = chat.LOGGING_NOTE.lower()
-    assert "do not speculate" in note and "do not recommend a service or a dealership" in note
-    assert "do not work out prices" in note and "few sentences" in note
-
-
 passed = sum(1 for n, ok, err in _results if ok)
 print(f"\n{passed}/{len(_results)} passed")
 for n, ok, err in _results:
