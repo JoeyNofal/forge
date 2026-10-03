@@ -37,7 +37,7 @@ from shared.keyword_gate import contains_keyword
 from shared.agent_topics import (
     DRIVE_ADVICE_SIGNALS, DRIVE_MILEAGE_WORDS, DRIVE_FILLUP_WORDS, DRIVE_SERVICE_WORDS,
     DRIVE_SERVICE_DONE_SIGNALS, DRIVE_ISSUE_SYMPTOM_WORDS, DRIVE_ISSUE_RESOLVED_PHRASES,
-    DRIVE_BRAKE_REMINDER_PHRASES,
+    DRIVE_BRAKE_REMINDER_PHRASES, DRIVE_CARFAX_WORDS,
 )
 from shared.model_client import complete_ollama_json
 from agents.drive import drive_actions
@@ -55,9 +55,11 @@ KIND_MAINTENANCE = "maintenance"
 KIND_ISSUE = "issue"
 KIND_ISSUE_UPDATE = "issue_update"
 KIND_BRAKE_REMINDER = "brake_reminder"
+KIND_CARFAX = "carfax"
 _LABELS = {
     KIND_MILEAGE: "a mileage update", KIND_FILLUP: "a fill-up", KIND_MAINTENANCE: "a service entry",
     KIND_ISSUE: "an issue", KIND_ISSUE_UPDATE: "an issue update", KIND_BRAKE_REMINDER: "a brake reminder",
+    KIND_CARFAX: "a Carfax entry",
 }
 _ALL_FIXED_RE = re.compile(r"\b100\s*(?:%|percent)", re.I)
 
@@ -82,6 +84,8 @@ def detect_report_kinds(message: str) -> list:
         return []
     if contains_keyword(text, DRIVE_BRAKE_REMINDER_PHRASES):
         return [KIND_BRAKE_REMINDER]       # a direct command: nothing else in the message is a "report"
+    if contains_keyword(text, DRIVE_CARFAX_WORDS) and not contains_keyword(text, DRIVE_ADVICE_SIGNALS):
+        return [KIND_CARFAX]               # a Carfax record is history: never also a service/mileage report
     advice = contains_keyword(text, DRIVE_ADVICE_SIGNALS)
     has_digit = any(c.isdigit() for c in text)
     kinds = []
@@ -186,9 +190,24 @@ Reply in exactly this shape:
 - If he is not saying a listed problem is fixed: {"kind": "none"}
 """
 
+CARFAX_PROMPT = _COMMON_RULES + """
+Task: Joey may be telling you about ONE service record from a Carfax vehicle history report (work a PREVIOUS owner had done, before he owned the car).
+
+Reply in exactly this shape:
+{"kind": "carfax", "service_type": "oil_change", "date": "2024-03-15", "mileage": 40000, "shop": "", "cost": null, "notes": "", "parts_used": [], "more_jobs": false}
+- date: the exact date on the record as YYYY-MM-DD, only if the message gives a full date. Otherwise an empty string. For this task, never use today's date and never work out a relative date like "last year".
+- service_type: use one of these exact keys if the work matches: {{SERVICES}}. Otherwise write a short plain description of the work with spaces, like "timing belt replacement".
+- mileage: the odometer reading on the record, only if stated. cost: dollars, only if stated.
+- shop: the business name only if one is named; otherwise an empty string. Never write just "dealership" or "shop".
+- notes: extra details about the work in his words; an empty string if none.
+- parts_used: a list of strings, only parts named.
+- If he lists TWO OR MORE records, describe only the first one and set more_jobs to true.
+- If he is only asking a question, or this is not a service record: {"kind": "none"}
+"""
+
 _PROMPTS = {
     KIND_MILEAGE: MILEAGE_PROMPT, KIND_FILLUP: FILLUP_PROMPT, KIND_MAINTENANCE: MAINTENANCE_PROMPT,
-    KIND_ISSUE: ISSUE_PROMPT, KIND_ISSUE_UPDATE: UPDATE_PROMPT,
+    KIND_ISSUE: ISSUE_PROMPT, KIND_ISSUE_UPDATE: UPDATE_PROMPT, KIND_CARFAX: CARFAX_PROMPT,
 }
 
 
@@ -338,6 +357,13 @@ def _handle_issue(data: dict, open_issues: list) -> list:
     return [drive_actions.propose_issue(data)[1]]
 
 
+def _handle_carfax(data: dict) -> list:
+    notes = [drive_actions.propose_carfax(data)[1]]
+    if data.get("more_jobs") is True:
+        notes.append("You listed more than one Carfax record — I only proposed the first. Send the others on their own.")
+    return notes
+
+
 def _handle(kind: str, message: str, today: str, open_issues: list, handled_ids: set) -> list:
     """One extraction. Returns a list of notes for Joey ([] when there's nothing to log)."""
     if kind == KIND_BRAKE_REMINDER:        # a fixed command: no local-model call at all
@@ -354,6 +380,8 @@ def _handle(kind: str, message: str, today: str, open_issues: list, handled_ids:
         return [drive_actions.propose_fillup(data)[1]]
     if kind == KIND_ISSUE:
         return _handle_issue(data, open_issues)
+    if kind == KIND_CARFAX:
+        return _handle_carfax(data)
     if kind == KIND_MAINTENANCE:
         return _handle_maintenance(data, open_issues, handled_ids, message)
     return _handle_issue_update(data, open_issues, handled_ids, message)

@@ -43,6 +43,7 @@ chat.web_search = fake_web_search
 
 # Logging extraction has its OWN tests (test_drive_extract.py, test_drive_chat_extract.py); switched off here.
 chat.extract_and_propose = lambda message: []
+chat.prepare_recall_context = lambda message: (None, None)    # the recall check has its own tests
 
 
 def check(name):

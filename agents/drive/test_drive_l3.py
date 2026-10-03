@@ -52,6 +52,7 @@ chat.web_search = counting_search
 
 # Real logging extraction has its own real test (test_drive_extract_l3.py); switched off here.
 chat.extract_and_propose = lambda message: []
+chat.prepare_recall_context = lambda message: (None, None)    # the recall check has its own tests
 
 DATA = {"vehicles": [{
     "id": "vehicle_001", "active": True, "make": "Honda", "model": "Civic", "year": 2016,

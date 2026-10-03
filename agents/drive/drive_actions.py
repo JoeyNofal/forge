@@ -45,6 +45,8 @@ TYPE_LOG_ISSUE = "log_issue"
 TYPE_UPDATE_ISSUE = "update_issue"
 TYPE_UPDATE_ISSUES = "update_issues"
 TYPE_ADD_BRAKE_REMINDER = "add_brake_reminder"
+TYPE_LOG_CARFAX = "log_carfax"
+TYPE_SAVE_RECALLS = "save_recall_check"
 
 
 # ─────────────────────────────────────────────
@@ -82,6 +84,12 @@ def describe(action_type: str, d: dict) -> str:
             return f"mark {len(d['issue_ids'])} issue(s) resolved: " + "; ".join(str(n) for n in names)
         if action_type == TYPE_ADD_BRAKE_REMINDER:
             return "add a brake reminder: Brake Inspection, due today (shows first on your tracker until you log brake work)"
+        if action_type == TYPE_LOG_CARFAX:
+            mil = _stated(d["mileage"], "at {:,} miles", "mileage not stated")
+            return f"log Carfax entry (work by a previous owner): {d['display_name']} on {d['date']}, {mil}"
+        if action_type == TYPE_SAVE_RECALLS:
+            return (f"save this recall check to your vehicle file: NHTSA, {d['model_year']} {d['make']} {d['model']}, "
+                    f"{d['count']} recall(s), checked {str(d['fetched_at'])[:10]}")
     except (KeyError, TypeError, ValueError, AttributeError):
         pass
     return f"{action_type}: {d}"
@@ -153,6 +161,13 @@ def _has_brake_schedule_readonly() -> bool:
     return log.has_brake_schedule(get_active_vehicle(load_data()))
 
 
+def _last_nhtsa_snapshot_readonly():
+    """The most recent saved NHTSA check, or None. READ-ONLY; a real file problem raises RuntimeError."""
+    if not os.path.exists(get_data_path()):
+        return None
+    return log.last_nhtsa_snapshot(get_active_vehicle(load_data()))
+
+
 # ─────────────────────────────────────────────
 # SECTION 3 — PROPOSING (no effect on the vehicle file)
 # ─────────────────────────────────────────────
@@ -190,6 +205,25 @@ def propose_brake_reminder() -> tuple:
     if _has_brake_schedule_readonly():
         return None, "A brake inspection is already on your schedule — nothing to add."
     return _propose(TYPE_ADD_BRAKE_REMINDER, {"service_type": "brake_inspection"})
+
+
+def propose_carfax(raw) -> tuple:
+    """Bad data (including a missing date) raises ValueError HERE, so nothing half-formed is ever queued."""
+    clean = log.normalize_carfax(raw)
+    return _propose(TYPE_LOG_CARFAX, clean, _mileage_warnings(TYPE_LOG_CARFAX, clean["mileage"]))
+
+
+def propose_recall_snapshot(raw) -> tuple:
+    """
+    Offers to save an NHTSA recall check — but ONLY when the list changed since the last saved check
+    (Joey's choice). Returns (None, explanation) when it hasn't. Bad data raises ValueError here.
+    """
+    clean = log.normalize_recall_snapshot(raw)
+    last = _last_nhtsa_snapshot_readonly()
+    if last is not None and log.snapshot_signature(last) == log.snapshot_signature(clean):
+        when = str(last.get("fetched_at") or last.get("searched_at") or "")[:10]
+        return None, f"NHTSA's list hasn't changed since your last saved check ({when}), so I'm not offering to save it again."
+    return _propose(TYPE_SAVE_RECALLS, clean)
 
 
 def propose_issue_update(raw) -> tuple:
@@ -293,6 +327,16 @@ def approve_and_execute(action_id: str) -> str:
                 return result
         elif t == TYPE_ADD_BRAKE_REMINDER:
             ok, result = log.log_brake_reminder()
+            if not ok:
+                finalize_action(real_id, "failed", result)
+                return result
+        elif t == TYPE_LOG_CARFAX:
+            ok, result = log.log_carfax_entry(d)
+            if not ok:
+                finalize_action(real_id, "failed", result)
+                return result
+        elif t == TYPE_SAVE_RECALLS:
+            ok, result = log.save_recall_snapshot(d)
             if not ok:
                 finalize_action(real_id, "failed", result)
                 return result

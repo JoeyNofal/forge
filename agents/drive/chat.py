@@ -2,9 +2,10 @@
 DRIVE — Phase 4, increment (a): core chat.
 
 Deliberately NOT here yet (each is its own tested increment):
-  (b) still to come: add/switch vehicle, typed Carfax entries, recall search
-      that saves results. (Logging mileage/services/fill-ups/issues is DONE:
-      proposals are appended after the reply — see drive_extract.py.)
+  (b) DONE: logging (mileage/services/fill-ups/issues/Carfax/brake reminder) as
+      proposals appended after the reply — see drive_extract.py — and the
+      NHTSA recall check — see drive_recall.py. (Add/switch vehicle was
+      dropped: there is only one car.)
   (c) permanent memory
   (d) photo/file support (dashboard warning lights, receipts — no image
       infrastructure exists in FORGE yet, same call as ATLAS)
@@ -42,6 +43,7 @@ from shared.memory_context import format_memory_context
 from agents.drive.prompt import DRIVE_PROMPT
 from agents.drive import drive_tools
 from agents.drive.drive_extract import extract_and_propose
+from agents.drive.drive_recall import prepare_recall_context, propose_recall_snapshot_note, recall_footer
 
 # Context for the model: it cannot save anything itself. A model that says
 # "logged!" without a real save is making a false memory (Lesson #3).
@@ -125,6 +127,10 @@ def stream_drive(message: str, history: Optional[list] = None, location: str = "
         else:
             context_blocks.append(format_memory_context([search_result], label="web search results"))
 
+    recall_block, recall_result = prepare_recall_context(message)
+    if recall_block:
+        context_blocks.append(recall_block)
+
     full_message = "\n\n".join(context_blocks + [f"Joey says: {message}"])
 
     messages = list(history) if history else []
@@ -139,5 +145,13 @@ def stream_drive(message: str, history: Optional[list] = None, location: str = "
         notes = extract_and_propose(message)
     except Exception as e:
         notes = [f"I couldn't check that message for anything to log ({type(e).__name__}: {e}). Nothing was proposed."]
+    if recall_result is not None:
+        notes = list(notes) + [recall_footer(recall_result)]
+        try:
+            recall_note = propose_recall_snapshot_note(recall_result)
+        except Exception as e:
+            recall_note = f"I couldn't prepare the offer to save that recall check ({type(e).__name__}: {e}). Nothing was proposed."
+        if recall_note:
+            notes = list(notes) + [recall_note]
     if notes:
         yield "\n\n" + "\n\n".join(notes)

@@ -295,3 +295,7 @@ DRIVE_BRAKE_REMINDER_PHRASES = [
     "remind me about my brakes", "remind me about the brakes",
     "remind me to check my brakes", "remind me to check the brakes",
 ]
+# A message that mentions Carfax is about a vehicle-history record (work a PREVIOUS owner had done).
+DRIVE_CARFAX_WORDS = ["carfax", "car fax"]
+# A question about recalls triggers the official NHTSA lookup (see agents/drive/drive_recall.py).
+DRIVE_RECALL_WORDS = ["recall", "recalls", "recalled"]

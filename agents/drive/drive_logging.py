@@ -33,6 +33,7 @@ from datetime import datetime, timedelta
 
 from shared.file_store import update_json
 from agents.drive import issue_match
+from shared.nhtsa import trim_text
 from agents.drive.drive_tools import (
     get_data_path, initialize_vehicle_data, get_active_vehicle,
     _starting_structure, MAINTENANCE_INTERVALS, SERVICE_DISPLAY_NAMES,
@@ -291,7 +292,7 @@ def _update_schedule(vehicle: dict, m: dict):
     Returns (status, entry): 'updated' / 'kept' (an equal-or-newer service is already
     on the schedule, so an older one never rewinds it) / 'none' (no schedule for this service).
     """
-    key = SCHEDULE_RESETS.get(m["service_type"], m["service_type"])
+    key = str(SCHEDULE_RESETS.get(m["service_type"], m["service_type"]))
     interval = MAINTENANCE_INTERVALS.get(key)
     if not interval:
         return "none", None
@@ -599,5 +600,186 @@ def log_brake_reminder() -> tuple:
         }]
         return True, (True, f"Brake reminder added: Brake Inspection is due {today}, so it shows up first "
                             "until you log a brake inspection or a brake replacement.")
+
+    return _modify_vehicle(change)
+
+
+
+# ─────────────────────────────────────────────
+# SECTION 5 — CARFAX HISTORY ENTRIES (work done by a PREVIOUS owner)
+# ─────────────────────────────────────────────
+
+def _strict_date(v) -> str:
+    """The date Joey actually STATED, as a real non-future YYYY-MM-DD. Unlike every other
+    date here it is NEVER defaulted to today: a Carfax record is history, so a made-up date
+    would be a false record."""
+    try:
+        d = datetime.strptime(str(v).strip()[:10], "%Y-%m-%d").strftime("%Y-%m-%d")
+    except (TypeError, ValueError):
+        raise ValueError("I need the full date of that service (like 2024-03-15)") from None
+    if d > datetime.now().strftime("%Y-%m-%d"):
+        raise ValueError(f"{d} is in the future")
+    return d
+
+
+def normalize_carfax(raw) -> dict:
+    _require_dict(raw, "Carfax entry")
+    try:
+        c = normalize_maintenance(dict(raw, date="2000-01-01"))   # service / mileage / cost / shop / notes cleanup
+    except ValueError as e:
+        raise ValueError(str(e).replace("maintenance: ", "", 1)) from None
+    c["date"] = _strict_date(raw.get("date"))
+    c["performed_by"] = "previous_owner"                          # by definition, whatever the model said
+    return c
+
+
+def log_carfax_entry(raw) -> tuple:
+    """
+    Adds ONE historical Carfax record to the maintenance log. Returns (ok, message).
+    It does NOT touch the next-due schedule or the current mileage: the work was done
+    before Joey owned the car. An identical record already logged from Carfax (same
+    service, date and mileage) is refused.
+    """
+    c = normalize_carfax(raw)
+    record = {
+        "id": str(uuid.uuid4()),
+        "source": "carfax",
+        "service_type": c["service_type"],
+        "display_name": c["display_name"],
+        "date": c["date"],
+        "logged_at": datetime.now().isoformat(),
+        "mileage": c["mileage"],
+        "shop": c["shop"],
+        "cost": c["cost"],
+        "notes": c["notes"],
+        "performed_by": "previous_owner",
+        "parts_used": c["parts_used"],
+    }
+
+    def change(vehicle):
+        entries = _list_for_append(vehicle, "maintenance_log")
+        for e in entries:
+            if (isinstance(e, dict) and e.get("source") == "carfax" and e.get("date") == c["date"]
+                    and e.get("service_type") == c["service_type"] and e.get("mileage") == c["mileage"]):
+                return False, (False, "That Carfax entry is already logged (same service, date and mileage), so nothing was added.")
+        entries.append(record)
+        mil = f" at {c['mileage']:,} miles" if c["mileage"] else ""
+        return True, (True, f"Carfax entry logged: {c['display_name']} on {c['date']}{mil}.")
+
+    return _modify_vehicle(change)
+
+
+
+# ─────────────────────────────────────────────
+# SECTION 6 — SAVED RECALL CHECKS (official NHTSA snapshots)
+# ─────────────────────────────────────────────
+
+NHTSA_SOURCE = "NHTSA recallsByVehicle"
+MAX_RECALL_SNAPSHOTS = 10       # saved NHTSA checks kept per vehicle (older text-style entries are never touched)
+MAX_SNAPSHOT_RECALLS = 40
+_SNAPSHOT_TEXT = 300
+
+
+def _snapshot_recall(item):
+    """One recall inside a snapshot, re-cleaned (this is data that came from a queue file, so it is not trusted)."""
+    if not isinstance(item, dict):
+        return None
+    campaign = _text(item.get("campaign"))[:40]
+    if not campaign:
+        return None
+    return {
+        "campaign": campaign,
+        "manufacturer": _text(item.get("manufacturer"))[:120],
+        "component": _text(item.get("component"))[:200],
+        "summary": trim_text(_text(item.get("summary")), _SNAPSHOT_TEXT),
+        "consequence": trim_text(_text(item.get("consequence")), _SNAPSHOT_TEXT),
+        "remedy": trim_text(_text(item.get("remedy")), _SNAPSHOT_TEXT),
+        "reported": _text(item.get("reported"))[:40],
+        "park_it": item.get("park_it") is True,
+    }
+
+
+def normalize_recall_snapshot(raw) -> dict:
+    _require_dict(raw, "recall snapshot")
+    if raw.get("source") != NHTSA_SOURCE:
+        raise ValueError("recall snapshot: not an NHTSA result")
+    make, model = _text(raw.get("make")), _text(raw.get("model"))
+    if not make or not model:
+        raise ValueError("recall snapshot: make and model are required")
+    year = raw.get("model_year")
+    if isinstance(year, bool) or not isinstance(year, int) or not 1950 <= year <= datetime.now().year + 2:
+        raise ValueError(f"recall snapshot: bad model year {year!r}")
+    fetched = _text(raw.get("fetched_at"))
+    try:
+        datetime.fromisoformat(fetched)
+    except ValueError:
+        raise ValueError("recall snapshot: bad fetched_at time") from None
+    items = raw.get("recalls")
+    if not isinstance(items, list):
+        raise ValueError("recall snapshot: recalls must be a list")
+    recalls = [r for r in (_snapshot_recall(i) for i in items) if r][:MAX_SNAPSHOT_RECALLS]
+    count = raw.get("count")
+    if isinstance(count, bool) or not isinstance(count, int) or count < len(recalls):
+        raise ValueError("recall snapshot: the recall count doesn't match the list")
+    return {"source": NHTSA_SOURCE, "fetched_at": fetched, "make": make, "model": model,
+            "model_year": year, "count": count, "url": _text(raw.get("url"))[:500], "recalls": recalls}
+
+
+def _is_nhtsa_snapshot(entry) -> bool:
+    return isinstance(entry, dict) and entry.get("source") == NHTSA_SOURCE
+
+
+def snapshot_signature(snapshot) -> tuple:
+    """(count, sorted campaign numbers) — what 'the recall list changed' means."""
+    if not isinstance(snapshot, dict):
+        return (None, ())
+    items = snapshot.get("recalls")
+    campaigns = sorted(str(r.get("campaign")) for r in items if isinstance(r, dict)) if isinstance(items, list) else []
+    return (snapshot.get("count"), tuple(campaigns))
+
+
+def last_nhtsa_snapshot(vehicle):
+    """The most recently saved NHTSA check for this vehicle, or None."""
+    recalls = vehicle.get("recalls") if isinstance(vehicle, dict) else None
+    if not isinstance(recalls, list):
+        return None
+    found = [e for e in recalls if _is_nhtsa_snapshot(e)]
+    return found[-1] if found else None
+
+
+def _same_vehicle(vehicle: dict, s: dict) -> bool:
+    return (str(vehicle.get("year")).strip() == str(s["model_year"])
+            and _text(vehicle.get("make")).lower() == s["make"].lower()
+            and _text(vehicle.get("model")).lower() == s["model"].lower())
+
+
+def save_recall_snapshot(raw) -> tuple:
+    """
+    Saves ONE dated NHTSA recall check into the active vehicle's 'recalls' list. Returns (ok, message).
+    Refuses: a check for a different vehicle than the active one; a repeat of the last saved check.
+    Keeps at most MAX_RECALL_SNAPSHOTS NHTSA checks (the oldest are dropped, and the message says so).
+    """
+    s = normalize_recall_snapshot(raw)
+    summary = (f"NHTSA lists {s['count']} recall(s) for {s['model_year']} {s['make']} {s['model']} "
+               f"(checked {s['fetched_at'][:10]}). Covers the whole model year, not this VIN.")
+    record = dict(s, searched_at=s["fetched_at"],
+                  query=f"{s['model_year']} {s['make']} {s['model']} recalls (NHTSA)", result=summary)
+
+    def change(vehicle):
+        if not _same_vehicle(vehicle, s):
+            return False, (False, "That recall check was for a different vehicle than your active one, so nothing was saved.")
+        existing = _list_for_append(vehicle, "recalls")
+        last = last_nhtsa_snapshot(vehicle)
+        if last is not None and snapshot_signature(last) == snapshot_signature(s):
+            return False, (False, "That recall check is the same as your last saved one, so nothing was saved.")
+        positions = [i for i, e in enumerate(existing) if _is_nhtsa_snapshot(e)]
+        excess = len(positions) + 1 - MAX_RECALL_SNAPSHOTS
+        drop = set(positions[:excess]) if excess > 0 else set()
+        vehicle["recalls"] = [e for i, e in enumerate(existing) if i not in drop] + [record]
+        msg = (f"Recall check saved: {s['count']} recall(s) for {s['model_year']} {s['make']} {s['model']} "
+               f"(NHTSA, {s['fetched_at'][:10]}).")
+        if drop:
+            msg += f" The oldest {len(drop)} saved NHTSA check(s) were dropped to keep the file small."
+        return True, (True, msg)
 
     return _modify_vehicle(change)
