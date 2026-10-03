@@ -146,7 +146,9 @@ def stream_drive(message: str, history: Optional[list] = None, location: str = "
     except Exception as e:
         notes = [f"I couldn't check that message for anything to log ({type(e).__name__}: {e}). Nothing was proposed."]
     if recall_result is not None:
-        notes = list(notes) + [recall_footer(recall_result)]
+        footer = recall_footer(recall_result)
+        if footer:
+            notes = list(notes) + [footer]
         try:
             recall_note = propose_recall_snapshot_note(recall_result)
         except Exception as e:

@@ -13,6 +13,8 @@ import tempfile
 import threading
 import urllib.error
 import urllib.parse
+from email.message import Message
+from typing import Any
 
 _QUEUE_DIR = tempfile.mkdtemp(prefix="drive_recall_queue_")
 os.environ["PENDING_ACTIONS_PATH"] = os.path.join(_QUEUE_DIR, "pending_actions.json")
@@ -20,16 +22,17 @@ os.environ["PENDING_ACTIONS_PATH"] = os.path.join(_QUEUE_DIR, "pending_actions.j
 from agents.drive import chat
 from agents.drive import drive_actions as A
 from agents.drive import drive_logging as Lg
-from agents.drive import drive_recall as R
+from agents.drive import drive_recall as _drive_recall
 from shared import agent_topics
 from shared import nhtsa as N
 from shared import pending_actions as pa
 
 QUEUE = pa.PENDING_ACTIONS_PATH
+R: Any = _drive_recall      # typed loosely on purpose: these tests read optional results and hand in junk
 _results = []
 _lock = threading.Lock()
 net_calls = []
-net = {"v": None}
+net: Any = {"v": None}
 reply_calls = []
 
 
@@ -254,7 +257,7 @@ def _():
 def _():
     path, d = fresh()
     seed(path)
-    for bad in (urllib.error.URLError("no route"), urllib.error.HTTPError("http://x", 400, "bad", None, None),
+    for bad in (urllib.error.URLError("no route"), urllib.error.HTTPError("http://x", 400, "bad", Message(), None),
                 "not json", "<html>down</html>", "", '{"results": "x"}'):
         net["v"] = bad
         block, result = R.prepare_recall_context("any recalls?")
