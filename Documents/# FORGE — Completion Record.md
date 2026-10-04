@@ -622,3 +622,89 @@ Tested — CONFIRMED CLOSED, L1 through L5:
   call.
 
 ATLAS Phase 4 core chat status: complete
+
+## Session 8 — Phase 4: DRIVE (core chat)
+
+Built: agents/drive/prompt.py (Clarkson prompt, unchanged, 1,946 chars,
+verified against reference/agent_prompts.json — includes Joey's real
+VIN, confirmed still current), agents/drive/drive_tools.py (read-only
+vehicle data engine — env-var VEHICLE_DATA_PATH, auto-creates Joey's
+real 2016 Honda Civic under a lock if missing, every reader shape-safe),
+agents/drive/chat.py (stream_drive() — word-boundary refusal gate using
+DRIVE's own prompt line, tightened "show my logged data" shortcut
+answered directly with no model call, live data summary in context,
+trigger-gated web search via shared/web_search.py, routes through
+stream_by_tier). shared/agent_topics.py extended with DRIVE's
+trigger/history keyword lists (word-boundary, Lesson #6).
+
+Real fixes vs the old code: drive_tools.py had ZERO file locking on
+vehicle.json — a real live gap, unlike pending_tasks.py/atlas_tools.py
+which Phase 0 confirmed already had it. The old code indexed
+vehicle['year']/vehicle['vin'] etc. directly and would KeyError on a
+malformed or partial entry, and assumed the vehicles list always exists
+and is non-empty — now fully shape-safe (Lesson #5). The old code
+searched the web on EVERY message wrapped in a bare except: pass — a
+live Lesson #2/#8/#12 phantom-search risk, now trigger-gated with
+failures surfaced explicitly. Duplicate SerpApi implementation removed
+in favor of shared/web_search.py (Lesson #9).
+
+Tested — CONFIRMED CLOSED, L1 through L5:
+- L1/L2 (drive_tools.py): 16/16 — prompt exact-match, VIN correct on
+  auto-create, mixed real-world junk (non-dict vehicle entries, wrong
+  types, missing fields) never breaks a reader, corrupt JSON fails
+  loudly, mid-write file recovers on retry, 20 threads creating the
+  file at once produce exactly one clean file, multi-vehicle handling
+  correct (inactive vehicle ignored for the summary).
+- L1/L2 (chat.py): 16/16 — old "code"/"program" substring false-refusals
+  confirmed fixed, refusal message matches DRIVE's own prompt line,
+  history-question table correct, failed search passed through as a
+  failure not hidden.
+- L4/L5: 15/15 (mocked) — 100 sequential + 20 concurrent zero cross-talk,
+  a simulated non-atomic writer caught readers mid-write and the retry
+  recovered every time, 20,000-entry file stayed fast and bounded,
+  empty/50k-char/unicode/None/malformed-history/regex-special-chars all
+  handled, a real model failure propagates rather than being swallowed,
+  deleted data file auto-recreates mid-session.
+- L3: 10/10 real end-to-end (real Gemini, real SerpApi, real Ollama, one
+  real Sonnet 5 call ~$0.0135) — grounded, in-voice responses across
+  advice, empty-log honesty, refusal, direct data lookup, real
+  recall-search grounding, real multi-turn recall of a reported issue
+  and correctly averaged MPG, advice through an unreadable data file,
+  and all three model tiers. Note: a specific real recall claim (case 5)
+  should be independently verified against NHTSA/Honda before acting on
+  it — DRIVE grounds its answer in real search results, but a factual
+  safety claim about a real VIN still deserves a manual check.
+
+DRIVE Phase 4 core chat status: complete
+
+## Session 9 — ATLAS increment (b): logging, approvals, extraction
+
+Built (agents/atlas/): atlas_logging.py (validators + locked writers for
+swim/gym/injury/injury-status-update; all fitness writes live here),
+atlas_actions.py (approval gate: propose / approve_and_execute / deny /
+list_pending; ids can be typed as a unique 6+ char start), atlas_extract.py
+(whole-word trigger pre-filter, local gemma3:12b JSON extraction of Joey's own
+message only, always ends in a proposal, never a save). shared/model_client.py:
+new complete_ollama_json(). shared/agent_topics.py: ATLAS logging trigger lists.
+ATLAS prompt unchanged; a separate format note stops the local model printing
+"PUSH MODE" (verified over 4 real runs).
+
+Decisions: nothing saves without approval (same queue pattern as CIPHER); FORGE
+ATLAS writes only its own data file until switch-over; extraction always local;
+"my shoulder is better now" updates the one matching open injury (never
+guesses); photo scan deferred; workout template = own later increment
+(single HTML page, phone, gym only, copy-paste back to ATLAS).
+
+Real bugs found and fixed: (1) shared file_store returned the caller's own
+default object, so the pending-actions queue could resurrect old actions;
+(2) pending_actions readers didn't take the writers' lock (half-written reads
+under 20 concurrent approvals); (3) invented defaults: unstated difficulty 5 /
+duration 0 were being saved as real values — now null, shown as "not stated";
+(4) extraction leaked injury soreness into the workout's "weaknesses";
+(5) Phase 0 test checked for a leftover .lock file (a library detail) — replaced
+with a test that proves update_json really blocks on a held lock.
+
+Tested — CONFIRMED CLOSED, L1-L5: logging 26/26, actions 26/26, extraction
+31/31 (mocked), real L3 14/14 twice with local Ollama, read for invented
+numbers/dates/statuses; all earlier ATLAS suites and Phase 0 (35/35) and CIPHER's
+queue tests still pass after the shared-code fixes.
