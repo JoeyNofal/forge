@@ -6,7 +6,7 @@ Deliberately NOT here yet (each is its own tested increment):
       proposals appended after the reply — see drive_extract.py — and the
       NHTSA recall check — see drive_recall.py. (Add/switch vehicle was
       dropped: there is only one car.)
-  (c) permanent memory
+  (c) DONE: permanent memory — see drive_remember.py and shared/drive_memory.py
   (d) photo/file support (dashboard warning lights, receipts — no image
       infrastructure exists in FORGE yet, same call as ATLAS)
 
@@ -44,13 +44,14 @@ from agents.drive.prompt import DRIVE_PROMPT
 from agents.drive import drive_tools
 from agents.drive.drive_extract import extract_and_propose
 from agents.drive.drive_recall import prepare_recall_context, propose_recall_snapshot_note, recall_footer
+from agents.drive.drive_remember import memory_context_block, remember_from_message
 
 # Context for the model: it cannot save anything itself. A model that says
 # "logged!" without a real save is making a false memory (Lesson #3).
 LOGGING_NOTE = (
     "[LOGGING: You cannot save, log or change any record yourself, and you do not know what, "
-    "if anything, the system will offer to log. Never say you have logged, saved or recorded "
-    "anything, and never mention or promise a proposal, an entry or an approval. "
+    "if anything, the system will offer to log. Never say you have logged, saved, recorded or remembered "
+    "anything, and never mention or promise a proposal, an entry, an approval or a memory. "
     "When Joey is only reporting something routine (a fill-up, his mileage, a service that went fine), "
     "react in character in a few sentences; do not speculate about problems he did not mention, "
     "do not recommend a service or a dealership he did not ask about, and do not work out prices, "
@@ -131,6 +132,10 @@ def stream_drive(message: str, history: Optional[list] = None, location: str = "
     if recall_block:
         context_blocks.append(recall_block)
 
+    memory_block = memory_context_block(message)
+    if memory_block:
+        context_blocks.append(memory_block)
+
     full_message = "\n\n".join(context_blocks + [f"Joey says: {message}"])
 
     messages = list(history) if history else []
@@ -155,5 +160,9 @@ def stream_drive(message: str, history: Optional[list] = None, location: str = "
             recall_note = f"I couldn't prepare the offer to save that recall check ({type(e).__name__}: {e}). Nothing was proposed."
         if recall_note:
             notes = list(notes) + [recall_note]
+    try:
+        notes = list(notes) + remember_from_message(message)
+    except Exception as e:
+        notes = list(notes) + [f"I couldn't check that message for anything to remember ({type(e).__name__}: {e}). Nothing was saved."]
     if notes:
         yield "\n\n" + "\n\n".join(notes)

@@ -71,7 +71,11 @@ N._http_get = fake_http
 chat.stream_by_tier = fake_reply
 chat.web_search = lambda q, num_results=3: "Web search results:\n\n1. x"
 chat.extract_and_propose = lambda message: []
+chat.memory_context_block = lambda message: None
+chat.remember_from_message = lambda message: []
 
+chat.memory_context_block = lambda message: None
+chat.remember_from_message = lambda message: []
 
 def fresh():
     d = tempfile.mkdtemp(prefix="drive_recall_test_")

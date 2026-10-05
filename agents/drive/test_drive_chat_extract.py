@@ -78,6 +78,12 @@ def fake_local(system_prompt, user_text, timeout=90.0):
 
 chat.stream_by_tier = fake_reply
 chat.web_search = lambda q, num_results=3: "Web search results:\n\n1. x"
+chat.memory_context_block = lambda message: None
+chat.remember_from_message = lambda message: []
+
+chat.memory_context_block = lambda message: None
+chat.remember_from_message = lambda message: []
+
 X.complete_ollama_json = fake_local
 
 FILLUP_JSON = {"kind": "fillup", "date": "", "gallons": 10, "price_per_gallon": None, "total_cost": 30, "mileage": None}

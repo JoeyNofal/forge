@@ -299,3 +299,24 @@ DRIVE_BRAKE_REMINDER_PHRASES = [
 DRIVE_CARFAX_WORDS = ["carfax", "car fax"]
 # A question about recalls triggers the official NHTSA lookup (see agents/drive/drive_recall.py).
 DRIVE_RECALL_WORDS = ["recall", "recalls", "recalled"]
+
+# ── DRIVE permanent memory (increment (c), Part 2) ──
+# PRE-FILTER only: is there something lasting enough in this message to be worth asking the local model?
+# (A false alarm costs one model call; the model still says "none".) Whole-word matching only.
+DRIVE_MEMORY_SIGNALS = [
+    "i always", "i never", "i usually", "i prefer", "i only", "i like to", "i don't like", "i do not like", "i hate",
+    "i decided", "i've decided", "i have decided", "i'm going to", "i am going to", "i plan to", "i'm planning",
+    "i am planning", "my plan", "my goal", "i want to", "i'd like to", "from now on", "going forward",
+    "remember", "keep in mind", "don't forget", "for the record", "fyi", "note that", "actually", "correction", "i meant",
+]
+# Facts containing these are money (ASSET's) or workouts (ATLAS's): never DRIVE memory. ("$" is checked separately.)
+DRIVE_MEMORY_BLOCK_WORDS = [
+    "dollar", "dollars", "budget", "salary", "loan", "payment", "payments", "paycheck", "income", "savings",
+    "workout", "workouts", "gym", "squat", "deadlift", "bench press", "swim", "laps", "calories", "protein",
+]
+# A fact that reads like a LOGGED EVENT ("Joey changed his oil at 56,000 miles") belongs in the vehicle file, not in
+# memory — unless it also carries a lasting habit/plan word.
+DRIVE_PAST_EVENT_WORDS = ["changed", "replaced", "filled", "topped", "rotated", "flushed", "serviced",
+                          "installed", "fixed", "repaired", "swapped"]
+DRIVE_HABIT_WORDS = ["always", "usually", "never", "every", "prefers", "prefer", "typically", "whenever", "plans",
+                     "planning", "plan", "decided", "wants", "want", "goal", "going", "intends"]

@@ -28,6 +28,12 @@ from shared import pending_actions as pa
 QUEUE = pa.PENDING_ACTIONS_PATH
 VEHICLE = os.environ["VEHICLE_DATA_PATH"]
 _real_http = N._http_get
+chat.memory_context_block = lambda message: None
+chat.remember_from_message = lambda message: []
+
+chat.memory_context_block = lambda message: None
+chat.remember_from_message = lambda message: []
+
 _passed = 0
 _total = 0
 net_calls = []
