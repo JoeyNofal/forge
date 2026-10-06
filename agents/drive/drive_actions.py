@@ -28,6 +28,7 @@ A backdated service at a lower mileage is normal, so it does not warn.
 import os
 
 from agents.drive import drive_logging as log
+from shared import drive_memory
 from agents.drive.drive_tools import get_data_path, load_data, get_active_vehicle
 from shared.pending_actions import (
     create_pending_action, get_pending_action, list_pending_actions,
@@ -47,6 +48,8 @@ TYPE_UPDATE_ISSUES = "update_issues"
 TYPE_ADD_BRAKE_REMINDER = "add_brake_reminder"
 TYPE_LOG_CARFAX = "log_carfax"
 TYPE_SAVE_RECALLS = "save_recall_check"
+TYPE_FORGET_MEMORY = "forget_memory"
+TYPE_FORGET_ALL_MEMORIES = "forget_all_memories"
 
 
 # ─────────────────────────────────────────────
@@ -90,6 +93,10 @@ def describe(action_type: str, d: dict) -> str:
         if action_type == TYPE_SAVE_RECALLS:
             return (f"save this recall check to your vehicle file: NHTSA, {d['model_year']} {d['make']} {d['model']}, "
                     f"{d['count']} recall(s), checked {str(d['fetched_at'])[:10]}")
+        if action_type == TYPE_FORGET_MEMORY:
+            return f"forget this memory: \"{d['text']}\" ({d['category']}, saved {str(d['saved_at'])[:10]})"
+        if action_type == TYPE_FORGET_ALL_MEMORIES:
+            return f"forget ALL {d['count']} memories DRIVE has saved about you"
     except (KeyError, TypeError, ValueError, AttributeError):
         pass
     return f"{action_type}: {d}"
@@ -98,7 +105,8 @@ def describe(action_type: str, d: dict) -> str:
 def _proposal_message(action_id: str, action_type: str, details: dict, warnings=()) -> str:
     lines = [f"Proposed: {describe(action_type, details)}"]
     lines.extend(warnings)
-    lines.append(f"Nothing is saved until you approve. id: {action_id}")
+    verb = "deleted" if action_type in (TYPE_FORGET_MEMORY, TYPE_FORGET_ALL_MEMORIES) else "saved"
+    lines.append(f"Nothing is {verb} until you approve. id: {action_id}")
     return "\n".join(lines)
 
 
@@ -226,6 +234,30 @@ def propose_recall_snapshot(raw) -> tuple:
     return _propose(TYPE_SAVE_RECALLS, clean)
 
 
+def propose_forget_memory(memory) -> tuple:
+    """Offers to delete ONE memory (a dict with at least 'id'). Nothing is deleted until Joey approves."""
+    if not isinstance(memory, dict) or not isinstance(memory.get("id"), str) or not memory["id"].strip():
+        raise ValueError("forget: I need a memory with an id")
+    return _propose(TYPE_FORGET_MEMORY, {
+        "memory_id": memory["id"].strip()[:200],
+        "text": str(memory.get("text") or "")[:500],
+        "category": str(memory.get("category") or "")[:40],
+        "saved_at": str(memory.get("saved_at") or "")[:40],
+    })
+
+
+def propose_forget_all_memories(memories) -> tuple:
+    """
+    Offers to delete EXACTLY these memories (their ids are captured now, so a memory saved after the
+    proposal survives an approval made later).
+    """
+    ids = ([m["id"].strip() for m in memories if isinstance(m, dict) and isinstance(m.get("id"), str) and m["id"].strip()]
+           if isinstance(memories, list) else [])
+    if not ids:
+        raise ValueError("forget all: there are no memories")
+    return _propose(TYPE_FORGET_ALL_MEMORIES, {"ids": ids, "count": len(ids)})
+
+
 def propose_issue_update(raw) -> tuple:
     """
     Checks NOW (read-only) that the issue exists and is still unresolved, so you
@@ -340,6 +372,19 @@ def approve_and_execute(action_id: str) -> str:
             if not ok:
                 finalize_action(real_id, "failed", result)
                 return result
+        elif t == TYPE_FORGET_MEMORY:
+            if not drive_memory.delete_memory(d["memory_id"]):
+                result = "That memory is already gone, so nothing was deleted."
+                finalize_action(real_id, "failed", result)
+                return result
+            result = f"Forgotten: \"{d['text']}\""
+        elif t == TYPE_FORGET_ALL_MEMORIES:
+            deleted = drive_memory.delete_memories(d["ids"])
+            if deleted == 0:
+                result = "Those memories are already gone, so nothing was deleted."
+                finalize_action(real_id, "failed", result)
+                return result
+            result = f"Forgot {deleted} memor{'y' if deleted == 1 else 'ies'}."
         else:
             result = f"Unknown action type: {t}"
             finalize_action(real_id, "failed", result)

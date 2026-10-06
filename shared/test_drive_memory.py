@@ -415,6 +415,41 @@ def _():
     assert dm.memory_count() == 2
 
 
+@check("L2 delete_memories removes only the ids that exist and returns the true count; junk and repeats are ignored")
+def _():
+    fresh()
+    ids = [dm.save_memory("preference", f"unique statement {n} about subject{n}")["id"] for n in range(4)]
+    assert dm.delete_memories([ids[0], ids[1], ids[1], None, 5, "", "nope", "x" * 500]) == 2
+    assert dm.memory_count() == 2 and dm.delete_memories([ids[0], ids[1]]) == 0
+    for bad in (None, "abc", 5, {}, ids[2]):
+        assert dm.delete_memories(bad) == 0, bad                      # type: ignore[arg-type]
+    assert dm.memory_count() == 2
+
+
+@check("L2 delete_memories handles more ids than a database query can carry (chunked)")
+def _():
+    fresh()
+    real = [dm.save_memory("preference", f"unique statement {n} about subject{n}")["id"] for n in range(2)]
+    many = [f"missing-{n}" for n in range(1200)] + real
+    assert dm.delete_memories(many) == 2 and dm.memory_count() == 0
+
+
+@check("L4 10 threads deleting the same 5 memories at once: exactly 5 deletions are counted in total")
+def _():
+    fresh()
+    ids = [dm.save_memory("preference", f"unique statement {n} about subject{n}")["id"] for n in range(5)]
+    counts, lock = [], threading.Lock()
+
+    def go():
+        n = dm.delete_memories(list(ids))
+        with lock:
+            counts.append(n)
+
+    threads = [threading.Thread(target=go) for _n in range(10)]
+    [x.start() for x in threads]; [x.join() for x in threads]
+    assert sum(counts) == 5 and dm.memory_count() == 0
+
+
 passed = sum(1 for n, ok, err in _results if ok)
 print(f"\n{passed}/{len(_results)} passed")
 for n, ok, err in _results:

@@ -45,6 +45,7 @@ from agents.drive import drive_tools
 from agents.drive.drive_extract import extract_and_propose
 from agents.drive.drive_recall import prepare_recall_context, propose_recall_snapshot_note, recall_footer
 from agents.drive.drive_remember import memory_context_block, remember_from_message
+from agents.drive.drive_memory_commands import detect_memory_command, handle_memory_command
 
 # Context for the model: it cannot save anything itself. A model that says
 # "logged!" without a real save is making a false memory (Lesson #3).
@@ -55,7 +56,8 @@ LOGGING_NOTE = (
     "When Joey is only reporting something routine (a fill-up, his mileage, a service that went fine), "
     "react in character in a few sentences; do not speculate about problems he did not mention, "
     "do not recommend a service or a dealership he did not ask about, and do not work out prices, "
-    "per-gallon figures or other numbers yourself. Just respond to what Joey said.]"
+    "per-gallon figures or other numbers yourself. Never invent what other people said, forum posts, sources, "
+    "or claims about brands. Just respond to what Joey said.]"
 )
 
 # DRIVE's own line, straight from its prompt — not a generic refusal.
@@ -99,6 +101,13 @@ def stream_drive(message: str, history: Optional[list] = None, location: str = "
     history: list of {"role": "user"|"assistant", "content": str}, or None
     Yields text chunks. The caller owns conversation-history persistence.
     """
+    # "What do you remember?" / "forget ..." are about DRIVE itself, not a topic: handled first, with NO model call,
+    # and they never save or recall anything. (A forget is only ever a proposal Joey approves.)
+    command = detect_memory_command(message)
+    if command is not None:
+        yield handle_memory_command(command)
+        return
+
     if should_refuse(message, DRIVE_NON_TOPIC, DRIVE_INTENT):
         yield REFUSAL_MESSAGE
         return

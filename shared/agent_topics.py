@@ -316,6 +316,12 @@ DRIVE_MEMORY_BLOCK_WORDS = [
 ]
 # A fact that reads like a LOGGED EVENT ("Joey changed his oil at 56,000 miles") belongs in the vehicle file, not in
 # memory — unless it also carries a lasting habit/plan word.
+# Asking DRIVE to SHOW its memory (answered with no model call; see agents/drive/drive_memory_commands.py).
+DRIVE_MEMORY_LIST_PHRASES = [
+    "what do you remember", "what do you know about me", "what have i told you", "what did i tell you",
+    "what's in your memory", "what is in your memory", "show me your memory", "show your memory",
+    "list your memories", "list my memories", "show me what you remember",
+]
 DRIVE_PAST_EVENT_WORDS = ["changed", "replaced", "filled", "topped", "rotated", "flushed", "serviced",
                           "installed", "fixed", "repaired", "swapped"]
 DRIVE_HABIT_WORDS = ["always", "usually", "never", "every", "prefers", "prefer", "typically", "whenever", "plans",

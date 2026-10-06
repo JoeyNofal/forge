@@ -226,3 +226,28 @@ def delete_memory(memory_id) -> bool:
 
 def memory_count() -> int:
     return _get_collection().count()
+
+
+
+def delete_memories(memory_ids) -> int:
+    """
+    Deletes the listed memories that STILL EXIST and returns how many were actually deleted (0 for junk).
+    Used by 'forget everything', which deletes exactly the ids captured when it was proposed, so a memory
+    saved afterwards survives. Under the write lock, so two simultaneous deletions can't both count the same ones.
+    """
+    if not isinstance(memory_ids, list):
+        return 0
+    wanted = list(dict.fromkeys(
+        i.strip() for i in memory_ids if isinstance(i, str) and i.strip() and len(i) <= 200))
+    if not wanted:
+        return 0
+    deleted = 0
+    with _write_lock:
+        collection = _get_collection()
+        for start in range(0, len(wanted), 500):           # chunks: databases limit how many ids one query may carry
+            chunk = wanted[start:start + 500]
+            present = list(collection.get(ids=chunk).get("ids") or [])
+            if present:
+                collection.delete(ids=present)
+                deleted += len(present)
+    return deleted
