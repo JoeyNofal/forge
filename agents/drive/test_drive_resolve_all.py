@@ -99,12 +99,13 @@ def _function_source(src, name):
 
 # ───────────────────────── L1 — STATIC ─────────────────────────
 
-@check("L1 proposing a bulk resolve never writes; only approve_and_execute calls the bulk writer")
+@check("L1 proposing a bulk resolve never writes; only the _run_issues_update handler (called only by the shared gate) calls the bulk writer")
 def _():
     assert "update_issues_status" not in _function_source(_act_src, "propose_issues_update")
     callers = [fn for fn in re.findall(r"^def (\w+)\(", _act_src, re.M)
                if "log.update_issues_status" in _function_source(_act_src, fn)]
-    assert callers == ["approve_and_execute"], callers
+    assert callers == ["_run_issues_update"], callers
+    assert "update_issues_status" not in _function_source(_act_src, "approve_and_execute")
 
 
 @check("L1 the bulk writer is built on the locked helper")

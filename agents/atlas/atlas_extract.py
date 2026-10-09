@@ -17,7 +17,6 @@ Every failure (Ollama down, timeout, junk JSON, data the validators reject) is
 turned into ONE plain sentence for Joey. Nothing is guessed, nothing is
 silently dropped (Lesson #12).
 """
-import json
 import re
 from datetime import datetime
 from typing import Optional
@@ -29,6 +28,8 @@ from shared.agent_topics import (
 )
 from shared.model_client import complete_ollama_json
 from agents.atlas import atlas_actions
+from agents.atlas import atlas_logging as log
+from shared.model_json import ExtractionError, model_call_failed, parse_model_json
 
 MAX_INPUT_CHARS = 4000       # only the first part of a huge message goes to the model
 MAX_PROPOSALS = 3            # per message
@@ -39,8 +40,7 @@ KIND_INJURY_UPDATE = "injury_update"
 _LABELS = {KIND_WORKOUT: "workout", KIND_INJURY: "injury", KIND_INJURY_UPDATE: "injury update"}
 
 
-class ExtractionError(Exception):
-    """The local model call failed or its answer wasn't usable JSON."""
+# ExtractionError, model_call_failed and parse_model_json live in shared/model_json.py (imported above).
 
 
 # ─────────────────────────────────────────────
@@ -85,17 +85,17 @@ Task: Joey may be reporting a workout he ALREADY did.
 
 Gym workout — reply in exactly this shape:
 {"kind": "gym", "date": "", "duration_minutes": null, "difficulty": null,
- "exercises": [{"name": "bench press", "sets": 3, "reps": 8, "weight_lbs": 135, "notes": ""}],
+ "exercises": [{"name": "bench press", "sets": 3, "reps": 8, "weight": 135, "weight_unit": "lbs", "notes": ""}],
  "form_notes": "", "weaknesses": "", "coach_notes": ""}
 - "exercises" MUST be a list of OBJECTS exactly like the example. Never a list of plain strings.
-- If weights are in kg, convert to pounds (1 kg = 2.205 lbs).
+- weight is the number EXACTLY as Joey said it. NEVER convert it and NEVER do any arithmetic. weight_unit is "lbs" or "kg" ONLY if Joey wrote the unit (lb, lbs, pounds, kg, kilos). If he gave no unit, weight_unit is an empty string "". If no weight is stated, weight is null and weight_unit is "".
 - difficulty is 1 to 10, only if Joey said how hard it was.
 - form_notes, weaknesses and coach_notes stay EMPTY unless Joey explicitly wrote form feedback, a weakness, or a note. Soreness or pain is NOT a weakness; ignore it here (it is logged separately).
 
 Swim workout — reply in exactly this shape:
-{"kind": "swim", "date": "", "total_distance_yards": 2000, "duration_minutes": 45, "strokes": ["freestyle"],
+{"kind": "swim", "date": "", "total_distance": 2000, "distance_unit": "yards", "duration_minutes": 45, "strokes": ["freestyle"],
  "sets": ["4x100 kick"], "difficulty": null, "form_notes": "", "weaknesses": "", "coach_notes": ""}
-- Distances in yards. If Joey gave meters, convert (1 m = 1.094 yards).
+- total_distance is the number EXACTLY as Joey said it. NEVER convert it. distance_unit is "yards" or "meters" ONLY if Joey wrote the unit (yards, yds, meters, m). If he gave no unit, distance_unit is an empty string "". If no distance is stated, total_distance is null.
 
 Not a workout report: {"kind": "none"}
 """
@@ -128,21 +128,43 @@ _PROMPTS = {KIND_WORKOUT: WORKOUT_PROMPT, KIND_INJURY: INJURY_PROMPT, KIND_INJUR
 # SECTION 3 — CALLING THE LOCAL MODEL
 # ─────────────────────────────────────────────
 
-def _parse_model_json(text) -> dict:
-    """Model text -> dict, or ExtractionError. Tolerates ```json fences; nothing else."""
-    if not isinstance(text, str) or not text.strip():
-        raise ExtractionError("the local model returned nothing")
-    cleaned = text.strip()
-    fenced = re.match(r"^```(?:json)?\s*(.*?)\s*```$", cleaned, re.S | re.I)
-    if fenced:
-        cleaned = fenced.group(1)
-    try:
-        data = json.loads(cleaned)
-    except json.JSONDecodeError as e:
-        raise ExtractionError(f"the local model's answer wasn't valid JSON ({e.msg})") from e
-    if not isinstance(data, dict):
-        raise ExtractionError(f"expected a JSON object, got {type(data).__name__}")
-    return data
+# (parsing the model's JSON answer: shared/model_json.py)
+
+
+# A unit the model reports is only trusted if Joey's own words contain a word of that
+# unit family. Letter look-arounds (not \b) so "50kg" and "135lbs" still count; the
+# single letter "m" only counts right after a digit, so "I'm" and "30 minutes" never do.
+_UNIT_WORDS = {
+    "lbs": re.compile(r"(?<![a-z])(?:lbs?|pounds?)(?![a-z])", re.I),
+    "kg": re.compile(r"(?<![a-z])(?:kgs?|kilos?|kilograms?)(?![a-z])", re.I),
+    "yards": re.compile(r"(?<![a-z])(?:yds?|yards?)(?![a-z])", re.I),
+    "meters": re.compile(r"(?:(?<=\d)\s?m|(?<![a-z])(?:meters?|metres?))(?![a-z])", re.I),
+}
+
+
+def _enforce_stated_units(data: dict, message: str) -> None:
+    """
+    The real local model copied "lbs" from the example shape (and could just as well
+    guess "kg"). Python enforces the rule instead: a reported unit survives only if
+    Joey actually wrote a word of that family; otherwise it is blanked, so the number
+    is treated as unitless and flagged "(unit assumed)". Mutates data; never raises
+    on junk shapes.
+    """
+    kind = data.get("kind")
+    if kind == "gym":
+        items, key = data.get("exercises"), "weight_unit"
+    elif kind == "swim":
+        items, key = [data], "distance_unit"
+    else:
+        return
+    if not isinstance(items, list):
+        return
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        family = log.unit_family(item.get(key))
+        if family and not _UNIT_WORDS[family].search(message):
+            item[key] = ""
 
 
 def _extract(kind: str, message: str, today: str) -> dict:
@@ -150,8 +172,8 @@ def _extract(kind: str, message: str, today: str) -> dict:
     try:
         raw_text = complete_ollama_json(prompt, message[:MAX_INPUT_CHARS])
     except Exception as e:       # Ollama down, timeout, bad response — surfaced, never swallowed
-        raise ExtractionError(f"the local model call failed ({type(e).__name__}: {e})") from e
-    return _parse_model_json(raw_text)
+        raise model_call_failed(e) from e
+    return parse_model_json(raw_text)
 
 
 # ─────────────────────────────────────────────
@@ -164,6 +186,7 @@ def _handle(kind: str, message: str, today: str) -> Optional[str]:
     found = data.get("kind")
     if found == "none":
         return None
+    _enforce_stated_units(data, message)
     if kind == KIND_WORKOUT:
         if found == "gym":
             return atlas_actions.propose_gym(data)[1]

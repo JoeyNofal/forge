@@ -201,7 +201,7 @@ def _():
     assert "log.save_recall_snapshot" not in _function_source(ASRC, "propose_recall_snapshot")
     callers = [fn for fn in re.findall(r"^def (\w+)\(", ASRC, re.M)
               if "log.save_recall_snapshot" in _function_source(ASRC, fn)]
-    assert callers == ["approve_and_execute"], callers
+    assert callers == ["_run_recall_snapshot"], callers
 
 
 @check("L1 the recall trigger words live in shared/agent_topics")

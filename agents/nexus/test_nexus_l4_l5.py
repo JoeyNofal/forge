@@ -208,7 +208,7 @@ stress_response = "\n".join([
     "TRACK_TASK: a | b | c | done | note",
 ])
 try:
-    cleaned = chat.strip_unexecuted_action_markers(stress_response)
+    cleaned = chat.strip_unexecuted_action_markers(chat.strip_bridge_markers(stress_response))
     all_markers = ["OPEN_APP:", "SET_REMINDER:", "SEARCH_WEB:", "LIST_REMINDERS",
                    "LIST_FOLDER:", "READ_FILE:", "ASK_CIPHER:", "ASK_ASSET:",
                    "ASK_ATLAS:", "ASK_DRIVE:", "ASK_STOCK:", "ASK_FLAME:",

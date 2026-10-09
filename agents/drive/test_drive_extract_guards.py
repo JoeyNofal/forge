@@ -91,6 +91,8 @@ def kind_of(prompt):
         return "issue"
     if "saying that a problem with his car is fixed or gone" in prompt:
         return "issue_update"
+    if "ONE service record from a Carfax vehicle history report" in prompt:
+        return "carfax"
     raise AssertionError("unknown prompt")
 
 
@@ -306,6 +308,49 @@ def _():
     X.extract_and_propose("got an oil change at 56,000 miles for $65 at the dealership")
     det = queue_actions()[0]["details"]
     assert det["shop"] is None and det["performed_by"] == "shop" and det["cost"] == 65 and det["mileage"] == 56000
+    shutil.rmtree(d)
+
+
+@check("L1 both the service and Carfax handlers pass their notes through the percent guard")
+def _():
+    with open(X.__file__, encoding="utf-8") as f:
+        src = f.read()
+    assert "propose_maintenance(_without_percent_notes(data))" in src
+    assert "propose_carfax(_without_percent_notes(data))" in src
+
+
+@check("L2 _without_percent_notes: drops notes with a % (any type), keeps everything else, never mutates the original")
+def _():
+    original = {"notes": "50% worn", "cost": 5}
+    out = X._without_percent_notes(original)
+    assert out == {"notes": "", "cost": 5} and original["notes"] == "50% worn"
+    assert X._without_percent_notes({"notes": "full width ％"})["notes"] == ""
+    assert X._without_percent_notes({"notes": ["50%"]})["notes"] == ""
+    for same in ({"notes": "used OEM pads"}, {"notes": ""}, {}, {"notes": None}, {"notes": 5}):
+        assert X._without_percent_notes(same) is same, same
+
+
+@check("L2 the real-model leak: '100%' copied into the service notes is dropped; a real work note is kept")
+def _():
+    path, d = fresh()
+    answers["maintenance"] = {"kind": "maintenance", "service_type": "brake_replacement", "notes": "it's at a 100%"}
+    X.extract_and_propose("got the brakes replaced. i services my vehicle and it's at a 100%")
+    assert queue_actions()[0]["details"]["notes"] == ""
+    shutil.rmtree(d)
+    path, d = fresh()
+    answers["maintenance"] = {"kind": "maintenance", "service_type": "brake_replacement", "notes": "used OEM pads"}
+    X.extract_and_propose("got the brakes replaced, used OEM pads")
+    assert queue_actions()[0]["details"]["notes"] == "used OEM pads"
+    shutil.rmtree(d)
+
+
+@check("L2 the same guard protects Carfax entries")
+def _():
+    path, d = fresh()
+    answers["carfax"] = {"kind": "carfax", "service_type": "brake_replacement", "date": "2022-06-10", "notes": "100% inspected"}
+    X.extract_and_propose("carfax shows the brakes were replaced on 2022-06-10")
+    carfax = [a for a in queue_actions() if a["type"] == "log_carfax"]
+    assert len(carfax) == 1 and carfax[0]["details"]["notes"] == ""
     shutil.rmtree(d)
 
 

@@ -10,13 +10,19 @@ until you approve.
                              queue, returns (action_id, plain-English summary).
                              ZERO effect on the vehicle file (it doesn't even
                              create it).
-    approve_and_execute() -> the ONLY function here that writes. Claims the
-                             action atomically first, so two near-simultaneous
-                             approvals of the same action can never both save.
+    approve_and_execute() -> the ONLY way anything gets written. The atomic
+                             claim (two near-simultaneous approvals of the
+                             same action can never both save) lives in the ONE
+                             shared gate, shared/action_gate.py, not in a
+                             private copy here.
     deny_action()         -> throws the proposal away.
 
-Same pattern as agents/atlas/atlas_actions.py, using the same generic queue
-(shared/pending_actions.py). All the real writing lives in drive_logging.py.
+Consolidation (Lesson #9): the find-by-id / claim / run-once / record-outcome
+logic used to be copy-pasted here and in ATLAS. It now lives once in
+shared/action_gate.py (its own full L1-L5 tests). This file only supplies what
+is truly DRIVE's: the summaries, the read-only checks used while proposing, and
+the table of which writer each action type runs. All the real writing lives in
+drive_logging.py (and drive_memory for the "forget" actions).
 You may approve or deny with the full id or any unique start of it (6+
 characters) — the ids are long and you'll be typing them.
 
@@ -30,13 +36,9 @@ import os
 from agents.drive import drive_logging as log
 from shared import drive_memory
 from agents.drive.drive_tools import get_data_path, load_data, get_active_vehicle
-from shared.pending_actions import (
-    create_pending_action, get_pending_action, list_pending_actions,
-    claim_action, finalize_action, resolve_action,
-)
+from shared.action_gate import ActionGate
 
 AGENT_NAME = "drive"
-MIN_ID_PREFIX = 6
 MAX_JUMP_WARNING_MILES = 5000
 
 TYPE_LOG_MILEAGE = "log_mileage"
@@ -181,7 +183,7 @@ def _last_nhtsa_snapshot_readonly():
 # ─────────────────────────────────────────────
 
 def _propose(action_type: str, clean: dict, warnings=()) -> tuple:
-    action_id = create_pending_action(AGENT_NAME, action_type, clean)
+    action_id = _gate.propose(action_type, clean)
     return action_id, _proposal_message(action_id, action_type, clean, warnings)
 
 
@@ -295,123 +297,99 @@ def propose_issues_update(raw) -> tuple:
 
 
 # ─────────────────────────────────────────────
-# SECTION 4 — FINDING AN ACTION BY (PART OF) ITS ID
+# SECTION 4 — WHAT EACH APPROVED ACTION ACTUALLY RUNS
+# Only the shared gate ever calls these, and only after it has atomically
+# claimed the action. Each returns (ok, message): ok=False is a clean refusal
+# that the gate records as failed (never dressed up as a success, Lesson #12).
 # ─────────────────────────────────────────────
 
-def _find_action(action_id: str):
-    """Returns (action, None) or (None, error message). Only DRIVE's own actions."""
-    if not isinstance(action_id, str) or not action_id.strip():
-        return None, "No action id given."
-    action_id = action_id.strip()
-    action = get_pending_action(action_id)
-    if action is not None:
-        if action["agent"] != AGENT_NAME:
-            return None, f"Action {action_id} doesn't belong to DRIVE."
-        return action, None
-    if len(action_id) >= MIN_ID_PREFIX:
-        matches = [a for a in list_pending_actions(AGENT_NAME) if a["id"].startswith(action_id)]
-        if len(matches) == 1:
-            return matches[0], None
-        if len(matches) > 1:
-            return None, f"'{action_id}' matches more than one pending action — type more of the id."
-    return None, f"No pending action found with id {action_id}."
+def _run_mileage(d: dict) -> tuple:
+    return True, log.log_mileage(d)
+
+
+def _run_maintenance(d: dict) -> tuple:
+    return True, log.log_maintenance(d)
+
+
+def _run_fillup(d: dict) -> tuple:
+    return True, log.log_fillup(d)
+
+
+def _run_issue(d: dict) -> tuple:
+    return True, log.log_issue(d)
+
+
+def _run_issue_update(d: dict) -> tuple:
+    ok, result = log.update_issue_status(d)
+    return bool(ok), result
+
+
+def _run_issues_update(d: dict) -> tuple:
+    ok, result = log.update_issues_status(d)
+    return bool(ok), result
+
+
+def _run_brake_reminder(d: dict) -> tuple:
+    ok, result = log.log_brake_reminder()
+    return bool(ok), result
+
+
+def _run_carfax(d: dict) -> tuple:
+    ok, result = log.log_carfax_entry(d)
+    return bool(ok), result
+
+
+def _run_recall_snapshot(d: dict) -> tuple:
+    ok, result = log.save_recall_snapshot(d)
+    return bool(ok), result
+
+
+def _run_forget_memory(d: dict) -> tuple:
+    if not drive_memory.delete_memory(d["memory_id"]):
+        return False, "That memory is already gone, so nothing was deleted."
+    return True, f"Forgotten: \"{d['text']}\""
+
+
+def _run_forget_all_memories(d: dict) -> tuple:
+    deleted = drive_memory.delete_memories(d["ids"])
+    if deleted == 0:
+        return False, "Those memories are already gone, so nothing was deleted."
+    return True, f"Forgot {deleted} memor{'y' if deleted == 1 else 'ies'}."
+
+
+_gate = ActionGate(
+    AGENT_NAME,
+    "DRIVE",
+    describe,
+    {
+        TYPE_LOG_MILEAGE: _run_mileage,
+        TYPE_LOG_MAINTENANCE: _run_maintenance,
+        TYPE_LOG_FILLUP: _run_fillup,
+        TYPE_LOG_ISSUE: _run_issue,
+        TYPE_UPDATE_ISSUE: _run_issue_update,
+        TYPE_UPDATE_ISSUES: _run_issues_update,
+        TYPE_ADD_BRAKE_REMINDER: _run_brake_reminder,
+        TYPE_LOG_CARFAX: _run_carfax,
+        TYPE_SAVE_RECALLS: _run_recall_snapshot,
+        TYPE_FORGET_MEMORY: _run_forget_memory,
+        TYPE_FORGET_ALL_MEMORIES: _run_forget_all_memories,
+    },
+)
 
 
 # ─────────────────────────────────────────────
-# SECTION 5 — APPROVING / DENYING
+# SECTION 5 — APPROVING / DENYING (thin wrappers over the shared gate)
 # ─────────────────────────────────────────────
 
 def approve_and_execute(action_id: str) -> str:
-    """
-    The ONLY function here that actually writes to the vehicle file. Claims the
-    action atomically first (so it can never save twice), saves, and reports the
-    real outcome. A failure is reported clearly and recorded as failed — never
-    dressed up as a success (Lesson #12).
-    """
-    action, err = _find_action(action_id)
-    if action is None:
-        return err or "Action not found."
-    real_id = action["id"]
-    if action["status"] != "pending":
-        return f"Action {real_id} was already {action['status']}, not executing again."
-    if not claim_action(real_id):
-        return f"Action {real_id} was already claimed by another approval, not executing again."
-
-    try:
-        t, d = action["type"], action["details"]
-        if t == TYPE_LOG_MILEAGE:
-            result = log.log_mileage(d)
-        elif t == TYPE_LOG_MAINTENANCE:
-            result = log.log_maintenance(d)
-        elif t == TYPE_LOG_FILLUP:
-            result = log.log_fillup(d)
-        elif t == TYPE_LOG_ISSUE:
-            result = log.log_issue(d)
-        elif t == TYPE_UPDATE_ISSUE:
-            ok, result = log.update_issue_status(d)
-            if not ok:
-                finalize_action(real_id, "failed", result)
-                return result
-        elif t == TYPE_UPDATE_ISSUES:
-            ok, result = log.update_issues_status(d)
-            if not ok:
-                finalize_action(real_id, "failed", result)
-                return result
-        elif t == TYPE_ADD_BRAKE_REMINDER:
-            ok, result = log.log_brake_reminder()
-            if not ok:
-                finalize_action(real_id, "failed", result)
-                return result
-        elif t == TYPE_LOG_CARFAX:
-            ok, result = log.log_carfax_entry(d)
-            if not ok:
-                finalize_action(real_id, "failed", result)
-                return result
-        elif t == TYPE_SAVE_RECALLS:
-            ok, result = log.save_recall_snapshot(d)
-            if not ok:
-                finalize_action(real_id, "failed", result)
-                return result
-        elif t == TYPE_FORGET_MEMORY:
-            if not drive_memory.delete_memory(d["memory_id"]):
-                result = "That memory is already gone, so nothing was deleted."
-                finalize_action(real_id, "failed", result)
-                return result
-            result = f"Forgotten: \"{d['text']}\""
-        elif t == TYPE_FORGET_ALL_MEMORIES:
-            deleted = drive_memory.delete_memories(d["ids"])
-            if deleted == 0:
-                result = "Those memories are already gone, so nothing was deleted."
-                finalize_action(real_id, "failed", result)
-                return result
-            result = f"Forgot {deleted} memor{'y' if deleted == 1 else 'ies'}."
-        else:
-            result = f"Unknown action type: {t}"
-            finalize_action(real_id, "failed", result)
-            return result
-        finalize_action(real_id, "executed", result)
-        return result
-    except Exception as e:
-        error_result = f"Execution failed: {type(e).__name__}: {e}"
-        finalize_action(real_id, "failed", error_result)
-        return error_result
+    """Claims the action atomically, saves, reports the real outcome. See shared/action_gate.py."""
+    return _gate.approve_and_execute(action_id)
 
 
 def deny_action(action_id: str) -> str:
-    action, err = _find_action(action_id)
-    if action is None:
-        return err or "Action not found."
-    real_id = action["id"]
-    if action["status"] != "pending":
-        return f"Action {real_id} was already {action['status']}."
-    if not resolve_action(real_id, "denied"):
-        return f"Action {real_id} was already resolved by someone else."
-    return f"Denied: {describe(action['type'], action['details'])}"
+    return _gate.deny_action(action_id)
 
 
 def list_pending() -> str:
     """Everything of DRIVE's still waiting for approval, one per line."""
-    actions = list_pending_actions(AGENT_NAME)
-    if not actions:
-        return "Nothing waiting for approval."
-    return "\n".join(f"{a['id']}  {describe(a['type'], a['details'])}" for a in actions)
+    return _gate.list_pending()

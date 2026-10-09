@@ -26,7 +26,7 @@ from shared.agent_topics import (
 )
 from shared.memory_context import format_memory_context
 from shared.model_client import complete_ollama_json
-from agents.drive import drive_extract
+from shared.model_json import ExtractionError, model_call_failed, parse_model_json
 
 MAX_MEMORIES_PER_MESSAGE = 3
 MAX_INPUT_CHARS = 4000
@@ -86,15 +86,15 @@ def extract_memories(message: str) -> list:
     try:
         raw = complete_ollama_json(MEMORY_PROMPT, message[:MAX_INPUT_CHARS])
     except Exception as e:                  # model down, timeout... surfaced as a note, never swallowed
-        raise drive_extract.ExtractionError(f"the local model call failed ({type(e).__name__}: {e})") from e
-    data = drive_extract._parse_model_json(raw)
+        raise model_call_failed(e) from e
+    data = parse_model_json(raw)
     kind = data.get("kind")
     if kind == "none":
         return []
     if kind == "memory":
         items = data.get("memories")
         if not isinstance(items, list):
-            raise drive_extract.ExtractionError("the answer had no list of memories")
+            raise ExtractionError("the answer had no list of memories")
     elif isinstance(kind, str) and kind in drive_memory.DRIVE_MEMORY_CATEGORIES:
         # The real local model sometimes writes the CATEGORY into "kind". Use ONLY what it actually provided.
         items = data.get("memories")
@@ -103,9 +103,9 @@ def extract_memories(message: str) -> list:
         elif "fact" in data:
             items = [{"category": kind, "fact": data.get("fact")}]
         else:
-            raise drive_extract.ExtractionError(f"unexpected answer type {kind!r}")
+            raise ExtractionError(f"unexpected answer type {kind!r}")
     else:
-        raise drive_extract.ExtractionError(f"unexpected answer type {kind!r}")
+        raise ExtractionError(f"unexpected answer type {kind!r}")
     kept = []
     for item in items:
         if not isinstance(item, dict):
@@ -129,7 +129,7 @@ def remember_from_message(message) -> list:
     """
     try:
         facts = extract_memories(message)
-    except (drive_extract.ExtractionError, ValueError, RuntimeError, OSError) as e:
+    except (ExtractionError, ValueError, RuntimeError, OSError) as e:
         return [f"I couldn't check that message for anything to remember ({e}). Nothing was saved."]
     notes = []
     for item in facts[:MAX_MEMORIES_PER_MESSAGE]:

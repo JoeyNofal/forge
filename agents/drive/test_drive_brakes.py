@@ -151,7 +151,7 @@ def _():
         assert "log.log_" not in body and "update_issue" not in body, fn
     callers = [fn for fn in re.findall(r"^def (\w+)\(", ASRC, re.M)
                if "log.log_brake_reminder" in _function_source(ASRC, fn)]
-    assert callers == ["approve_and_execute"], callers
+    assert callers == ["_run_brake_reminder"], callers
 
 
 @check("L1 the reminder command is answered BEFORE any local-model call")

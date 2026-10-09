@@ -148,7 +148,7 @@ def _():
     assert "log.log_" not in _function_source(ASRC, "propose_carfax")
     callers = [fn for fn in re.findall(r"^def (\w+)\(", ASRC, re.M)
                if "log.log_carfax_entry" in _function_source(ASRC, fn)]
-    assert callers == ["approve_and_execute"], callers
+    assert callers == ["_run_carfax"], callers
 
 
 @check("L1 the Carfax prompt spells out an exact shape, refuses today's/relative dates, and the trigger words live in shared/agent_topics")

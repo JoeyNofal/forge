@@ -2,32 +2,41 @@
 CIPHER's real, permission-gated actions: creating files and running
 commands. Per Decision: these two are the ONLY things that ever pause
 for Joey's approval — a plain question to CIPHER, even routed through
-NEXUS's future bridge, never pauses for anything.
+NEXUS's bridge, never pauses for anything.
 
 propose_* functions are called from chat.py the moment CIPHER's own
 response contains a SAVE_FILE or RUN_COMMAND marker — they create a
 pending action and return immediately; NOTHING real happens yet.
-approve_and_execute() is the only function that actually touches disk
-or runs a real process, and only once Joey has said yes.
+approve_and_execute() is the only way anything touches disk or runs a
+real process, and only once Joey has said yes.
+
+Consolidation (Lesson #9): the find-by-id / atomic claim / run-once /
+record-the-real-outcome logic used to be a private copy here. It now lives
+once in shared/action_gate.py (the same gate ATLAS and DRIVE use, with its own
+full L1-L5 tests). This file only supplies what is truly CIPHER's: the two
+real actions and the table of which one each action type runs.
+
+You may approve or deny with the full id or any unique start of it (6+ characters).
 """
 import os
 import subprocess
 
-from shared.pending_actions import create_pending_action, get_pending_action, claim_action, finalize_action, resolve_action
+from shared.action_gate import ActionGate
 
 AGENT_NAME = "cipher"
 
-
-def propose_create_file(path: str, content: str) -> tuple[str, str]:
-    """Returns (action_id, a short human-readable description)."""
-    action_id = create_pending_action(AGENT_NAME, "create_file", {"path": path, "content": content})
-    return action_id, f"create {path}"
+TYPE_CREATE_FILE = "create_file"
+TYPE_RUN_COMMAND = "run_command"
 
 
-def propose_run_command(command: str) -> tuple[str, str]:
-    action_id = create_pending_action(AGENT_NAME, "run_command", {"command": command})
-    return action_id, f"run: {command}"
+def describe(action_type: str, details) -> str:
+    """One readable line for a proposal / denial (same wording CIPHER always used)."""
+    return f"{action_type} ({details})"
 
+
+# ─────────────────────────────────────────────
+# THE TWO REAL ACTIONS (only the handlers below ever call these)
+# ─────────────────────────────────────────────
 
 def _real_create_file(path: str, content: str) -> str:
     os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
@@ -36,60 +45,74 @@ def _real_create_file(path: str, content: str) -> str:
     return f"Created {path} ({len(content)} chars)."
 
 
-def _real_run_command(command: str, timeout: int = 30) -> str:
+def _real_run_command(command: str, timeout: int = 30) -> tuple:
+    """Runs a real command. Returns (exit code, combined output). A timeout raises, as it always did."""
     result = subprocess.run(
         command, shell=True, capture_output=True, text=True, timeout=timeout
     )
-    output = (result.stdout or "") + (result.stderr or "")
-    return output.strip() or f"(command exited {result.returncode}, no output)"
+    return result.returncode, ((result.stdout or "") + (result.stderr or "")).strip()
 
+
+# ─────────────────────────────────────────────
+# WHAT EACH APPROVED ACTION RUNS (called only by the shared gate, after it has
+# atomically claimed the action). Each returns (ok, message).
+# ─────────────────────────────────────────────
+
+def _run_create_file(d: dict) -> tuple:
+    return True, _real_create_file(d["path"], d["content"])
+
+
+def _run_command(d: dict) -> tuple:
+    code, output = _real_run_command(d["command"])
+    if code != 0:
+        # Lesson #12: a command that failed is recorded as FAILED, never as a success.
+        return False, f"Command failed (exit code {code}): {output or 'no output'}"
+    return True, output or "(command exited 0, no output)"
+
+
+_gate = ActionGate(
+    AGENT_NAME,
+    "CIPHER",
+    describe,
+    {
+        TYPE_CREATE_FILE: _run_create_file,
+        TYPE_RUN_COMMAND: _run_command,
+    },
+)
+
+
+# ─────────────────────────────────────────────
+# PROPOSING (nothing real happens)
+# ─────────────────────────────────────────────
+
+def propose_create_file(path: str, content: str) -> tuple:
+    """Returns (action_id, a short human-readable description)."""
+    action_id = _gate.propose(TYPE_CREATE_FILE, {"path": path, "content": content})
+    return action_id, f"create {path}"
+
+
+def propose_run_command(command: str) -> tuple:
+    action_id = _gate.propose(TYPE_RUN_COMMAND, {"command": command})
+    return action_id, f"run: {command}"
+
+
+# ─────────────────────────────────────────────
+# APPROVING / DENYING (thin wrappers over the shared gate)
+# ─────────────────────────────────────────────
 
 def approve_and_execute(action_id: str) -> str:
     """
-    The ONLY function that actually touches disk or runs a process.
-    Looks up the pending action, ATOMICALLY claims it (so two
-    near-simultaneous approvals of the same action can never both
-    execute for real), then executes it and returns a plain-English
-    result to show Joey. A real execution failure is reported back
-    clearly (Lesson #12: fail loudly), never silently swallowed as a
-    fake success.
+    The ONLY way anything touches disk or runs a process. The shared gate atomically
+    claims the action (so two near-simultaneous approvals can never both execute),
+    runs it, and records and reports the REAL outcome. See shared/action_gate.py.
     """
-    action = get_pending_action(action_id)
-    if action is None:
-        return f"No pending action found with id {action_id}."
-    if action["agent"] != AGENT_NAME:
-        return f"Action {action_id} doesn't belong to CIPHER."
-    if action["status"] != "pending":
-        return f"Action {action_id} was already {action['status']}, not executing again."
-
-    if not claim_action(action_id):
-        # Lost a real race to another near-simultaneous approval of the
-        # exact same action - it's already being (or was already)
-        # executed elsewhere. Never execute twice.
-        return f"Action {action_id} was already claimed by another approval, not executing again."
-
-    try:
-        if action["type"] == "create_file":
-            result = _real_create_file(action["details"]["path"], action["details"]["content"])
-        elif action["type"] == "run_command":
-            result = _real_run_command(action["details"]["command"])
-        else:
-            result = f"Unknown action type: {action['type']}"
-            finalize_action(action_id, "failed", result)
-            return result
-        finalize_action(action_id, "executed", result)
-        return result
-    except Exception as e:
-        error_result = f"Execution failed: {type(e).__name__}: {e}"
-        finalize_action(action_id, "failed", error_result)
-        return error_result
+    return _gate.approve_and_execute(action_id)
 
 
 def deny_action(action_id: str) -> str:
-    action = get_pending_action(action_id)
-    if action is None:
-        return f"No pending action found with id {action_id}."
-    if action["status"] != "pending":
-        return f"Action {action_id} was already {action['status']}."
-    resolve_action(action_id, "denied")
-    return f"Denied: {action['type']} ({action['details']})"
+    return _gate.deny_action(action_id)
+
+
+def list_pending() -> str:
+    """Everything of CIPHER's still waiting for approval, one per line."""
+    return _gate.list_pending()

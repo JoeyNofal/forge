@@ -28,12 +28,13 @@ Open problems are shown to the model as "1 — description", and it answers with
 NUMBERS; Python maps them back to real ids (a garbled 36-character id can't
 mislead it), and only a real JSON true counts for resolved_all / ambiguous.
 """
-import json
 import re
 from datetime import datetime
 from typing import Optional
 
 from shared.keyword_gate import contains_keyword
+from agents.drive import drive_units
+from shared.model_json import ExtractionError, model_call_failed, parse_model_json
 from shared.agent_topics import (
     DRIVE_ADVICE_SIGNALS, DRIVE_MILEAGE_WORDS, DRIVE_FILLUP_WORDS, DRIVE_SERVICE_WORDS,
     DRIVE_SERVICE_DONE_SIGNALS, DRIVE_ISSUE_SYMPTOM_WORDS, DRIVE_ISSUE_RESOLVED_PHRASES,
@@ -64,8 +65,7 @@ _LABELS = {
 _ALL_FIXED_RE = re.compile(r"\b100\s*(?:%|percent)", re.I)
 
 
-class ExtractionError(Exception):
-    """The local model call failed or its answer wasn't usable JSON."""
+# ExtractionError, model_call_failed and parse_model_json live in shared/model_json.py (imported above).
 
 
 # ─────────────────────────────────────────────
@@ -119,7 +119,7 @@ Rules:
 - Use ONLY what the message explicitly says. Never invent a number, date, service or problem.
 - The numbers inside the example JSON below are only examples. Never copy them.
 - If a number is not stated, use null. If a date is not stated, use an empty string. If Joey says "yesterday" or "last Friday", work out the date from today's date.
-- Convert units: liters to US gallons (1 L = 0.264 gal), kilometers to miles (1 km = 0.621 mi).
+- NEVER convert units and NEVER do arithmetic. Report every number exactly as Joey said it, and fill in a unit field ONLY if he wrote the unit. If he gave no unit, the unit field is an empty string "".
 - If the message is a question, a plan, a request for advice, a hypothetical, or something that did not really happen, reply exactly {"kind": "none"}.
 """
 
@@ -127,8 +127,8 @@ MILEAGE_PROMPT = _COMMON_RULES + """
 Task: Joey may be telling you how many miles his car has RIGHT NOW (what the odometer reads).
 
 Reply in exactly this shape:
-{"kind": "mileage", "mileage": 52000}
-- mileage is a whole number, only if he said what the car's odometer currently reads.
+{"kind": "mileage", "mileage": 52000, "mileage_unit": "miles"}
+- mileage is a whole number, only if he said what the car's odometer currently reads. mileage_unit is "miles" or "km" ONLY if Joey wrote the unit (miles, mi, km, kilometers); otherwise an empty string.
 - A mileage that is only part of a plan, a question, a past event, or a service interval (for example "oil change due at 60,000 miles") is NOT his current mileage: {"kind": "none"}
 """
 
@@ -136,9 +136,9 @@ FILLUP_PROMPT = _COMMON_RULES + """
 Task: Joey may be reporting a fuel fill-up he ALREADY did.
 
 Reply in exactly this shape:
-{"kind": "fillup", "date": "", "gallons": 10, "price_per_gallon": null, "total_cost": 30, "mileage": null}
-- gallons: how much fuel he put in. price_per_gallon: only if he said the per-gallon price. total_cost: only if he said what it cost in total (dollars).
-- mileage: the odometer reading at the fill-up, only if he said it.
+{"kind": "fillup", "date": "", "fuel_amount": 10, "fuel_unit": "gallons", "price_per_gallon": null, "total_cost": 30, "mileage": null, "mileage_unit": ""}
+- fuel_amount: how much fuel he put in, exactly as he said it. fuel_unit is "gallons" or "liters" ONLY if Joey wrote the unit (gallons, gal, liters, L); otherwise an empty string. price_per_gallon: only if he said a price per GALLON (if he gave a price per liter, leave it null). total_cost: only if he said what it cost in total (dollars).
+- mileage: the odometer reading at the fill-up, only if he said it. mileage_unit is "miles" or "km" ONLY if Joey wrote the unit; otherwise an empty string.
 - Never work out a missing number yourself.
 - If it is not a completed fill-up: {"kind": "none"}
 """
@@ -147,12 +147,12 @@ MAINTENANCE_PROMPT = _COMMON_RULES + """
 Task: Joey may be reporting car maintenance or a repair he ALREADY had done.
 
 Reply in exactly this shape:
-{"kind": "maintenance", "service_type": "oil_change", "date": "", "mileage": null, "shop": "", "cost": null, "performed_by": "", "notes": "", "parts_used": [], "fixes_issue_numbers": [], "more_jobs": false}
+{"kind": "maintenance", "service_type": "oil_change", "date": "", "mileage": null, "mileage_unit": "", "shop": "", "cost": null, "performed_by": "", "notes": "", "parts_used": [], "fixes_issue_numbers": [], "more_jobs": false}
 - service_type: use one of these exact keys if the work matches: {{SERVICES}}. Otherwise write a short plain description of the work with spaces, like "brake pad replacement".
 - If he reports TWO OR MORE different jobs, describe only the first one and set more_jobs to true.
 - performed_by: "shop" if a shop or dealership did it, "diy" if he did it himself, otherwise an empty string.
 - shop: the business name only if he named one (like "Honda of South Bend"); otherwise an empty string. Never write just "dealership" or "shop".
-- mileage: the odometer reading when it was done, only if he said it. cost: dollars, only if he said it.
+- mileage: the odometer reading when it was done, only if he said it. mileage_unit is "miles" or "km" ONLY if Joey wrote the unit; otherwise an empty string. cost: dollars, only if he said it.
 - parts_used: a list of strings, only parts he named.
 - notes: extra details about the WORK itself, in his words; an empty string if none. Never put percentages or feelings in notes.
 - fixes_issue_numbers: the numbers of any OPEN PROBLEMS below that this work clearly fixes (for example new brakes fix "squeaky brakes"). An empty list if none or if you are not sure.
@@ -194,10 +194,10 @@ CARFAX_PROMPT = _COMMON_RULES + """
 Task: Joey may be telling you about ONE service record from a Carfax vehicle history report (work a PREVIOUS owner had done, before he owned the car).
 
 Reply in exactly this shape:
-{"kind": "carfax", "service_type": "oil_change", "date": "2024-03-15", "mileage": 40000, "shop": "", "cost": null, "notes": "", "parts_used": [], "more_jobs": false}
+{"kind": "carfax", "service_type": "oil_change", "date": "2024-03-15", "mileage": 40000, "mileage_unit": "", "shop": "", "cost": null, "notes": "", "parts_used": [], "more_jobs": false}
 - date: the exact date on the record as YYYY-MM-DD, only if the message gives a full date. Otherwise an empty string. For this task, never use today's date and never work out a relative date like "last year".
 - service_type: use one of these exact keys if the work matches: {{SERVICES}}. Otherwise write a short plain description of the work with spaces, like "timing belt replacement".
-- mileage: the odometer reading on the record, only if stated. cost: dollars, only if stated.
+- mileage: the odometer reading on the record, only if stated. mileage_unit is "miles" or "km" ONLY if Joey wrote the unit; otherwise an empty string. cost: dollars, only if stated.
 - shop: the business name only if one is named; otherwise an empty string. Never write just "dealership" or "shop".
 - notes: extra details about the work in his words; an empty string if none.
 - parts_used: a list of strings, only parts named.
@@ -233,21 +233,31 @@ def _build_prompt(kind: str, today: str, open_issues: list) -> str:
 # SECTION 3 — CALLING THE LOCAL MODEL
 # ─────────────────────────────────────────────
 
-def _parse_model_json(text) -> dict:
-    """Model text -> dict, or ExtractionError. Tolerates ```json fences; nothing else."""
-    if not isinstance(text, str) or not text.strip():
-        raise ExtractionError("the local model returned nothing")
-    cleaned = text.strip()
-    fenced = re.match(r"^```(?:json)?\s*(.*?)\s*```$", cleaned, re.S | re.I)
-    if fenced:
-        cleaned = fenced.group(1)
-    try:
-        data = json.loads(cleaned)
-    except json.JSONDecodeError as e:
-        raise ExtractionError(f"the local model's answer wasn't valid JSON ({e.msg})") from e
-    if not isinstance(data, dict):
-        raise ExtractionError(f"expected a JSON object, got {type(data).__name__}")
-    return data
+# (parsing the model's JSON answer: shared/model_json.py)
+
+
+# A unit the model reports is only trusted if Joey's own words contain a word of that unit
+# family (the real local model copies units from the example shape, or guesses them).
+# Letter look-arounds (not \b) so "80,000km" and "20L" still count; the single letter "l"
+# only counts right after a digit, so "I'll" never does.
+_UNIT_WORDS = {
+    "miles": re.compile(r"(?<![a-z])(?:miles?|mi)(?![a-z])", re.I),
+    "km": re.compile(r"(?<![a-z])(?:kms?|kilomet(?:er|re)s?)(?![a-z])", re.I),
+    "gallons": re.compile(r"(?<![a-z])(?:gals?|gallons?)(?![a-z])", re.I),
+    "liters": re.compile(r"(?:(?<=\d)\s?l|(?<![a-z])(?:liters?|litres?))(?![a-z])", re.I),
+}
+
+
+def _enforce_stated_units(data: dict, message: str) -> None:
+    """
+    Python enforces the rule the model ignores: a reported unit survives only if Joey
+    actually wrote a word of that family; otherwise it is blanked, so the number is
+    taken exactly as stated (miles / gallons). Mutates data; never raises on junk.
+    """
+    for key in ("mileage_unit", "fuel_unit"):
+        family = drive_units.unit_family(data.get(key))
+        if family and not _UNIT_WORDS[family].search(message):
+            data[key] = ""
 
 
 def _extract(kind: str, message: str, today: str, open_issues: list) -> dict:
@@ -255,8 +265,8 @@ def _extract(kind: str, message: str, today: str, open_issues: list) -> dict:
     try:
         raw_text = complete_ollama_json(prompt, message[:MAX_INPUT_CHARS])
     except Exception as e:       # model down, timeout, bad response — surfaced, never swallowed
-        raise ExtractionError(f"the local model call failed ({type(e).__name__}: {e})") from e
-    return _parse_model_json(raw_text)
+        raise model_call_failed(e) from e
+    return parse_model_json(raw_text)
 
 
 # ─────────────────────────────────────────────
@@ -335,8 +345,24 @@ def _handle_issue_update(data: dict, open_issues: list, handled_ids: set, messag
     return [_propose_resolution(ids, data.get("date"), data.get("notes"))]
 
 
+_PERCENT_SIGNS = ("%", "％")
+
+
+def _without_percent_notes(data: dict) -> dict:
+    """
+    The real local model sometimes copies a feeling like "it's at a 100%" into the work
+    notes, whatever the prompt says. Python enforces the rule: notes containing a percent
+    sign are dropped (nothing is invented, only the stray phrase is lost). Returns a copy
+    when it changes anything; never mutates the model's answer.
+    """
+    text = str(data.get("notes") or "")
+    if any(sign in text for sign in _PERCENT_SIGNS):
+        return dict(data, notes="")
+    return data
+
+
 def _handle_maintenance(data: dict, open_issues: list, handled_ids: set, message: str) -> list:
-    notes = [drive_actions.propose_maintenance(data)[1]]
+    notes = [drive_actions.propose_maintenance(_without_percent_notes(data))[1]]
     if data.get("more_jobs") is True:
         notes.append("You mentioned more than one job — I only proposed the first. Send the others on their own.")
     # The model's claim that this work fixes an open issue is only believed when the words overlap.
@@ -358,7 +384,7 @@ def _handle_issue(data: dict, open_issues: list) -> list:
 
 
 def _handle_carfax(data: dict) -> list:
-    notes = [drive_actions.propose_carfax(data)[1]]
+    notes = [drive_actions.propose_carfax(_without_percent_notes(data))[1]]
     if data.get("more_jobs") is True:
         notes.append("You listed more than one Carfax record — I only proposed the first. Send the others on their own.")
     return notes
@@ -374,6 +400,7 @@ def _handle(kind: str, message: str, today: str, open_issues: list, handled_ids:
         return []
     if found != kind:
         raise ExtractionError(f"unexpected answer type {found!r}")
+    _enforce_stated_units(data, message)
     if kind == KIND_MILEAGE:
         return [drive_actions.propose_mileage(data)[1]]
     if kind == KIND_FILLUP:

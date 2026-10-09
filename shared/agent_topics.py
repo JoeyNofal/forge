@@ -252,11 +252,11 @@ DRIVE_ISSUE_WORDS = ["issue", "issues", "problem", "noise", "warning light"]
 # local-model call. A false alarm costs one model call (the model still says
 # "none"); a miss means a report is never offered for logging, so these lean
 # generous. All matching goes through contains_keyword (Lesson #6).
-DRIVE_MILEAGE_WORDS = ["miles", "mileage", "odometer"]
+DRIVE_MILEAGE_WORDS = ["miles", "mileage", "odometer", "km", "kms", "kilometers", "kilometres"]
 DRIVE_FILLUP_WORDS = [
     "fueled up", "fuelled up", "filled up", "filled her up", "filled it up",
     "filled the tank", "fill up", "fill-up", "fillup", "topped off", "topped up",
-    "pumped", "gallons", "gallon", "gal",
+    "pumped", "gallons", "gallon", "gal", "liters", "liter", "litres", "litre",
 ]
 DRIVE_SERVICE_WORDS = [
     "service", "services", "serviced", "oil change", "oil changed", "changed the oil",

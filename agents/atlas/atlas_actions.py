@@ -5,28 +5,28 @@ ATLAS ACTIONS — approval gate in front of every fitness-data write
 The rule (Youssef's decision): ATLAS never saves a workout or injury on
 its own. It PROPOSES; nothing touches the fitness file until you approve.
 
-    propose_*()          -> cleans the data, puts it in the shared pending
-                            queue, returns (action_id, plain-English summary).
-                            ZERO effect on the fitness file.
-    approve_and_execute() -> the ONLY function here that writes. Claims the
-                            action atomically first, so two near-simultaneous
-                            approvals of the same action can never both save.
-    deny_action()        -> throws the proposal away.
+    propose_*()           -> cleans the data, puts it in the shared pending
+                             queue, returns (action_id, plain-English summary).
+                             ZERO effect on the fitness file.
+    approve_and_execute() -> the ONLY way anything gets written. The atomic
+                             claim (two near-simultaneous approvals can never
+                             both save) lives in the ONE shared gate,
+                             shared/action_gate.py, not in a private copy here.
+    deny_action()         -> throws the proposal away.
 
-Same pattern as agents/cipher/cipher_tools.py, using the same generic queue
-(shared/pending_actions.py). All the real writing lives in atlas_logging.py.
+Consolidation (Lesson #9): the find-by-id / claim / run-once / record-outcome
+logic used to be copy-pasted here and in DRIVE. It now lives once in
+shared/action_gate.py (its own full L1-L5 tests). This file only supplies
+what is truly ATLAS's: the summaries and the table of which writer each
+action type runs. All the real writing lives in atlas_logging.py.
 You may approve or deny with the full id or any unique start of it (6+
 characters) — the ids are long and you'll be typing them.
 """
 from agents.atlas import atlas_logging as log
 from agents.atlas.atlas_tools import load_fitness_data
-from shared.pending_actions import (
-    create_pending_action, get_pending_action, list_pending_actions,
-    claim_action, finalize_action, resolve_action,
-)
+from shared.action_gate import ActionGate
 
 AGENT_NAME = "atlas"
-MIN_ID_PREFIX = 6
 
 TYPE_LOG_SWIM = "log_swim"
 TYPE_LOG_GYM = "log_gym"
@@ -43,18 +43,37 @@ def _stated(value, template: str, missing: str) -> str:
     return template.format(value) if value else missing
 
 
+def _weights_note(d: dict) -> str:
+    """'; weights: bench press 135 lbs, curl 30 lbs (unit assumed)' — or '' when no weights."""
+    assumed = d.get("units_assumed")
+    assumed = assumed if isinstance(assumed, list) else []
+    parts = []
+    for e in d["exercises"]:
+        if not isinstance(e, dict) or e.get("weight_lbs") is None:
+            continue
+        text = f"{e['name']} {e['weight_lbs']} lbs"
+        if e["name"] in assumed:
+            text += " (unit assumed)"
+        parts.append(text)
+    return f"; weights: {', '.join(parts)}" if parts else ""
+
+
 def describe(action_type: str, d: dict) -> str:
     """One readable line for a proposal. Never crashes on odd details."""
     try:
         if action_type == TYPE_LOG_SWIM:
-            return (f"log swim: {_stated(d['total_distance_yards'], '{} yards', 'distance not stated')}, "
+            distance = _stated(d['total_distance_yards'], '{} yards', 'distance not stated')
+            if d['total_distance_yards'] and 'distance' in (d.get('units_assumed') or []):
+                distance += " (unit assumed)"
+            return (f"log swim: {distance}, "
                     f"{_stated(d['duration_minutes'], '{} min', 'duration not stated')}, "
                     f"{_stated(d['difficulty_1_to_10'], 'difficulty {}/10', 'difficulty not stated')}, on {d['date']}")
         if action_type == TYPE_LOG_GYM:
             names = ", ".join(e["name"] for e in d["exercises"])
             return (f"log gym workout: {len(d['exercises'])} exercise(s) ({names}), "
                     f"{_stated(d['duration_minutes'], '{} min', 'duration not stated')}, "
-                    f"{_stated(d['difficulty_1_to_10'], 'difficulty {}/10', 'difficulty not stated')}, on {d['date']}")
+                    f"{_stated(d['difficulty_1_to_10'], 'difficulty {}/10', 'difficulty not stated')}, on {d['date']}"
+                    f"{_weights_note(d)}")
         if action_type == TYPE_LOG_INJURY:
             return f"log injury: {d['description']} ({d['severity']}), on {d['date']}"
         if action_type == TYPE_UPDATE_INJURY:
@@ -70,11 +89,47 @@ def _proposal_message(action_id: str, action_type: str, details: dict) -> str:
 
 
 # ─────────────────────────────────────────────
-# SECTION 2 — PROPOSING (no effect on the fitness file)
+# SECTION 2 — WHAT EACH APPROVED ACTION ACTUALLY RUNS
+# Only the shared gate ever calls these, and only after it has
+# atomically claimed the action. Each returns (ok, message).
+# ─────────────────────────────────────────────
+
+def _run_swim(d: dict) -> tuple:
+    return True, log.log_swim(d)
+
+
+def _run_gym(d: dict) -> tuple:
+    return True, log.log_gym(d)
+
+
+def _run_injury(d: dict) -> tuple:
+    return True, log.log_injury(d)
+
+
+def _run_injury_update(d: dict) -> tuple:
+    ok, result = log.update_injury_status(d)
+    return bool(ok), result
+
+
+_gate = ActionGate(
+    AGENT_NAME,
+    "ATLAS",
+    describe,
+    {
+        TYPE_LOG_SWIM: _run_swim,
+        TYPE_LOG_GYM: _run_gym,
+        TYPE_LOG_INJURY: _run_injury,
+        TYPE_UPDATE_INJURY: _run_injury_update,
+    },
+)
+
+
+# ─────────────────────────────────────────────
+# SECTION 3 — PROPOSING (no effect on the fitness file)
 # ─────────────────────────────────────────────
 
 def _propose(action_type: str, clean: dict) -> tuple:
-    action_id = create_pending_action(AGENT_NAME, action_type, clean)
+    action_id = _gate.propose(action_type, clean)
     return action_id, _proposal_message(action_id, action_type, clean)
 
 
@@ -110,88 +165,18 @@ def propose_injury_update(raw) -> tuple:
 
 
 # ─────────────────────────────────────────────
-# SECTION 3 — FINDING AN ACTION BY (PART OF) ITS ID
-# ─────────────────────────────────────────────
-
-def _find_action(action_id: str):
-    """Returns (action, None) or (None, error message). Only ATLAS's own actions."""
-    if not isinstance(action_id, str) or not action_id.strip():
-        return None, "No action id given."
-    action_id = action_id.strip()
-    action = get_pending_action(action_id)
-    if action is not None:
-        if action["agent"] != AGENT_NAME:
-            return None, f"Action {action_id} doesn't belong to ATLAS."
-        return action, None
-    if len(action_id) >= MIN_ID_PREFIX:
-        matches = [a for a in list_pending_actions(AGENT_NAME) if a["id"].startswith(action_id)]
-        if len(matches) == 1:
-            return matches[0], None
-        if len(matches) > 1:
-            return None, f"'{action_id}' matches more than one pending action — type more of the id."
-    return None, f"No pending action found with id {action_id}."
-
-
-# ─────────────────────────────────────────────
-# SECTION 4 — APPROVING / DENYING
+# SECTION 4 — APPROVING / DENYING (thin wrappers over the shared gate)
 # ─────────────────────────────────────────────
 
 def approve_and_execute(action_id: str) -> str:
-    """
-    The ONLY function here that actually writes to the fitness file. Claims
-    the action atomically first (so it can never save twice), saves, and
-    reports the real outcome. A failure is reported clearly and recorded as
-    failed — never dressed up as a success (Lesson #12).
-    """
-    action, err = _find_action(action_id)
-    if action is None:
-        return err or "Action not found."
-    real_id = action["id"]
-    if action["status"] != "pending":
-        return f"Action {real_id} was already {action['status']}, not executing again."
-    if not claim_action(real_id):
-        return f"Action {real_id} was already claimed by another approval, not executing again."
-
-    try:
-        t, d = action["type"], action["details"]
-        if t == TYPE_LOG_SWIM:
-            result = log.log_swim(d)
-        elif t == TYPE_LOG_GYM:
-            result = log.log_gym(d)
-        elif t == TYPE_LOG_INJURY:
-            result = log.log_injury(d)
-        elif t == TYPE_UPDATE_INJURY:
-            ok, result = log.update_injury_status(d)
-            if not ok:
-                finalize_action(real_id, "failed", result)
-                return result
-        else:
-            result = f"Unknown action type: {t}"
-            finalize_action(real_id, "failed", result)
-            return result
-        finalize_action(real_id, "executed", result)
-        return result
-    except Exception as e:
-        error_result = f"Execution failed: {type(e).__name__}: {e}"
-        finalize_action(real_id, "failed", error_result)
-        return error_result
+    """Claims the action atomically, saves, reports the real outcome. See shared/action_gate.py."""
+    return _gate.approve_and_execute(action_id)
 
 
 def deny_action(action_id: str) -> str:
-    action, err = _find_action(action_id)
-    if action is None:
-        return err or "Action not found."
-    real_id = action["id"]
-    if action["status"] != "pending":
-        return f"Action {real_id} was already {action['status']}."
-    if not resolve_action(real_id, "denied"):
-        return f"Action {real_id} was already resolved by someone else."
-    return f"Denied: {describe(action['type'], action['details'])}"
+    return _gate.deny_action(action_id)
 
 
 def list_pending() -> str:
     """Everything of ATLAS's still waiting for approval, one per line."""
-    actions = list_pending_actions(AGENT_NAME)
-    if not actions:
-        return "Nothing waiting for approval."
-    return "\n".join(f"{a['id']}  {describe(a['type'], a['details'])}" for a in actions)
+    return _gate.list_pending()

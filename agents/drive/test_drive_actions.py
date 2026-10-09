@@ -131,17 +131,18 @@ def _():
         assert "log.log_" not in body and "update_issue_status" not in body, fn
 
 
-@check("L1 only approve_and_execute calls the real writers")
+@check("L1 only the _run_* handlers call the real writers (and only the shared gate ever calls them)")
 def _():
     callers = [fn for fn in re.findall(r"^def (\w+)\(", _src, re.M)
                if "log.log_" in _function_source(fn) or "log.update_issue_status" in _function_source(fn)]
-    assert callers == ["approve_and_execute"], callers
+    assert callers and all(fn.startswith("_run_") for fn in callers), callers
+    assert "log.log_" not in _function_source("approve_and_execute")
 
 
 @check("L1 approval uses the atomic claim/finalize pair; no bare 'except:'; no secrets, old paths or raw open()")
 def _():
     body = _function_source("approve_and_execute")
-    assert "claim_action" in body and "finalize_action" in body
+    assert "_gate.approve_and_execute" in body   # the atomic claim/finalize now lives in shared/action_gate.py (own L1-L5)
     assert not re.search(r"except\s*:", _src)
     assert "NEXUS SYSTEM" not in _src and "API_KEY" not in _src
     assert not re.search(r"\bopen\(", _src)

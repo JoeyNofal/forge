@@ -33,14 +33,18 @@ from datetime import datetime, timedelta
 
 from shared.file_store import update_json
 from agents.drive import issue_match
+from agents.drive import drive_units
+from shared.normalizers import (
+    MAX_TEXT, MAX_LIST,
+    num as _num, text as _text, str_list as _str_list,
+    date_or_today as _date, require_dict as _require_dict,
+)
 from shared.nhtsa import trim_text
 from agents.drive.drive_tools import (
     get_data_path, initialize_vehicle_data, get_active_vehicle,
     _starting_structure, MAINTENANCE_INTERVALS, SERVICE_DISPLAY_NAMES,
 )
 
-MAX_TEXT = 1000
-MAX_LIST = 30
 MAX_MILEAGE = 2_000_000
 _ISO_DATE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
@@ -77,19 +81,7 @@ SEVERITY_ALIASES = {
 # SECTION 1 — NORMALIZERS (untrusted in, clean out, or ValueError)
 # ─────────────────────────────────────────────
 
-def _num(v, low, high, what):
-    """Number in [low, high]; None/''/non-numeric -> 0 (= not stated); out of range -> ValueError."""
-    if v is None or v == "" or isinstance(v, bool):
-        return 0
-    if isinstance(v, str):
-        v = v.replace(",", "").replace("$", "").strip()
-    try:
-        n = float(v)
-    except (TypeError, ValueError):
-        return 0
-    if n != n or n < low or n > high:   # n != n catches NaN
-        raise ValueError(f"{what} out of range: {v!r}")
-    return int(n) if n == int(n) else n
+# _num, _text, _str_list, _date and _require_dict live in shared/normalizers.py (imported above).
 
 
 def _mileage(v):
@@ -98,45 +90,44 @@ def _mileage(v):
     return int(round(n)) if n else None
 
 
-def _text(v) -> str:
-    if v is None or isinstance(v, dict):
-        return ""
-    if isinstance(v, list):
-        v = ", ".join(str(x) for x in v if x not in (None, ""))
-    return str(v).strip()[:MAX_TEXT]
+def _odometer(raw: dict):
+    """
+    The odometer reading in whole MILES, or None if not stated. The model reports the
+    number exactly as Joey said it, plus "mileage_unit" only if he wrote a unit;
+    PYTHON converts kilometers. A record with no unit key (older callers, and every
+    already-clean record) is taken as miles, unchanged.
+    """
+    if drive_units.unit_family(raw.get("mileage_unit")) != "km":
+        return _mileage(raw.get("mileage"))
+    km = _num(raw.get("mileage"), 0, MAX_MILEAGE * 2, "mileage")
+    if not km:
+        return None
+    miles = int(round(drive_units.km_to_miles(km)))
+    if miles > MAX_MILEAGE:
+        raise ValueError(f"mileage out of range: {raw.get('mileage')!r}")
+    return miles or None
 
 
-def _str_list(v) -> list:
-    """List of short strings from a list OR a comma-separated string."""
-    if v is None or v == "":
-        return []
-    if isinstance(v, str):
-        v = v.split(",")
-    if not isinstance(v, list):
-        return []
-    out = []
-    for x in v:
-        if isinstance(x, dict):
-            x = x.get("description") or x.get("name") or ""
-        s = str(x).strip()
-        if s:
-            out.append(s[:200])
-    return out[:MAX_LIST]
+def _fuel_gallons(raw: dict):
+    """
+    Gallons of fuel (0 = not stated). The model reports "fuel_amount" exactly as Joey
+    said it plus "fuel_unit" only if he wrote a unit; PYTHON converts liters. The older
+    "gallons" key (already gallons, and what every clean record holds) is still accepted.
+    """
+    amount = raw.get("fuel_amount")
+    if amount is None or amount == "" or isinstance(amount, bool):
+        return _num(raw.get("gallons"), 0, 100, "gallons")
+    n = _num(amount, 0, 1000, "gallons")
+    if not n:
+        return 0
+    if drive_units.unit_family(raw.get("fuel_unit")) == "liters":
+        n = round(drive_units.liters_to_gallons(n), 2)
+    if n > 100:
+        raise ValueError(f"gallons out of range: {amount!r}")
+    return int(n) if n == int(n) else n
 
 
-def _date(v) -> str:
-    """A real, non-future YYYY-MM-DD, else today."""
-    today = datetime.now().strftime("%Y-%m-%d")
-    try:
-        d = datetime.strptime(str(v).strip()[:10], "%Y-%m-%d").strftime("%Y-%m-%d")
-    except (TypeError, ValueError):
-        return today
-    return d if d <= today else today
 
-
-def _require_dict(raw, kind):
-    if not isinstance(raw, dict):
-        raise ValueError(f"{kind}: expected an object, got {type(raw).__name__}")
 
 
 def _service(raw):
@@ -160,7 +151,7 @@ def _service(raw):
 
 def normalize_mileage(raw) -> dict:
     _require_dict(raw, "mileage update")
-    m = _mileage(raw.get("mileage"))
+    m = _odometer(raw)
     if m is None:
         raise ValueError("mileage update: no mileage stated")
     return {"mileage": m}
@@ -179,7 +170,7 @@ def normalize_maintenance(raw) -> dict:
         "service_type": service_type,
         "display_name": display_name,
         "date": _date(raw.get("date")),
-        "mileage": _mileage(raw.get("mileage")),
+        "mileage": _odometer(raw),
         "shop": None if generic_shop else (shop_text or None),
         "cost": cost or None,
         "notes": _text(raw.get("notes")),
@@ -190,7 +181,7 @@ def normalize_maintenance(raw) -> dict:
 
 def normalize_fillup(raw) -> dict:
     _require_dict(raw, "fill-up")
-    gallons = _num(raw.get("gallons"), 0, 100, "gallons")
+    gallons = _fuel_gallons(raw)
     ppg = _num(raw.get("price_per_gallon"), 0, 50, "price per gallon")
     total = _num(raw.get("total_cost"), 0, 1000, "total cost")
     if not gallons and not total:
@@ -201,7 +192,7 @@ def normalize_fillup(raw) -> dict:
         ppg = round(total / gallons, 3)
     return {
         "date": _date(raw.get("date")),
-        "mileage": _mileage(raw.get("mileage")),
+        "mileage": _odometer(raw),
         "gallons": gallons or None,
         "price_per_gallon": ppg or None,
         "total_cost": total or None,

@@ -54,8 +54,8 @@ stripped = chat.strip_unexecuted_action_markers(raw)
 check("SET_REMINDER marker gets stripped and replaced with placeholder", "SET_REMINDER:" not in stripped and "isn't built yet" in stripped)
 
 raw2 = "Let me check.\nASK_CIPHER: what does this error mean"
-stripped2 = chat.strip_unexecuted_action_markers(raw2)
-check("ASK_CIPHER bridge marker gets stripped", "ASK_CIPHER:" not in stripped2)
+stripped2 = chat.strip_unexecuted_action_markers(chat.strip_bridge_markers(raw2))
+check("ASK_CIPHER bridge marker gets stripped", "ASK_CIPHER:" not in stripped2 and "Routed to CIPHER" in stripped2)
 
 raw3 = "Here you go.\nLIST_REMINDERS\nThat's everything."
 stripped3 = chat.strip_unexecuted_action_markers(raw3)

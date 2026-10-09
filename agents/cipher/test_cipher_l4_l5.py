@@ -15,10 +15,10 @@ def check(name, cond, detail=""):
 # Mock so no real API calls happen — the mock echoes the input message
 # back, so we can verify concurrent calls never cross-contaminate.
 fake_model_client = types.ModuleType("shared.model_client")
-def fake_stream_gemini(system_prompt, messages, location=""):
+def fake_stream_by_tier(agent, tier, system_prompt, messages, location=""):
     last_user_msg = messages[-1]["content"]
     yield f"RESPONSE_TO[{last_user_msg}]"
-fake_model_client.stream_gemini = fake_stream_gemini  # type: ignore[attr-defined]
+fake_model_client.stream_by_tier = fake_stream_by_tier  # type: ignore[attr-defined]
 sys.modules["shared.model_client"] = fake_model_client
 
 fake_web_search = types.ModuleType("shared.web_search")
@@ -131,12 +131,12 @@ if not crashed_clearly:
 
 # 5f. Model itself fails mid-call — must propagate clearly, never get
 # swallowed into a fake/blank success.
-def broken_stream_gemini(system_prompt, messages, location=""):
+def broken_stream_by_tier(agent, tier, system_prompt, messages, location=""):
     raise ConnectionError("simulated API outage")
     yield  # pragma: no cover
 
-original_stream_gemini = chat.stream_gemini
-chat.stream_gemini = broken_stream_gemini
+original_stream_by_tier = chat.stream_by_tier
+chat.stream_by_tier = broken_stream_by_tier
 propagated_clearly = False
 try:
     out = "".join(chat.stream_cipher("write a function"))
@@ -145,7 +145,7 @@ except ConnectionError:
 except Exception:
     propagated_clearly = False
 check("a real model/API failure propagates clearly, isn't silently swallowed", propagated_clearly)
-chat.stream_gemini = original_stream_gemini
+chat.stream_by_tier = original_stream_by_tier
 
 # 5g. Refusal path still works correctly even after all this abuse
 check(

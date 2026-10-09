@@ -20,58 +20,37 @@ from datetime import datetime
 
 from shared.file_store import update_json
 from shared.keyword_gate import contains_keyword
+from shared.normalizers import (
+    MAX_TEXT, MAX_LIST,
+    num as _num, text as _text, str_list as _str_list,
+    date_or_today as _date, require_dict as _require_dict,
+)
 from agents.atlas.atlas_tools import (
     get_data_path, initialize_fitness_data, _starting_structure,
 )
 
-MAX_TEXT = 1000
-MAX_LIST = 30
 VALID_SEVERITIES = ("mild", "moderate", "severe")
 VALID_STATUSES = ("active", "recovering", "resolved")
 OPEN_STATUSES = ("active", "recovering")   # an injury that can still be updated
+
+# Units. ALL unit arithmetic lives here in Python, never in the model prompt
+# (a local model once turned "at 50" into 110.23 lbs by assuming kg and doing
+# the multiplication itself).
+LB_UNITS = ("lb", "lbs", "pound", "pounds")
+KG_UNITS = ("kg", "kgs", "kilo", "kilos", "kilogram", "kilograms")
+YARD_UNITS = ("yd", "yds", "yard", "yards")
+METER_UNITS = ("m", "meter", "meters", "metre", "metres")
+KG_TO_LBS = 2.20462
+METERS_TO_YARDS = 1.09361
+MAX_WEIGHT_LBS = 5000
+MAX_SWIM_YARDS = 100000
 
 
 # ─────────────────────────────────────────────
 # SECTION 1 — NORMALIZERS (untrusted in, clean out, or ValueError)
 # ─────────────────────────────────────────────
 
-def _num(v, low, high, what):
-    """Number in [low, high]; None/''/non-numeric -> 0; out of range -> ValueError."""
-    if v is None or v == "" or isinstance(v, bool):
-        return 0
-    try:
-        n = float(v)
-    except (TypeError, ValueError):
-        return 0
-    if n != n or n < low or n > high:   # n != n catches NaN
-        raise ValueError(f"{what} out of range: {v!r}")
-    return int(n) if n == int(n) else n
-
-
-def _text(v) -> str:
-    if v is None:
-        return ""
-    if isinstance(v, list):
-        v = ", ".join(str(x) for x in v if x not in (None, ""))
-    return str(v).strip()[:MAX_TEXT]
-
-
-def _str_list(v) -> list:
-    """List of short strings from a list OR a comma-separated string."""
-    if v is None or v == "":
-        return []
-    if isinstance(v, str):
-        v = v.split(",")
-    if not isinstance(v, list):
-        return []
-    out = []
-    for x in v:
-        if isinstance(x, dict):
-            x = x.get("description") or x.get("name") or ""
-        s = str(x).strip()
-        if s:
-            out.append(s[:200])
-    return out[:MAX_LIST]
+# _num, _text and _str_list live in shared/normalizers.py (imported above).
 
 
 def _difficulty(v):
@@ -87,28 +66,37 @@ def _or_none(n):
     return n if n else None
 
 
-def _date(v) -> str:
-    """A real, non-future YYYY-MM-DD, else today."""
-    today = datetime.now().strftime("%Y-%m-%d")
-    try:
-        d = datetime.strptime(str(v).strip()[:10], "%Y-%m-%d").strftime("%Y-%m-%d")
-    except (TypeError, ValueError):
-        return today
-    return d if d <= today else today
+# _date and _require_dict live in shared/normalizers.py (imported above).
 
 
-def _require_dict(raw, kind):
-    if not isinstance(raw, dict):
-        raise ValueError(f"{kind}: expected an object, got {type(raw).__name__}")
+def _swim_distance_yards(raw: dict) -> tuple:
+    """
+    (yards, unit_was_assumed). yards is 0 when no distance was stated.
+    The model reports "total_distance" exactly as Joey said it plus
+    "distance_unit" only if he wrote one; Python converts. No unit -> yards,
+    flagged. The older "total_distance_yards" key is still accepted, unflagged.
+    """
+    legacy = raw.get("total_distance_yards")
+    if legacy is not None and legacy != "":
+        return _num(legacy, 0, MAX_SWIM_YARDS, "distance"), False
+    stated = _num(raw.get("total_distance"), 0, 10**7, "distance")
+    if not stated:
+        return 0, False
+    unit = _text(raw.get("distance_unit")).lower()
+    yards = round(stated * METERS_TO_YARDS, 2) if unit in METER_UNITS else stated
+    if yards > MAX_SWIM_YARDS:
+        raise ValueError(f"distance out of range: {yards!r}")
+    yards = int(yards) if yards == int(yards) else yards
+    return yards, unit not in YARD_UNITS and unit not in METER_UNITS
 
 
 def normalize_swim(raw) -> dict:
     _require_dict(raw, "swim")
-    yards = _num(raw.get("total_distance_yards"), 0, 100000, "distance")
+    yards, assumed = _swim_distance_yards(raw)
     minutes = _num(raw.get("duration_minutes"), 0, 1440, "duration")
     if yards <= 0 and minutes <= 0:
         raise ValueError("swim: no distance and no duration given — nothing to log")
-    return {
+    result = {
         "type": "swim",
         "date": _date(raw.get("date")),
         "total_distance_yards": _or_none(yards),
@@ -120,44 +108,95 @@ def normalize_swim(raw) -> dict:
         "weaknesses": _text(raw.get("weaknesses")),
         "coach_notes": _text(raw.get("coach_notes")),
     }
+    if assumed:
+        result["units_assumed"] = ["distance"]    # shown on the proposal only, never saved
+    return result
+
+
+def unit_family(unit_text) -> str:
+    """'lbs' / 'kg' / 'yards' / 'meters' for a unit word the model reported, else ''."""
+    u = _text(unit_text).lower()
+    if u in LB_UNITS:
+        return "lbs"
+    if u in KG_UNITS:
+        return "kg"
+    if u in YARD_UNITS:
+        return "yards"
+    if u in METER_UNITS:
+        return "meters"
+    return ""
+
+
+def _opt_number(v, high):
+    """A stated number in [0, high], else None (unknown stays None, never a made-up 0)."""
+    if v is None or v == "" or isinstance(v, bool):
+        return None
+    try:
+        n = float(v)
+    except (TypeError, ValueError):
+        return None
+    if n != n or n < 0 or n > high:
+        return None
+    return int(n) if n == int(n) else n
+
+
+def _exercise_weight_lbs(e: dict) -> tuple:
+    """
+    (weight in pounds or None, unit_was_assumed).
+
+    The model reports the number EXACTLY as Joey said it ("weight") plus the
+    unit only if he wrote one ("weight_unit"). Python does any conversion.
+    No unit stated -> taken as pounds and flagged so the proposal says so.
+    The older "weight_lbs" key (already pounds) is still accepted, unflagged.
+    """
+    stated = e.get("weight")
+    if stated is None or stated == "" or isinstance(stated, bool):
+        return _opt_number(e.get("weight_lbs"), MAX_WEIGHT_LBS), False
+    number = _opt_number(stated, 10**6)
+    if number is None:
+        return None, False
+    unit = _text(e.get("weight_unit")).lower()
+    lbs = round(number * KG_TO_LBS, 2) if unit in KG_UNITS else number
+    if lbs > MAX_WEIGHT_LBS:
+        return None, False
+    lbs = int(lbs) if lbs == int(lbs) else lbs
+    assumed = unit not in LB_UNITS and unit not in KG_UNITS and lbs != 0
+    return lbs, assumed
 
 
 def _normalize_exercise(e):
     if isinstance(e, str):          # the old bug: models return plain strings
         e = {"name": e}
     if not isinstance(e, dict):
-        return None
+        return None, False
     name = _text(e.get("name"))[:100]
     if not name:
-        return None
-    def opt(key, high):             # unknown stays None, never a made-up 0
-        v = e.get(key)
-        if v is None or v == "" or isinstance(v, bool):
-            return None
-        try:
-            n = float(v)
-        except (TypeError, ValueError):
-            return None
-        if n != n or n < 0 or n > high:
-            return None
-        return int(n) if n == int(n) else n
+        return None, False
+    weight_lbs, assumed = _exercise_weight_lbs(e)
     return {
         "name": name,
-        "sets": opt("sets", 1000),
-        "reps": opt("reps", 10000),
-        "weight_lbs": opt("weight_lbs", 5000),
+        "sets": _opt_number(e.get("sets"), 1000),
+        "reps": _opt_number(e.get("reps"), 10000),
+        "weight_lbs": weight_lbs,
         "notes": _text(e.get("notes"))[:200],
-    }
+    }, assumed
 
 
 def normalize_gym(raw) -> dict:
     _require_dict(raw, "gym")
     ex_in = raw.get("exercises")
     ex_in = ex_in if isinstance(ex_in, list) else []
-    exercises = [x for x in (_normalize_exercise(e) for e in ex_in) if x][:MAX_LIST]
-    if not exercises:
+    kept = []
+    for e in ex_in:
+        exercise, was_assumed = _normalize_exercise(e)
+        if exercise is not None:
+            kept.append((exercise, was_assumed))
+    kept = kept[:MAX_LIST]
+    if not kept:
         raise ValueError("gym: no usable exercises given — nothing to log")
-    return {
+    exercises = [exercise for exercise, _ in kept]
+    assumed = [exercise["name"] for exercise, was_assumed in kept if was_assumed]
+    result = {
         "type": "gym",
         "date": _date(raw.get("date")),
         "exercises": exercises,
@@ -167,6 +206,9 @@ def normalize_gym(raw) -> dict:
         "weaknesses": _text(raw.get("weaknesses")),
         "coach_notes": _text(raw.get("coach_notes")),
     }
+    if assumed:
+        result["units_assumed"] = assumed      # shown on the proposal only, never saved
+    return result
 
 
 def normalize_injury(raw) -> dict:
@@ -219,6 +261,7 @@ def _append(list_key: str, record: dict) -> None:
 
 def log_swim(raw) -> str:
     w = normalize_swim(raw)
+    w.pop("units_assumed", None)   # a proposal-only note, never part of the saved record
     w.update(id=str(uuid.uuid4()), logged_at=datetime.now().isoformat())
     _append("workouts", w)
     dist = f"{w['total_distance_yards']} yards" if w["total_distance_yards"] else "distance not stated"
@@ -228,6 +271,7 @@ def log_swim(raw) -> str:
 
 def log_gym(raw) -> str:
     w = normalize_gym(raw)
+    w.pop("units_assumed", None)   # a proposal-only note, never part of the saved record
     w.update(id=str(uuid.uuid4()), logged_at=datetime.now().isoformat())
     _append("workouts", w)
     return f"Gym workout logged: {len(w['exercises'])} exercise(s) on {w['date']}."

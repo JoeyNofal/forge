@@ -168,10 +168,10 @@ def _():
     assert not re.search(r"except\s*:", CSRC) and not re.search(r"\bopen\(", CSRC)
 
 
-@check("L1 only approve_and_execute deletes memories; proposing never does")
+@check("L1 only the forget handlers delete memories (called only by the shared gate); proposing never does")
 def _():
     callers = [fn for fn in re.findall(r"^def (\w+)\(", ASRC, re.M) if "drive_memory.delete" in _function_source(ASRC, fn)]
-    assert callers == ["approve_and_execute"], callers
+    assert callers == ["_run_forget_memory", "_run_forget_all_memories"], callers
     for fn in ("propose_forget_memory", "propose_forget_all_memories"):
         assert "drive_memory.delete" not in _function_source(ASRC, fn), fn
 

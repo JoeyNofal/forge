@@ -708,3 +708,325 @@ Tested — CONFIRMED CLOSED, L1-L5: logging 26/26, actions 26/26, extraction
 31/31 (mocked), real L3 14/14 twice with local Ollama, read for invented
 numbers/dates/statuses; all earlier ATLAS suites and Phase 0 (35/35) and CIPHER's
 queue tests still pass after the shared-code fixes.
+
+## Session 10 — DRIVE (b), Parts 1–3a: logging, approval gate, resolve-all
+
+Setup: pushed the DRIVE Tracker (Electron app) into reference/DRIVE Tracker (BACKEND_URL is 127.0.0.1, safe
+to publish; two stray empty files "cd" and "npm" removed). Read the tracker, the old drive_tools.py writers
+and the live vehicle.json shape before writing anything.
+
+### Findings in the OLD code / tracker (not ported, fixed in FORGE)
+- The tracker and the old agent disagreed on field names for the same file: upcoming service due
+  (due_mileage/due_date vs next_due_miles/next_due_date), issue date (reported_date vs date_reported),
+  issue severity (high/medium/low vs mild/moderate/severe). The tracker's Upcoming screen could not show
+  due dates the agent wrote.
+- Old log_maintenance reset the next-due schedule BACKWARDS when an older service was logged.
+- Old wiper-fluid logging used the car's current mileage as an invented value.
+- Tracker bugs, noted for Phase 5 (NOT fixed, tracker not rebuilt yet): preload.js calls drive-load-data /
+  drive-save-data but main.js registers load-data / save-data; the tracker rewrites the whole vehicle.json
+  with no locking (a real risk at switch-over).
+
+### Decisions
+- FORGE writes the TRACKER's field names; readers accept both naming conventions.
+- Severity words: low / medium / high. performed_by: shop or diy ("dealership" counts as shop).
+- Nothing saves without approval (same queue as CIPHER/ATLAS). Extraction is always the local model.
+- Unstated mileage/cost/severity/performed-by are saved as null (0 = not stated). A missing or future date
+  becomes today (EXCEPT Carfax history, see Session 12).
+- A service logged for an OLDER date never rewinds the next-due schedule. Current mileage only goes UP from a
+  service/fill-up; stating a mileage outright sets it even if lower (proposal shows a warning).
+- MPG is worked out at approval from the nearest EARLIER fill-up by mileage (null if none/implausible).
+- Proposal warnings (never blocking): a mileage UPDATE lower than current; any mileage more than 5,000 above
+  current (MAX_JUMP_WARNING_MILES). A backdated service at a lower mileage does not warn.
+- Resolving issues: one issue by id, or SEVERAL / ALL in one approved action (named in the proposal).
+- Deleting/editing a wrong entry stays in the tracker for now.
+
+### Built (agents/drive/)
+- drive_logging.py: normalizers + locked writers (mileage, maintenance, fill-up, issue, issue status, bulk
+  resolve). Every write is one locked read-modify-write; a failure writes nothing.
+- drive_actions.py: the approval gate (propose / approve_and_execute / deny / list_pending; ids can be typed
+  as a unique 6+ character start). Only approve_and_execute writes. Atomic claim, so two simultaneous
+  approvals can never both save.
+- drive_tools.py readers updated (both field names); brake_replacement display name.
+
+### Tested — CONFIRMED CLOSED, L1-L5
+test_drive_logging 39/39, test_drive_actions 30/30, test_drive_resolve_all 20/20 (a test-helper bug,
+comparing a number with "i2", was found and fixed).
+
+---
+
+## Session 11 — DRIVE (b), Part 3b/3c: extraction, Python guards, chat wiring, brake reminder
+
+### Decisions
+- Extraction (drive_extract.py): a cheap whole-word pre-filter decides if the local model (gemma3:12b) is
+  asked; the model sees ONLY Joey's own message plus his NUMBERED open issues (it answers with numbers,
+  Python maps them to ids). Up to 3 things per message; a 4th, or a 2nd job in a service report, gets an
+  explicit note. A mileage riding along with a service/fill-up goes on THAT record.
+- Questions/advice never log; a problem report plus a question still logs the problem.
+- "X is fixed": one named issue -> single proposal; several -> bulk; "everything's fixed / 100%" -> ALL open
+  issues (Python decides "all", only a real JSON true counts). A service that clearly fixes an open issue
+  gives TWO separate proposals (service + resolve), never duplicated.
+- DRIVE's context note tells the model it cannot save/log/remember anything, to react briefly to routine
+  reports, not to speculate, recommend a dealership, do arithmetic, or invent what other people said.
+- DRIVE's open issues now appear in its data summary.
+- DRIVE's prompt is UNCHANGED (Clarkson). Known limit: it still hardcodes the 2016 Civic and VIN, and the
+  catchphrase "The dealership is the right call here" comes from the prompt itself. Part 4 (add/switch
+  vehicle) was CANCELLED: there is only one car.
+- Brake reminder (Part 3c): "brake replacement" is a real service type (wording variants such as brake pad
+  replacement / brake repair map to it; lights, bulbs, fluid, noises do not) and restarts the brake-INSPECTION
+  schedule (20,000 mi / 12 months). One approved "Brake Inspection, due today" entry sorts first on the
+  tracker's dashboard until brake work is logged. Triggered by a fixed phrase (add a brake reminder / remind me
+  about my brakes / remind me to check my brakes), no model call.
+
+### Real bugs found by the REAL model (each fixed in PYTHON, not just the prompt)
+Re-logged an already-open issue (duplicate guard, issue_match.py); resolved the wrong issue for "my light is
+fixed" with two light issues (asks which); claimed brakes fixed a tire light (fix claims must share words);
+wrote "dealership" as a shop name (generic shop words dropped, performed_by kept); leaked "100%" and
+"Joey's question" into notes (prompt tightened); showed raw snake_case names (tidied); said "I'll have a
+proposal generated" (note tightened).
+
+### Built
+drive_extract.py, issue_match.py (pure word matching), chat.py wiring (proposals appended AFTER the reply;
+a crash in extraction becomes a visible note), shared/agent_topics.py DRIVE lists.
+
+### Tested — CONFIRMED CLOSED
+test_drive_extract 42/42, test_issue_match 9/9, test_drive_extract_guards 14/14, test_drive_chat_extract
+16/16, test_drive_brakes 26/26; real L3 against local gemma 24/24 (read for exact numbers/dates).
+
+---
+
+## Session 12 — DRIVE (b), Parts 5–6: Carfax entries and the NHTSA recall check
+
+### Part 5 — typed Carfax entries
+One record per message typed in chat (the tracker already imports whole Carfax files). Stored as
+source "carfax", performed_by "previous_owner" (matches the tracker's importer). The DATE MUST BE STATED
+(never defaulted to today: history); no relative dates. They do NOT touch the next-due schedule or current
+mileage. An identical Carfax record (same service/date/mileage) is refused. Tested: test_drive_carfax 25/25;
+real L3 10/10 (missing and "last year" dates correctly refused).
+
+### Part 6 — recall check (official NHTSA API)
+- shared/nhtsa.py: api.nhtsa.gov recallsByVehicle (no key, standard library only, one network function).
+  IMPORTANT LIMIT: keyed by make/model/YEAR, NOT by VIN. Real response shape verified on the machine
+  (Count/Message/results; fields NHTSACampaignNumber, Component, Summary, Consequence, Remedy,
+  ReportReceivedDate in DD/MM/YYYY -> shown as YYYY-MM-DD, parkIt). A FAILED lookup is never "no recalls".
+- drive_recall.py: on any message with recall/recalls/recalled, the active vehicle's year/make/model come
+  from the vehicle FILE; DRIVE's model gets a labeled block (or a "lookup failed, do not guess" note).
+  After the reply: a FIXED Python reminder ("covers ALL <year> <make> <model> vehicles, not your VIN
+  specifically... check your VIN at nhtsa.gov/recalls") because the real model ignored the caveat; then an
+  offer to save a dated snapshot — ONLY if the list changed since the last saved one, approval required.
+  Snapshots go in vehicle["recalls"] (a list; older text-style entries are never touched); the last 10 NHTSA
+  snapshots are kept; a snapshot for a different vehicle, or a repeat of the last one, is refused.
+- Remaining text cut at WORD boundaries (a real phone number was being cut in half).
+- The web search on "recall" still runs as before.
+
+### Tested — CONFIRMED CLOSED
+shared test_nhtsa 26/26; test_drive_recall 29/29; real L3: NHTSA 7/7, end-to-end recall 4/4.
+
+---
+
+## Session 13 — DRIVE (c): permanent memory
+
+### Decisions (Joey's)
+Six categories only: decision, preference, correction, goal, plan, project_fact (money is ASSET's, workouts
+ATLAS's). Memories come ONLY from Joey's own words (never DRIVE's replies), picked out by the local model
+after DRIVE's reply, saved AUTOMATICALLY with a visible "Remembered: ..." line. Logged data (mileage,
+services, fill-ups, issues, recalls, Carfax) is never copied into memory. Recall on every question except
+"show me my logged data" and refusals (top 3, relevance cutoff, labeled "background, may be outdated").
+List and forget commands wanted (forget always via approval). Started EMPTY; the old NEXUS SYSTEM DRIVE memory
+was left untouched (it saved every turn and DRIVE's own advice: the Lesson #3 anti-pattern).
+
+### Built
+- shared/drive_memory.py: own ChromaDB collection "drive_memory", cosine distance, Ollama embeddings, memory
+  folder D:\Projects\forge\memory\drive (gitignored). Facts only (max 500 chars, refused not cut). Duplicates
+  are refused under a lock; delete_memory / delete_memories.
+- agents/drive/drive_remember.py: pre-filter phrases (I always / I prefer / I decided / I'm planning / from
+  now on / remember / actually...), local extraction, Python guards (category list, no money, no workouts, no
+  past-tense logged events unless a habit/plan word is present, max 3 with a note about the rest), recall
+  block (a stored fact cannot fake the block's end marker). A statement with no signal phrase is not picked up
+  (say "remember that ...").
+- agents/drive/drive_memory_commands.py: "what do you remember?" answered with NO model call (numbered, newest
+  first, category/date/6-char id, max 20); "forget <description | id | that | everything>" ALWAYS a proposal
+  through drive_actions; "forget everything" deletes exactly the memories existing when it was proposed;
+  ambiguous targets (equal meaning OR his exact words fit several memories) ask which, never guess; everyday
+  phrases ("forget it", "I forgot", "don't forget") are not commands.
+
+### Calibrated from REAL nomic-embed-text distances (not guessed)
+Relevance cutoff 0.50 (related questions' best match <= 0.44, unrelated >= 0.557). Duplicate rule: identical
+words always a duplicate; embedding duplicate only at <= 0.005 AND identical numbers, because a CHANGED fact
+(0W-20 -> 5W-30) measured only 0.041 apart and would have been swallowed (stale fact kept). Forget cutoff 0.52
+(unrelated 0.554, worst legitimate 0.493). Env overrides: DRIVE_MEMORY_PATH, DRIVE_MEMORY_MAX_DISTANCE,
+DRIVE_MEMORY_DUPLICATE_DISTANCE.
+
+### Real bugs found
+A list/dict category crashed the filter (unhashable type); the real model wrote the CATEGORY into "kind"
+(Python now salvages only the fact it actually gave); a planned road trip was missed until the prompt said
+plans include trips/purchases; "forget the Civic" guessed one of two memories (now asks).
+
+### Tested — CONFIRMED CLOSED
+shared test_drive_memory 30/30; test_drive_remember 33/33; test_drive_memory_commands 31/31; real L3: store
+6/6, remember 6/6, commands 8/8. Whole DRIVE regression green (test_drive 16, tools 16, l4_l5 15, logging 39,
+actions 30, resolve_all 20, extract 42, issue_match 9, guards 14, chat_extract 16, brakes 26, carfax 25,
+recall 29, remember 33, memory_commands 31).
+
+### DRIVE status: COMPLETE (core chat, increment (b), increment (c))
+Whole-suite command (skips the real-model _l3 files):
+  Get-ChildItem agents\drive\test_*.py | Where-Object { $_.BaseName -notlike "*_l3" } | ForEach-Object {
+  "== " + $_.BaseName; python -m ("agents.drive." + $_.BaseName) 2>&1 | Select-String -Pattern "passed|FAIL" }
+
+---
+
+## Standing project rules (reconfirmed this stretch)
+- Claude never creates files; every change is a FIND block and a REPLACE block (or a whole new file pasted).
+- Nothing is "done" until a full L1-L5 pass; real-model (L3) output is READ, not just counted.
+- Wherever a real model ignored a rule, ENFORCE it in Python (guards), then re-test.
+- Older chat tests are kept hermetic by stubbing the newer chat steps (extraction, recall, memory).
+
+## Not yet decided / still open
+- NEXT per plan: ATLAS workout template (single HTML page, phone, gym only, copy-paste back to ATLAS), then
+  STOCK, then FLAME, CASE, PULSE (Phase 4 order), then Phase 5 dashboard/companion apps, Phase 6 voice/mobile/
+  Autonomous Build System.
+- BACKLOG (requested, not designed): ATLAS tracks macros (calories, protein, ...) from food PHOTOS; each
+  estimate shown (with a range) and saved only after approval; later FLAME (halal-only) builds a healthy diet
+  from the history. Depends on ATLAS's deferred photo scan and on FLAME existing.
+- CONSOLIDATION refactor (small, tested) before STOCK: the same normalizer helpers exist in atlas_logging.py
+  and drive_logging.py; the approval-gate skeleton exists in atlas_actions.py and drive_actions.py;
+  drive_remember.py imports the private _parse_model_json/ExtractionError from drive_extract.py.
+- Phase 5 tracker fixes: the preload/main channel-name mismatch; locking (or switch the tracker to go through
+  FORGE) before switch-over; chat-based edit/delete of a wrong log entry (today: the tracker's own delete).
+- Conversational approve/deny (approving a pending action by chatting) still deferred to the dashboard.
+- Reel idea-extractor, task scheduler/crontab, expert/sub-agent spawning, plugin/skill marketplace: still
+  scoped from Session 1, not started for any agent.
+- DRIVE's local-tier replies still invent colourful flourishes in Clarkson's voice (forum posts, brand
+  claims); the context note now forbids it, but every claim about the car should still be sanity-checked.
+
+# FORGE — Completion Record, Session 14
+*(consolidation refactor, unit fixes for ATLAS and DRIVE, STOCK decisions. Paste this into the Completion Record file.)*
+
+## Session 14 — Consolidation refactor, unit fixes, STOCK decisions
+
+### Decided (Joey's)
+1. **Order:** consolidation refactor first, then the ATLAS workout template, then STOCK.
+2. **Refactor scope:** fix all three duplications, move the approval gate to ONE shared module, and also re-point CIPHER at it.
+3. **STOCK, decided before any code:**
+   - It writes to its own FORGE pantry file until switch-over (like ATLAS and DRIVE).
+   - Routine pantry and grocery changes save DIRECTLY, with a visible "Logged: ..." line, and no approval queue.
+   - STOCK's image/photo scan is deferred until image upload exists.
+4. **Standing rule (new):** whenever a bug is found, fix it immediately, even in an already-closed feature.
+5. **ATLAS unitless weight:** a weight given with no unit ("at 50") is taken as POUNDS and shown "(unit assumed)" on the proposal.
+6. **ATLAS injury severity:** the default "mild" when unstated is left as-is for now. Revisit later.
+7. **DRIVE:** the redundant "couldn't tell which open problem you mean" note (it can appear alongside a service proposal) is left as-is.
+8. **DRIVE unitless values:** a unitless mileage or fuel amount is simply miles/gallons, with NO "(unit assumed)" label. This was Claude's design call, stated at the time and not objected to. Reasoning: nothing the model guesses can reach the number any more, unlike ATLAS where the shown unit was itself an assumption. Adding the label is a separate small step if wanted.
+
+### Baseline at the start
+A full regression run found three stale tests, all fixed (test-only, no product bug):
+- `test_nexus` and `test_nexus_l4_l5` still expected the old stripper to remove ASK_CIPHER, which has been a real bridge since Session 5 (handled by `strip_bridge_markers`).
+- `test_cipher_l4_l5` still faked `stream_gemini` instead of `stream_by_tier` (stale since Session 4).
+
+### Built and tested
+
+**Part A: shared approval gate** (`shared/action_gate.py`)
+- One `ActionGate(agent_name, display_name, describe, handlers)`: `propose`, `find_action` (full id or unique 6+ char start), `approve_and_execute` (atomic claim, handler returns `(ok, message)`), `deny_action`, `list_pending`.
+- A buggy `describe()` can never break deny or list. A handler returning junk is recorded FAILED. An unknown action type is refused at propose time.
+- `shared/test_action_gate.py`: **24/24**.
+
+**Part B: ATLAS onto the gate** (`atlas_actions.py` with `_run_*` handlers). Two static checks in `test_atlas_actions` were re-pointed. **26/26**.
+
+**ATLAS unit fix** (real L3 found "incline press at 50" saved as `weight_lbs: 110.23`: the local model assumed kg and did the multiplication itself, because the prompt said "convert kg to pounds")
+- The model now reports `weight` exactly as said plus `weight_unit` ONLY if Joey wrote one. PYTHON converts (kg × 2.20462, meters × 1.09361). Same for swim `total_distance` / `distance_unit`.
+- A unitless weight is taken as pounds, and a unitless swim distance as yards. Both are flagged by a proposal-only `units_assumed` list, which is NEVER saved. The exercise record shape is unchanged: `weight_lbs`.
+- The proposal now shows the weights: `; weights: bench press 135 lbs, incline press 50 lbs (unit assumed)`.
+- `atlas_extract._enforce_stated_units`: a unit the model reports survives only if Joey's own message contains a word of that unit family. Real L3 showed the model copying "lbs" from the example shape, and it could just as well guess "kg". Known residual: this check is per message, not per exercise.
+- Older keys (`weight_lbs`, `total_distance_yards`) still work, unflagged.
+- `agents/atlas/test_atlas_units.py` (new): **34/34**. Real L3: unitless lines are flagged, a written "lbs" is not.
+
+**Part C: DRIVE onto the gate**
+- `drive_actions.py` now has 11 `_run_*` handlers plus the gate.
+- Six static checks were re-pointed in `test_drive_actions` (x2), `test_drive_recall`, `test_drive_brakes`, `test_drive_carfax`, `test_drive_memory_commands` and `test_drive_resolve_all`.
+
+**DRIVE unit fix** (same bug class: `drive_extract.py` told the model "Convert units: liters to US gallons, km to miles")
+- `agents/drive/drive_units.py` (new, pure): unit words and the two conversion factors (0.264172 L→gal, 0.621371 km→mi). It exists because `test_drive_extract` forbids importing `drive_logging` into `drive_extract`.
+- `drive_logging.py`: `_odometer()` converts km to miles, and `_fuel_gallons()` converts liters to gallons. Both work for mileage, maintenance, fill-up and Carfax (Carfax inherits maintenance's). Clean records carry no unit keys, so re-checking at approval never converts twice.
+- The prompts now say NEVER convert. They carry `mileage_unit` and `fuel_amount` / `fuel_unit`, and ask for price per gallon only (never per liter).
+- `drive_extract._enforce_stated_units`: same guard as ATLAS.
+- **Extra gap found and fixed:** `shared/agent_topics.py` had no km words in `DRIVE_MILEAGE_WORDS` and no liter words in `DRIVE_FILLUP_WORDS`, so "my car has 80,000 km on it" was silently ignored. They are now added.
+- `test_drive_units`: **22/22**. `test_drive_units_l3` (new, real local model): **9/9**. Read: 80,000 km → 49,710 miles; "filled up 40 for $50" stays 40 gal at $1.25 (the guessed-unit trap holds); 20 L → 5.28 gal.
+
+**DRIVE "100%" notes leak** (a real L3 slip after the prompt edit: the model copied "it's at a 100%" into the service notes)
+- Enforced in Python: `_without_percent_notes()` in `drive_extract` drops notes with a % sign, for both service and Carfax entries.
+- 4 tests were added to `test_drive_extract_guards` (**18/18**). Its fake `kind_of()` was also taught the Carfax prompt (it predated Carfax).
+
+**Part D: CIPHER onto the gate** (`cipher_tools.py`: `_run_create_file` and `_run_command`)
+- Behaviour changes, all accepted:
+  1. Short ids now work.
+  2. REAL BUG FIXED: `deny_action` never checked whose action it was.
+  3. REAL BUG FIXED: a command exiting non-zero was recorded "executed" whenever it printed anything. It is now FAILED with `Command failed (exit code N): ...`.
+  4. `list_pending()` was added.
+- `agents/cipher/test_cipher_gate.py` (new): **16/16**.
+
+**Part E: shared normalizers** (`shared/normalizers.py`: `num`, `text`, `str_list`, `date_or_today`, `require_dict`, `MAX_TEXT`, `MAX_LIST`)
+- The copies in `atlas_logging` and `drive_logging` had drifted; DRIVE's were the better ones and were adopted.
+- Fixes for ATLAS: strings like "1,500" or "$30" are now numbers (they were silently "not stated"), and a dict is no longer saved as its Python repr.
+- Both logging files import them under their old private names via `import ... as _num`, so every call site and test is unchanged.
+- `shared/test_normalizers.py`: **14/14**.
+
+**Part F: shared JSON-parse helper** (`shared/model_json.py`: `ExtractionError`, `model_call_failed`, `parse_model_json`)
+- It replaced identical copies in `atlas_extract` and `drive_extract`, plus `drive_remember`'s reaching into drive_extract's privates.
+- A 100,000-level-deep model answer is now a typed `ExtractionError`, not a raw `RecursionError`.
+- The model CALL stays inside each extractor, because many tests replace `complete_ollama_json` on that module.
+- `import json` was removed from both extract files.
+- `shared/test_model_json.py`: **11/11**.
+
+**The consolidation refactor is fully closed (Parts A to F).**
+
+### Full regression baseline (all non-L3 suites, as of end of session)
+- **shared:** action_gate 24, normalizers 14, model_json 11, phase0 35, phase0_l4_l5 9, model_client 22, model_client_l4_l5 8, asset_memory 12, asset_memory_l4_l5 8, drive_memory 30, nhtsa 26.
+- **ASSET:** asset 25, asset_l4_l5 12.
+- **ATLAS:** atlas 15, actions 26, extract 31, l4_l5 15, logging 26, tools 14, units 34.
+- **DRIVE:** drive 16, actions 30, brakes 26, carfax 25, chat_extract 16, extract 42, extract_guards 18, l4_l5 15, logging 39, memory_commands 31, recall 29, remember 33, resolve_all 20, tools 16, units 22, issue_match 9.
+- **CIPHER:** cipher 12, actions 24, actions_l4_l5 10, gate 16, l4_l5 10, memory 21, memory_l4_l5 11.
+- **NEXUS:** nexus 12, bridge 20, bridge_l4_l5 7, l4_l5 13, memory 20, memory_l4_l5 13.
+
+Whole-suite command, run from `D:\Projects\forge` (it skips the real-model `_l3` files):
+```
+Get-ChildItem -Recurse -Filter "test_*.py" agents,shared | Where-Object { $_.BaseName -notlike "*_l3" } | ForEach-Object { $mod = ($_.FullName.Substring((Get-Location).Path.Length+1) -replace '\\','.' -replace '\.py$',''); "== $mod"; python -m $mod 2>&1 | Select-String -Pattern "passed|FAIL" }
+```
+Real-model (L3) smoke files kept green this session: `agents.atlas.test_atlas_extract_l3` (14/14), `agents.drive.test_drive_extract_l3` (24/24), `agents.drive.test_drive_units_l3` (9/9), `agents.drive.test_drive_remember_l3` (6/6), `agents.drive.test_drive_carfax_l3`, `agents.drive.test_drive_recall_l3`, `agents.drive.test_drive_memory_commands_l3`, `agents.cipher.test_cipher_actions_l3` (9/9), `agents.nexus.test_nexus_bridge_l3` (9/9).
+
+### Files new or changed this session (commit and push if not already done)
+- **New:** `shared/action_gate.py`, `shared/test_action_gate.py`, `shared/normalizers.py`, `shared/test_normalizers.py`, `shared/model_json.py`, `shared/test_model_json.py`, `agents/atlas/test_atlas_units.py`, `agents/drive/drive_units.py`, `agents/drive/test_drive_units.py`, `agents/drive/test_drive_units_l3.py`, `agents/cipher/test_cipher_gate.py`.
+- **Changed:** `agents/atlas/atlas_actions.py`, `atlas_logging.py`, `atlas_extract.py`, `agents/drive/drive_actions.py`, `drive_logging.py`, `drive_extract.py`, `drive_remember.py`, `agents/cipher/cipher_tools.py`, `shared/agent_topics.py`, and the existing tests whose static checks were re-pointed (see Parts B, C and the guards fix above).
+
+### Findings to remember
+- **Prompt edits ripple.** Editing the shared rules at the top of DRIVE's prompts also changed behavior in unrelated prompts (the "100%" leak, an extra note). After ANY prompt edit, re-run the real-model L3 files, and enforce what matters in Python, not just in the prompt.
+- **Real-model quirks, now enforced in Python:** the local model copies units from the prompt's example shape, can guess units nobody stated, and sometimes ignores "never put percentages in notes". Do arithmetic and unit logic in Python only.
+- **Safety observation (not a bug):** when Joey gives no path, CIPHER's real model picks one on its own. In L3 it picked a path inside the old `D:\Projects\NEXUS SYSTEM\dashboard\` folder. Approval is what protects that folder. Check for stale proposals with: `python -c "from agents.cipher import cipher_tools as c; print(c.list_pending())"`, and deny any that point into the old folder.
+- **DRIVE known limit, unchanged:** the local-tier replies still invent colourful Clarkson flourishes and catchphrases ("The dealership is the right call here" comes from the prompt). Sanity-check any factual claim about the car (for example "it's what Honda specifies").
+- **Claude's own miscounts this session:** several test counts were predicted wrong and corrected from real output. Trust the real counts above.
+
+### Not yet applied by Joey
+- Pylance warning in `agents/cipher/test_cipher_gate.py` (cosmetic, the test passes): on the line `out = fn(bad)`, add `  # pyright: ignore[reportArgumentType]`.
+
+### Not yet decided / still open
+- **NEXT: the ATLAS workout template** (single HTML page for the phone, gym only, copy-paste back to ATLAS). Claude asked five questions that Joey has NOT answered yet:
+  1. Which fields to fill in at the gym per exercise (name, sets, reps, weight, notes, rest timer, how it felt?), and should it also log swims or be gym only?
+  2. Should the page remember a saved list of usual exercises and last time's weights (needs phone storage), or be an empty form each visit?
+  3. What does the copy-paste output look like? Suggestion: one plain sentence like "I did chest today. Bench press 3 sets of 8 at 135 lbs, incline dumbbell press 3x10 at 50 lbs", with the unit always included so "(unit assumed)" never appears.
+  4. How does the page get onto the phone (send the file to himself, host it, or serve it from the laptop on the home network)?
+  5. Must it work with no signal at the gym (assumed yes)?
+- **THEN: STOCK**, per the decisions above. It needs `reference/stock_tools.py` (and `reference/stock_memory.py` if any) read and confirmed current first. `reference/stock_tools.py` points at the live `D:\Projects\NEXUS SYSTEM\data\pantry.json`, but FORGE's STOCK uses its own fresh pantry file. Its image feature (`extract_pantry_items_from_image`) is deferred. The FLAME ASK_STOCK bridge comes later with FLAME.
+- **Remaining Phase 4 order:** STOCK, FLAME (halal only, checks STOCK first), CASE, PULSE.
+- **ATLAS (c) memory** has not been built. ATLAS has core chat and logging only. A photo scan for ATLAS is deferred.
+- **ATLAS injury severity default** ("mild") revisit later (see Decided #6).
+- **BACKLOG (requested, not designed):** ATLAS tracks macros from food PHOTOS, shown with a range and saved only after approval. FLAME later builds a halal diet from that history. It depends on ATLAS's photo scan and on FLAME existing.
+- **Phase 5 tracker fixes** (DRIVE Tracker): the preload/main channel-name mismatch, and locking (or going through FORGE) before switch-over. Chat-based edit/delete of a wrong log entry is also wanted.
+- **Conversational approve/deny** (approving a pending action by chatting) is still deferred to the dashboard (Phase 5).
+- **Still scoped from Session 1, not started for any agent:** reel idea-extractor (its "how it's saved" detail is still undecided), task scheduler/crontab, expert/sub-agent spawning, plugin/skill marketplace.
+- **Possible small step:** add the "(unit assumed)" label to DRIVE too, if Joey wants it.
+
+### Standing project rules (reconfirmed)
+- Claude never creates files or runs commands to edit the project. It gives code and text in chat, and Joey creates every file himself in VS Code. (Reading and cloning the repo with bash is allowed.)
+- Every change is given as a FIND block and a REPLACE block (or a whole new file pasted).
+- Nothing is "done" until a full L1-L5 pass. Real-model (L3) output is READ, not just counted.
+- Wherever a real model ignored a rule, ENFORCE it in Python (a guard), then re-test.
+- Whenever a bug is found, fix it immediately.
+- Claude asks questions in ONE numbered list, plain (no multiple-choice cards), before writing code.
+- Older chat tests are kept hermetic by stubbing the newer chat steps (extraction, recall, memory).
