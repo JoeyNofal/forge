@@ -78,7 +78,7 @@ with open(SRC, encoding="utf-8") as _f:
 @check("L1 writes go through the locked helper; no raw open()/json.dump in this file")
 def _():
     assert "update_json" in _src
-    assert not re.search(r"\bopen\(", _src) and "json.dump" not in _src
+    assert not re.search(r"\bopen\(", _src) and "json.dump(" not in _src
 
 
 @check("L1 no bare 'except:', no secrets, no old-system path, no substring keyword tests")

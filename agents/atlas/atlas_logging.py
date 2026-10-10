@@ -14,6 +14,8 @@ Nothing in here talks to a model or to the approval queue — those are
 separate, separately-tested parts. The saved shapes match what the old
 ATLAS wrote, so the read-only readers and the Training tracker keep working.
 """
+import hashlib
+import json
 import re
 import uuid
 from datetime import datetime
@@ -26,7 +28,7 @@ from shared.normalizers import (
     date_or_today as _date, require_dict as _require_dict,
 )
 from agents.atlas.atlas_tools import (
-    get_data_path, initialize_fitness_data, _starting_structure,
+    get_data_path, initialize_fitness_data, load_fitness_data, _starting_structure,
 )
 
 VALID_SEVERITIES = ("mild", "moderate", "severe")
@@ -336,6 +338,195 @@ def update_injury_status(raw) -> tuple:
                 hits[0]["notes"] = (prev + " | " if prev else "") + u["notes"]
             result["ok"] = True
             result["msg"] = f"Injury updated: {hits[0].get('description')} — {old} → {u['new_status']}."
+        return data
+
+    update_json(get_data_path(), _modify, default=_starting_structure())
+    return result["ok"], result["msg"]
+
+
+
+# ─────────────────────────────────────────────
+# SECTION 3 — WORKOUT BLOCK (the filled-in phone template)
+# Input is the dict from workout_block.parse_workout_block(). Weights arrive in
+# the unit Joey wrote; ALL conversion to pounds happens here, in Python.
+# Old fields (sets / reps / weight_lbs) keep the Training tracker working:
+#   sets = completed sets, weight_lbs = HEAVIEST set, reps = reps of that set
+#   (no weighted set: the set with the most reps; timed sets: reps stay None).
+# ─────────────────────────────────────────────
+
+MAX_BLOCK_EXERCISES = 100
+
+
+def _set_weight_lbs(weight, unit, warnings: list, name: str):
+    """A weight in pounds (rounded), or None. kg is converted HERE."""
+    if weight is None or isinstance(weight, bool):
+        return None
+    number = _opt_number(weight, 10**6)
+    if number is None or number == 0:
+        return None
+    lbs = round(number * KG_TO_LBS, 2) if unit == "kg" else number
+    if lbs > MAX_WEIGHT_LBS:
+        warnings.append(f"{name}: a weight of {number} {unit or 'lbs'} is too large - left blank")
+        return None
+    return int(lbs) if lbs == int(lbs) else lbs
+
+
+def _block_prescribed(p, default_unit: str, warnings: list, name: str):
+    if not isinstance(p, dict):
+        return None
+    unit = p.get("weight_unit") if p.get("weight_unit") in ("lbs", "kg") else default_unit
+    return {
+        "text": _text(p.get("text"))[:200],
+        "sets": _opt_number(p.get("sets"), 1000),
+        "reps": _opt_number(p.get("reps"), 10000),
+        "seconds": _opt_number(p.get("seconds"), 36000),
+        "weight_lbs": _set_weight_lbs(p.get("weight"), unit, warnings, name),
+        "bodyweight": bool(p.get("bodyweight")),
+        "rest_seconds": _opt_number(p.get("rest_seconds"), 36000),
+        "target_rpe": _opt_number(p.get("target_rpe"), 10),
+    }
+
+
+def _block_exercise(ex: dict, section_name: str, default_unit: str, warnings: list):
+    """One exercise record, or None when no set was completed (that exercise is 'skipped')."""
+    name = _text(ex.get("name"))[:100]
+    details = []
+    raw_sets = ex.get("sets")
+    for s in raw_sets if isinstance(raw_sets, list) else []:
+        if not isinstance(s, dict):
+            continue
+        reps = _opt_number(s.get("reps"), 10000)
+        seconds = _opt_number(s.get("seconds"), 36000)
+        if reps is None and seconds is None:
+            continue
+        unit = s.get("weight_unit") if s.get("weight_unit") in ("lbs", "kg") else default_unit
+        details.append({
+            "set": _opt_number(s.get("set"), 10000),
+            "reps": reps,
+            "seconds": seconds,
+            "weight_lbs": _set_weight_lbs(s.get("weight"), unit, warnings, name),
+            "bodyweight": bool(s.get("bodyweight")),
+        })
+    if not details:
+        return None
+
+    weighted = [d for d in details if d["weight_lbs"]]
+    if weighted:
+        top = max(weighted, key=lambda d: (d["weight_lbs"], d["reps"] or 0))
+    else:
+        repped = [d for d in details if d["reps"]]
+        top = max(repped, key=lambda d: d["reps"]) if repped else None
+    return {
+        "name": name,
+        "section": section_name,
+        "sets": len(details),
+        "reps": top["reps"] if top else None,
+        "weight_lbs": top["weight_lbs"] if top else None,
+        "notes": _text(ex.get("notes"))[:500],
+        "rpe": _opt_number(ex.get("rpe"), 10),
+        "set_details": details,
+        "prescribed": _block_prescribed(ex.get("prescribed"), default_unit, warnings, name),
+    }
+
+
+def normalize_workout_block(parsed) -> dict:
+    """
+    parse_workout_block() output -> one clean gym-workout record, or ValueError.
+    Exercises with no completed set are listed in "skipped", never saved as done.
+    "units_assumed" and "warnings" are proposal-only notes; they are never saved.
+    """
+    _require_dict(parsed, "workout block")
+    sections = parsed.get("sections")
+    if not isinstance(sections, list):
+        raise ValueError("workout block: no sections found")
+    default_unit = "kg" if parsed.get("unit") == "kg" else "lbs"
+    raw_warnings = parsed.get("warnings")
+    warnings = [w[:200] for w in raw_warnings if isinstance(w, str)] if isinstance(raw_warnings, list) else []
+
+    main, warmup, cooldown, skipped = [], [], [], []
+    for sec in sections:
+        if not isinstance(sec, dict):
+            continue
+        section_name = _text(sec.get("name"))[:100]
+        kind = sec.get("kind")
+        target = warmup if kind == "warmup" else cooldown if kind == "cooldown" else main
+        exercises = sec.get("exercises")
+        for ex in exercises if isinstance(exercises, list) else []:
+            if not isinstance(ex, dict) or not _text(ex.get("name")):
+                continue
+            record = _block_exercise(ex, section_name, default_unit, warnings)
+            if record is None:
+                skipped.append(_text(ex.get("name"))[:100])
+            elif len(target) < MAX_BLOCK_EXERCISES:
+                target.append(record)
+    if not (main or warmup or cooldown):
+        raise ValueError("workout block: no exercise has a completed set - nothing to log")
+
+    result = {
+        "type": "gym",
+        "source": "workout_block",
+        "title": _text(parsed.get("title"))[:100] or "Workout",
+        "date": _date(parsed.get("date")),
+        "exercises": main,
+        "warmup": warmup,
+        "cooldown": cooldown,
+        "skipped": skipped[:MAX_BLOCK_EXERCISES],
+        "duration_minutes": None,
+        "difficulty_1_to_10": None,
+        "form_notes": "",
+        "weaknesses": "",
+        "coach_notes": "",
+    }
+    result["block_hash"] = hashlib.sha256(
+        json.dumps(result, sort_keys=True).encode("utf-8")).hexdigest()[:16]
+    assumed = parsed.get("units_assumed")
+    if isinstance(assumed, list) and assumed:
+        result["units_assumed"] = [str(a)[:100] for a in assumed]
+    if warnings:
+        result["warnings"] = warnings[:50]
+    return result
+
+
+def is_duplicate_workout_block(block_hash) -> bool:
+    """Read-only: has a workout with this block_hash already been saved?"""
+    workouts = load_fitness_data().get("workouts")
+    if not isinstance(workouts, list):
+        return False
+    return any(isinstance(w, dict) and w.get("block_hash") == block_hash for w in workouts)
+
+
+def log_workout_block(clean) -> tuple:
+    """
+    Saves a normalized workout-block record. Returns (ok, message).
+    One locked read-modify-write. The same completed workout is never saved twice.
+    """
+    _require_dict(clean, "workout")
+    if clean.get("source") != "workout_block" or not isinstance(clean.get("block_hash"), str):
+        raise ValueError("workout: not a normalized workout-block record")
+    for key in ("exercises", "warmup", "cooldown", "skipped"):
+        if not isinstance(clean.get(key), list):
+            raise ValueError(f"workout: '{key}' must be a list")
+    record = {k: v for k, v in clean.items() if k not in ("units_assumed", "warnings")}
+    record.update(id=str(uuid.uuid4()), logged_at=datetime.now().isoformat())
+
+    initialize_fitness_data()
+    result = {"ok": False, "msg": ""}
+
+    def _modify(data):
+        if not isinstance(data, dict):
+            raise RuntimeError("fitness file has the wrong shape (expected an object)")
+        if data.get("workouts") is None:
+            data["workouts"] = []
+        elif not isinstance(data["workouts"], list):     # fail loudly, never overwrite real data
+            raise RuntimeError("fitness file: 'workouts' is not a list - refusing to overwrite it")
+        if any(isinstance(w, dict) and w.get("block_hash") == record["block_hash"] for w in data["workouts"]):
+            result["msg"] = "This workout was already logged - nothing changed."
+            return data
+        data["workouts"].append(record)
+        result["ok"] = True
+        result["msg"] = (f"Workout logged: {record['title']}, {len(record['exercises'])} exercise(s), "
+                         f"{len(record['warmup'])} warmup, {len(record['cooldown'])} cooldown, "
+                         f"on {record['date']}.")
         return data
 
     update_json(get_data_path(), _modify, default=_starting_structure())

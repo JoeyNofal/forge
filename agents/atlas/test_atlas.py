@@ -126,7 +126,9 @@ def _():
 @check("L1 ATLAS chat has no memory yet and never writes data itself (only asks extract_and_propose)")
 def _():
     assert "save_memory" not in SRC and "search_memory" not in SRC and "MEMORY_SAVE" not in SRC
-    assert "atlas_logging" not in SRC and "approve_and_execute" not in SRC and "log_swim_workout" not in SRC
+    assert "atlas_logging" not in SRC and "log_swim_workout" not in SRC
+    # Chat may approve/deny, but ONLY through the shared approval gate in atlas_actions (1c-i).
+    assert SRC.count("approve_and_execute(") == 1 and "atlas_actions.approve_and_execute(" in SRC
     assert "extract_and_propose" in SRC
 
 

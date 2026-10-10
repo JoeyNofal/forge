@@ -326,3 +326,15 @@ DRIVE_PAST_EVENT_WORDS = ["changed", "replaced", "filled", "topped", "rotated", 
                           "installed", "fixed", "repaired", "swapped"]
 DRIVE_HABIT_WORDS = ["always", "usually", "never", "every", "prefers", "prefer", "typically", "whenever", "plans",
                      "planning", "plan", "decided", "wants", "want", "goal", "going", "intends"]
+
+
+
+# 1c-ii: words in a workout NOTE that suggest discomfort. They only make ATLAS ASK about it
+# (a note never becomes an injury entry by itself). Whole-word matching via contains_keyword.
+ATLAS_NOTE_DISCOMFORT_WORDS = [
+    "click", "clicks", "clicked", "clicking", "popped", "popping",
+    "pain", "painful", "hurt", "hurts", "hurting", "ache", "aching", "sore",
+    "pinch", "pinched", "pinching", "tweak", "tweaked", "strain", "strained",
+    "sharp", "numb", "numbness", "tingling", "cramp", "cramped", "cramping",
+    "dizzy", "nauseous",
+]
