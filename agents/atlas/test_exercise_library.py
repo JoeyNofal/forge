@@ -442,6 +442,8 @@ def _():
     assert len(e["aliases"]) == L.MAX_ALIASES
     e = L.normalize_entry(draft(name="Squat\x00\x01", steps=["Do\tthis\nnow\x07"]))
     assert e["name"] == "Squat" and e["steps"] == ["Do this now"]
+    e = L.normalize_entry(draft(name="Back \x00 squat", steps=["Stand \x00 tall", "Brace\x00 hard", "Lower slowly"]))
+    assert e["name"] == "Back squat" and e["steps"][0] == "Stand tall" and e["steps"][1] == "Brace hard"
 
 
 @check("L5 unicode and emoji survive the whole trip through the file")

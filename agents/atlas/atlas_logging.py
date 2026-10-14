@@ -477,6 +477,11 @@ def normalize_workout_block(parsed) -> dict:
         "weaknesses": "",
         "coach_notes": "",
     }
+    program, day = _text(parsed.get("program"))[:40], _text(parsed.get("day"))[:40]
+    if program:
+        result["program"] = program
+    if day:
+        result["program_day"] = day
     result["block_hash"] = hashlib.sha256(
         json.dumps(result, sort_keys=True).encode("utf-8")).hexdigest()[:16]
     assumed = parsed.get("units_assumed")

@@ -69,14 +69,15 @@ def normalize_name(name) -> str:
     return " ".join(_ABBREVIATIONS.get(w, w) for w in words)
 
 
-def _printable(s: str) -> str:
-    return "".join(ch for ch in s if ch.isprintable())
+def _squash(v: str) -> str:
+    """One clean line: every kind of whitespace becomes one space, other control characters are dropped."""
+    return " ".join("".join(ch if ch.isprintable() else (" " if ch.isspace() else "") for ch in v).split())
 
 
 def _one_line(v, limit: int) -> str:
     if not isinstance(v, str):
         return ""
-    return _printable(" ".join(v.split()))[:limit].strip()
+    return _squash(v)[:limit].strip()
 
 
 def _clean_items(v, max_items: int, max_chars: int, split_on: str) -> list:
@@ -99,7 +100,7 @@ def _clean_items(v, max_items: int, max_chars: int, split_on: str) -> list:
             x = text
         if not isinstance(x, str):
             continue
-        s = _printable(" ".join(x.split()))
+        s = _squash(x)
         s = _LEADING_MARK_RE.sub("", s).strip()[:max_chars].strip()
         if not s or s.lower() in seen:
             continue

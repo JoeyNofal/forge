@@ -24,6 +24,8 @@ characters) — the ids are long and you'll be typing them.
 """
 from agents.atlas import atlas_logging as log
 from agents.atlas import exercise_library as library
+from agents.atlas import programs
+from agents.atlas import training_profile as profiles
 from agents.atlas.atlas_tools import load_fitness_data
 from agents.atlas.workout_block import parse_workout_block
 from shared.action_gate import ActionGate
@@ -37,6 +39,8 @@ TYPE_UPDATE_INJURY = "update_injury"
 TYPE_LOG_WORKOUT_BLOCK = "log_workout_block"
 TYPE_ADD_EXERCISE = "add_exercise"
 TYPE_MARK_EXERCISE_REVIEWED = "mark_exercise_reviewed"
+TYPE_SAVE_PROFILE = "save_profile"
+TYPE_UPDATE_PROFILE = "update_profile"
 
 
 # ─────────────────────────────────────────────
@@ -61,6 +65,16 @@ def _weights_note(d: dict) -> str:
             text += " (unit assumed)"
         parts.append(text)
     return f"; weights: {', '.join(parts)}" if parts else ""
+
+
+def _describe_profile_change(d: dict) -> str:
+    field = d["field"]
+    label = profiles.FIELD_LABELS[field]
+    if field == "clear_limitations":
+        return "clear all limitations from your training profile"
+    if field == "add_limitation":
+        return f"add a limitation to your training profile: {d['value']}"
+    return f"set your {label} to: {d['value']}"
 
 
 def _describe_block(d: dict) -> str:
@@ -101,6 +115,10 @@ def describe(action_type: str, d: dict) -> str:
             return f"add exercise to the library: {d['name']} (AI-drafted, you review it later)"
         if action_type == TYPE_MARK_EXERCISE_REVIEWED:
             return f"mark exercise as reviewed: {d['name']}"
+        if action_type == TYPE_SAVE_PROFILE:
+            return f"save your training profile (goal: {d['goal'] or 'not given'})"
+        if action_type == TYPE_UPDATE_PROFILE:
+            return _describe_profile_change(d)
     except (KeyError, TypeError):
         pass
     return f"{action_type}: {d}"
@@ -136,6 +154,8 @@ def _run_injury_update(d: dict) -> tuple:
 
 def _run_workout_block(d: dict) -> tuple:
     ok, result = log.log_workout_block(d)
+    if ok:
+        result += programs.next_day_hint(d.get("program"), d.get("program_day"))
     return bool(ok), result
 
 
@@ -146,6 +166,16 @@ def _run_add_exercise(d: dict) -> tuple:
 
 def _run_mark_exercise_reviewed(d: dict) -> tuple:
     ok, result = library.mark_reviewed(d.get("id"))
+    return bool(ok), result
+
+
+def _run_save_profile(d: dict) -> tuple:
+    ok, result = profiles.save_profile(d)
+    return bool(ok), result
+
+
+def _run_update_profile(d: dict) -> tuple:
+    ok, result = profiles.update_field(d.get("field"), d.get("value"))
     return bool(ok), result
 
 
@@ -161,6 +191,8 @@ _gate = ActionGate(
         TYPE_LOG_WORKOUT_BLOCK: _run_workout_block,
         TYPE_ADD_EXERCISE: _run_add_exercise,
         TYPE_MARK_EXERCISE_REVIEWED: _run_mark_exercise_reviewed,
+        TYPE_SAVE_PROFILE: _run_save_profile,
+        TYPE_UPDATE_PROFILE: _run_update_profile,
     },
 )
 
@@ -228,6 +260,22 @@ def propose_mark_reviewed(name) -> tuple:
     if not isinstance(entry.get("id"), str):
         return None, f"'{entry.get('name')}' has no id in the library file, so it cannot be marked."
     return _propose(TYPE_MARK_EXERCISE_REVIEWED, {"id": entry["id"], "name": entry.get("name")})
+
+
+def propose_save_profile(raw) -> tuple:
+    """
+    A finished setup -> a proposal that SHOWS the whole profile. Read-only: nothing is written
+    to the profile file until Joey approves. Bad data raises ValueError.
+    """
+    clean = profiles.normalize_profile(raw)
+    action_id, message = _propose(TYPE_SAVE_PROFILE, clean)
+    return action_id, message + "\n\n" + profiles.format_profile(clean)
+
+
+def propose_profile_update(field, value) -> tuple:
+    """One change to the profile (set goal, add a limitation...) -> a proposal. Read-only. Bad values raise ValueError."""
+    change = profiles.clean_update(field, value)
+    return _propose(TYPE_UPDATE_PROFILE, change)
 
 
 def propose_injury_update(raw) -> tuple:

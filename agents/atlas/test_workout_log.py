@@ -418,6 +418,37 @@ def _():
     assert raises(lambda: A.propose_workout_block("FORGE WORKOUT LOG v1\n" + "x" * 20500), W.BlockError)
     assert pa.list_pending_actions("atlas") == []
 
+# ---------------- 3b: program tags ----------------
+@check("L2 3b: a block without tags keeps EXACTLY the duplicate fingerprint it had before tags existed")
+def _():
+    assert norm(make_block())["block_hash"] == "5f7ba90a82c32da0"
+
+
+@check("L2 3b: tags are saved as program / program_day only when present, change the fingerprint, and a tagged log says what is next")
+def _():
+    tagged = make_block().replace("Unit: lbs", "Unit: lbs\nProgram: ppl\nDay: Push", 1)
+    c, u = norm(tagged), norm(make_block())
+    assert c["program"] == "ppl" and c["program_day"] == "Push" and "program" not in u and "program_day" not in u
+    assert c["block_hash"] != u["block_hash"]
+    path, _d = fresh()
+    res = A.approve_and_execute(A.propose_workout_block(tagged)[0])
+    assert res.startswith("Workout logged") and res.endswith("\nNext in your push / pull / legs program: Pull.")
+    w = read(path)["workouts"][0]
+    assert w["program"] == "ppl" and w["program_day"] == "Push"
+    path, _d = fresh()
+    res = A.approve_and_execute(A.propose_workout_block(make_block())[0])
+    w = read(path)["workouts"][0]
+    assert "Next in your" not in res and "program" not in w and "program_day" not in w
+
+
+@check("L5 3b: hostile tags (long, emoji, control characters, look-alike programs) are cleaned or ignored, never crash, never block the save")
+def _():
+    path, _d = fresh()
+    for i, (program, day) in enumerate((("p" * 500, "d" * 500), ("\U0001F4AA", "\x00\x01"), ("ppl\u00a0", " push "), ("push pull legs", "Legs"))):
+        text = make_block(title=f"Tag test {i}").replace("Unit: lbs", f"Unit: lbs\nProgram: {program}\nDay: {day}", 1)
+        res = A.approve_and_execute(A.propose_workout_block(text)[0])
+        assert res.startswith("Workout logged"), (program, res)
+    assert len(read(path)["workouts"]) == 4
 
 passed = sum(1 for n, ok, err in _results if ok)
 print(f"\n{passed}/{len(_results)} passed")

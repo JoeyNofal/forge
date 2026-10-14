@@ -44,6 +44,7 @@ MAX_REPS = 10000
 MAX_SECONDS = 36000
 MAX_WEIGHT = 5000       # in whatever unit was written (lbs or kg)
 MAX_WARNINGS = 50
+MAX_TAG = 40            # the Program: and Day: header lines
 
 
 class BlockError(ValueError):
@@ -55,7 +56,7 @@ _HEADER_START_RE = re.compile(r"^forge workout log\b", re.IGNORECASE)
 _HEADER_RE = re.compile(r"^forge workout log\s+v(\d+)\s*$", re.IGNORECASE)
 _SECTION_RE = re.compile(r"^#{1,3}\s*(.+)$")
 _SET_RE = re.compile(r"^set\s*(\d+)\s*:\s*(.*)$", re.IGNORECASE)
-_KEY_RE = re.compile(r"^(title|date|unit|exercise|prescribed|rpe|notes)\s*:\s*(.*)$", re.IGNORECASE)
+_KEY_RE = re.compile(r"^(title|date|unit|program|day|exercise|prescribed|rpe|notes)\s*:\s*(.*)$", re.IGNORECASE)
 _AMOUNT_RE = re.compile(rf"^({_NUM})\s*(reps?|secs?|seconds?|s|mins?|minutes?)?$", re.IGNORECASE)
 _WEIGHT_RE = re.compile(rf"^({_NUM})\s*(lbs?|pounds?|kgs?|kilos?|kilograms?)?$", re.IGNORECASE)
 _UNIT_RE = re.compile(r"^(?:lbs?|pounds?|kgs?|kilos?|kilograms?)$", re.IGNORECASE)
@@ -290,6 +291,7 @@ def parse_workout_block(text) -> dict:
         raise BlockError(f"unsupported workout log version v{m.group(1)[:6]}")
 
     title, date_raw, default_unit = "", "", None
+    program, day = "", ""
     sections, section, ex = [], None, None
     notes_open = False
     units_assumed, warnings = [], []
@@ -337,13 +339,17 @@ def parse_workout_block(text) -> dict:
         if m:
             key, value = m.group(1).lower(), m.group(2).strip()
             notes_open = False
-            if key in ("title", "date", "unit"):
+            if key in ("title", "date", "unit", "program", "day"):
                 if section is not None:
                     _warn(warnings, f"'{key}' line after the first section was ignored")
                 elif key == "title":
                     title = value[:MAX_NAME]
                 elif key == "date":
                     date_raw = value
+                elif key == "program":
+                    program = value[:MAX_TAG]
+                elif key == "day":
+                    day = value[:MAX_TAG]
                 elif _UNIT_RE.match(value):
                     default_unit = _unit_family(value)
                 elif value:
@@ -393,6 +399,8 @@ def parse_workout_block(text) -> dict:
         "title": title or "Workout",
         "date": date,
         "unit": default_unit,
+        "program": program or None,
+        "day": day or None,
         "sections": sections,
         "units_assumed": units_assumed,
         "warnings": warnings,

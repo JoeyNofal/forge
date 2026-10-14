@@ -44,6 +44,10 @@ from agents.atlas.prompt import ATLAS_SYSTEM_PROMPT
 from agents.atlas import atlas_tools
 from agents.atlas import atlas_actions
 from agents.atlas.atlas_extract import extract_and_propose
+from agents.atlas import atlas_program
+from agents.atlas import atlas_setup
+from agents.atlas import exercise_draft
+from agents.atlas import exercise_library as library
 from agents.atlas import workout_coach
 from agents.atlas.workout_block import looks_like_workout_block
 
@@ -112,6 +116,98 @@ def workout_block_reply(message: str, history: Optional[list] = None, location: 
         yield "\n\n" + coaching
 
 
+# Exercise-library commands (increment 2b-ii). Like approve/deny, a message counts ONLY when the
+# WHOLE message is the command (Lesson #6).
+_LIBRARY_RE = re.compile(
+    r"^\s*(?:(show)\s+exercise|(draft)\s+exercise|(reviewed))\s+(\S.{0,99}?)\s*[.!]?\s*$", re.IGNORECASE)
+_LIBRARY_LIST_RE = re.compile(
+    r"^\s*(?:exercise\s+library|list\s+exercises|show\s+exercises)\s*[?.!]?\s*$", re.IGNORECASE)
+MAX_LISTED_EXERCISES = 50
+
+
+def parse_library_command(message):
+    """('show' | 'draft' | 'reviewed' | 'list', name) when the WHOLE message is that command, else None."""
+    m = _LIBRARY_RE.match(message)
+    if m:
+        kind = "show" if m.group(1) else "draft" if m.group(2) else "reviewed"
+        return kind, m.group(4)
+    if _LIBRARY_LIST_RE.match(message):
+        return "list", ""
+    return None
+
+
+def library_command_applies(command) -> bool:
+    """
+    'reviewed <name>' only counts when that name is really in the library; any other message
+    that merely starts with the word 'reviewed' is ordinary chat.
+    """
+    kind, name = command
+    if kind != "reviewed":
+        return True
+    try:
+        return library.find_exercise(name) is not None
+    except (ValueError, RuntimeError):
+        return True                              # an ambiguous or damaged library is reported, not hidden
+
+
+def _approve_hint(action_id: str) -> str:
+    short = action_id[:8]
+    return f"\n\nReply 'approve {short}' to save it, or 'deny {short}' to throw it away."
+
+
+def library_command_reply(command):
+    """
+    show / draft / reviewed / list. Everything here is read-only or a PROPOSAL: nothing is
+    written to the library until Joey approves. Only 'draft' calls a model (the free cloud
+    drafter, which is sent the exercise NAME and nothing else).
+    """
+    kind, name = command
+    try:
+        if kind == "list":
+            entries = library.list_entries()
+            if not entries:
+                yield "The exercise library is empty. Type 'draft exercise <name>' to add one."
+                return
+            lines = []
+            for e in entries[:MAX_LISTED_EXERCISES]:
+                status = "reviewed" if e.get("status") == library.STATUS_REVIEWED else "AI-drafted"
+                lines.append(f"- {str(e.get('name', '?'))[:60]} ({status})")
+            more = len(entries) - MAX_LISTED_EXERCISES
+            tail = f"\n...and {more} more." if more > 0 else ""
+            yield f"Exercise library ({len(entries)}):\n" + "\n".join(lines) + tail
+            return
+        if kind == "show":
+            entry = library.find_exercise(name)
+            if entry is None:
+                yield (f"'{name}' is not in the exercise library. "
+                       f"Type 'draft exercise {name}' and I will draft a how-to for you to approve.")
+            else:
+                yield library.format_entry(entry)
+            return
+        if kind == "reviewed":
+            action_id, text = atlas_actions.propose_mark_reviewed(name)
+            yield text
+            if action_id:
+                yield _approve_hint(action_id)
+            return
+        existing = library.find_exercise(name)     # kind == "draft"
+        if existing is not None:
+            yield "That exercise is already in the library:\n\n" + library.format_entry(existing)
+            return
+        yield f"Drafting a how-to for '{name}' (only the exercise name is sent to the model)...\n\n"
+        raw = exercise_draft.draft_exercise(name)
+        action_id, text = atlas_actions.propose_add_exercise(raw)
+        yield text
+        if action_id:
+            yield _approve_hint(action_id)
+    except exercise_draft.DraftError as e:
+        yield f"I couldn't draft that: {e}. Nothing was saved."
+    except RuntimeError as e:
+        yield f"I can't read or write the exercise library right now: {e}"
+    except ValueError as e:
+        yield f"I couldn't use that: {e}. Nothing was saved."
+
+
 def is_history_question(message: str) -> bool:
     """True when the message is asking to SEE logged data (answered with no model call)."""
     if contains_keyword(message, ATLAS_REPORT_PHRASES):
@@ -170,6 +266,19 @@ def stream_atlas(message: str, history: Optional[list] = None, location: str = "
         return
     if looks_like_workout_block(message):
         yield from workout_block_reply(message, history, location, model_tier)
+        return
+    library_command = parse_library_command(message)
+    if library_command and library_command_applies(library_command):
+        yield from library_command_reply(library_command)
+        return
+    program_text = atlas_program.handle_message(message)      # 'my program', 'set next day Pull' (increment 3b)
+    if program_text is not None:
+        yield program_text
+        return
+    # First-time setup interview and profile commands (increment 3a-ii). None = not setup's business.
+    setup_text = atlas_setup.handle_message(message)
+    if setup_text is not None:
+        yield setup_text
         return
 
     if should_refuse(message, ATLAS_NON_TOPIC, ATLAS_INTENT):

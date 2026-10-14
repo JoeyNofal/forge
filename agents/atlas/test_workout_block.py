@@ -387,6 +387,35 @@ def _():
     assert s["weight"] is None and s["weight_unit"] is None and s["bodyweight"] is False and ex["rpe"] is None
 
 
+# ---------------- 3b: Program: and Day: tags ----------------
+@check("L2 3b tags: optional Program: and Day: header lines are read; without them both are None and everything else reads exactly as before")
+def _():
+    tagged = SAMPLE.replace("Unit: lbs\n", "Unit: lbs\nProgram: ppl\nDay: Push\n", 1)
+    a = W.parse_workout_block(tagged)
+    b = W.parse_workout_block(SAMPLE)
+    assert a["program"] == "ppl" and a["day"] == "Push" and a["warnings"] == []
+    assert b["program"] is None and b["day"] is None and b["warnings"] == []
+    for key in ("program", "day"):
+        a.pop(key)
+        b.pop(key)
+    assert a == b
+
+
+@check("L2 3b tags: keys in any case, cut to 40 characters, an empty tag is None, tags after the first section are ignored with a warning")
+def _():
+    r = W.parse_workout_block(SAMPLE.replace("Unit: lbs\n", "Unit: lbs\nPROGRAM: " + "p" * 100 + "\nday:\n", 1))
+    assert r["program"] == "p" * 40 and r["day"] is None
+    r = W.parse_workout_block(SAMPLE + "\nProgram: ppl\nDay: Push")
+    assert r["program"] is None and r["day"] is None and sum("after the first section" in w for w in r["warnings"]) == 2
+
+
+@check("L2 3b tags: look-alike lines ('Programs:', 'Daylight:') are not tag lines, and a note that mentions a day is just a note")
+def _():
+    r = W.parse_workout_block(SAMPLE.replace("Unit: lbs\n", "Unit: lbs\nPrograms: ppl\nDaylight: bright\n", 1))
+    assert r["program"] is None and r["day"] is None and len(r["warnings"]) == 2
+    r = W.parse_workout_block(SAMPLE.replace("Notes:\n", "Notes: day two of the program felt great\n"))
+    assert r["program"] is None and r["day"] is None and "day two of the program" in r["sections"][1]["exercises"][0]["notes"]
+
 passed = sum(1 for n, ok, err in _results if ok)
 print(f"\n{passed}/{len(_results)} passed")
 for n, ok, err in _results:
