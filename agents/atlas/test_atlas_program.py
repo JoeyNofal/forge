@@ -394,6 +394,103 @@ def _():
     for bad in (None, 5, ["x"], b"x"):
         assert raises(lambda b=bad: AP.handle_message(b), TypeError)       # pyright: ignore[reportArgumentType]
 
+# ---------------- 3c: 'next weight <exercise>' ----------------
+def bench_block(date, reps, rpe, sets=4):
+    lines = ["FORGE WORKOUT LOG v1", f"Title: Bench {date}", f"Date: {date}", "Unit: lbs", "## Main", "Exercise: Bench press",
+             f"Prescribed: {sets}x8 | weight: 135 lbs | target RPE: 7"]
+    lines += [f"Set {i + 1}: {reps} reps | 135 lbs" for i in range(sets)]
+    lines += [f"RPE: {rpe}", "Notes:"]
+    return "\n".join(lines)
+
+
+def log_bench(date, reps=8, rpe=7, sets=4) -> str:
+    aid, _msg = A.propose_workout_block(bench_block(date, reps, rpe, sets))
+    assert aid is not None
+    return A.approve_and_execute(aid)
+
+
+@check("L2 3c command: 'next weight <exercise>' (also 'for', and a trailing question mark) is a command only as a whole message")
+def _():
+    m = AP.match_command
+    assert m("next weight bench press") == ("next_weight", "bench press")
+    assert m("Next weight for Incline DB press?") == ("next_weight", "Incline DB press")
+    for no in ("next weight", "what is my next weight for bench", "please next weight bench", "next weights bench", "next weight " + "x" * 101,
+               "next weight a\nnext weight b"):
+        assert m(no) is None, no[:40]
+
+
+@check("L2 3c: no history gives no invented weight; it works without a profile")
+def _():
+    fresh()
+    out = AP.handle_message("next weight bench press") or ""
+    assert out.startswith("bench press: no weight yet.") and "feels like RPE 6" in out and pending() == []
+
+
+@check("L2 3c: after logged sessions it follows the rules - a success adds 5, a struggle repeats, two in a row drops about 10%")
+def _():
+    fresh()
+    log_bench("2026-10-01")
+    out = AP.handle_message("next weight bench press") or ""
+    assert out.startswith("bench press: Try 140 lbs.") and "a success, so +5 lbs to 140 lbs" in out
+    log_bench("2026-10-03", reps=6)
+    out = AP.handle_message("next weight bench press") or ""
+    assert out.startswith("bench press: Repeat 135 lbs.") and "a struggle, so repeat 135 lbs" in out
+    log_bench("2026-10-05", reps=5)
+    out = AP.handle_message("next weight bench press") or ""
+    assert out.startswith("bench press: Drop to 120 lbs.") and "about 10% lighter" in out
+    log_bench("2026-10-07", reps=8, rpe=7)
+    assert (AP.handle_message("next weight bench press") or "").startswith("bench press: Try 140 lbs.")
+
+
+@check("L2 3c: the library's other names are used, so a different spelling finds the same history")
+def _():
+    fresh()
+    from agents.atlas import exercise_library as library
+    ok, msg = library.add_entry({"name": "Bench press", "aliases": ["flat barbell press"], "steps": ["Lie down.", "Press up.", "Lower slowly."],
+                                 "primary_muscles": ["chest"]})
+    assert ok, msg
+    log_bench("2026-10-01")
+    out = AP.handle_message("next weight flat barbell press") or ""
+    assert "Try 140 lbs." in out
+
+
+@check("L2 3c: it works in chat with no model call, and a damaged fitness file is reported plainly")
+def _():
+    d = fresh()
+    log_bench("2026-10-01")
+    out = run("next weight bench press")
+    assert out.startswith("bench press: Try 140 lbs.") and CHAT_CALLS == []
+    assert run("what is my next weight for bench press") == "CHAT TEXT"
+    with open(os.path.join(d, "fitness.json"), "w", encoding="utf-8") as f:
+        f.write("{not json")
+    assert "can't read or write your profile or workout files" in run("next weight bench press")
+
+
+@check("L4 3c: 20 'next weight' reads while 4 logged workouts are approved at the same moment: no crash, final answer correct")
+def _():
+    fresh()
+    ids = [A.propose_workout_block(bench_block(f"2026-10-0{i + 1}", 8, 7))[0] for i in range(4)]
+    outs, errors = [], []
+
+    def read_it():
+        try:
+            for _i in range(5):
+                outs.append(AP.handle_message("next weight bench press"))
+        except Exception as e:
+            errors.append(repr(e))
+
+    def approve(aid):
+        try:
+            A.approve_and_execute(aid)
+        except Exception as e:
+            errors.append(repr(e))
+
+    threads = [threading.Thread(target=read_it) for _i in range(20)] + [threading.Thread(target=approve, args=(a,)) for a in ids]
+    [t.start() for t in threads]
+    [t.join() for t in threads]
+    assert not errors, errors[:2]
+    assert all(o is not None and o.startswith("bench press:") for o in outs)
+    assert (AP.handle_message("next weight bench press") or "").startswith("bench press: Try 140 lbs.")
 
 passed = sum(1 for n, ok, err in _results if ok)
 print(f"\n{passed}/{len(_results)} passed")
