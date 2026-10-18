@@ -49,12 +49,13 @@ FIELD_LABELS = {
     "activity": "other activity", "preferences": "likes and dislikes", "body": "body numbers", "notes": "notes",
     "goal_type": "goal type", "days_per_week": "days per week", "session_minutes": "minutes per session",
     "program_style": "program style", "add_limitation": "limitations", "clear_limitations": "limitations",
-    "next_day": "next program day",
+    "next_day": "next program day", "goal_order": "goal order",
 }
 MAX_DAY_LABEL = 40
 UPDATABLE_FIELDS = tuple(FIELD_LABELS)
 MAX_LIMITATIONS = 20
 MAX_LIMITATION = 300
+MAX_GOAL_HISTORY = 50
 
 
 def get_profile_path() -> str:
@@ -162,6 +163,71 @@ def parse_program_style(text):
     return best[1] if best else None
 
 
+def parse_goal_order(text) -> list:
+    """
+    'power, strength, muscle' / 'power then strength > endurance' -> ['power', 'strength', ...], or ValueError.
+    Items are split on commas, 'then', 'and', '>', '->' and ';'. Every item must be a goal I know, listed once.
+    """
+    if not isinstance(text, str) or not text.strip():
+        raise ValueError("profile: a goal order needs goals, for example: power, strength, muscle, endurance, fat loss")
+    pieces = [p.strip() for p in re.split(r",|;|->|>|\u2192|\bthen\b|\band\b", text[:300], flags=re.IGNORECASE) if p.strip()]
+    order: list = []
+    for piece in pieces:
+        goal = parse_goal_type(piece)
+        if goal is None:
+            raise ValueError(f"profile: '{piece[:30]}' is not a goal I know (strength, power, muscle, fat loss, endurance, general)")
+        if goal in order:
+            raise ValueError(f"profile: {GOAL_TYPE_LABELS[goal]} is listed twice in the goal order")
+        order.append(goal)
+    if not order:
+        raise ValueError("profile: a goal order needs goals, for example: power, strength, muscle, endurance, fat loss")
+    return order
+
+
+def _clean_goal_order(v) -> list:
+    """A saved goal order made safe: only known goals, each once, in order. Anything else gives []."""
+    if not isinstance(v, list):
+        return []
+    out: list = []
+    for item in v:
+        goal = parse_goal_type(item) if isinstance(item, str) else None
+        if goal and goal not in out:
+            out.append(goal)
+    return out
+
+
+def _clean_goal_history(v) -> list:
+    """[{'goal_type', 'started', 'ended'}], newest last, at most MAX_GOAL_HISTORY, junk dropped."""
+    if not isinstance(v, list):
+        return []
+    out = []
+    for item in v:
+        if not isinstance(item, dict):
+            continue
+        goal = parse_goal_type(item.get("goal_type")) if isinstance(item.get("goal_type"), str) else None
+        started = _text(item.get("started"), 10)
+        if goal and started:
+            out.append({"goal_type": goal, "started": started, "ended": _text(item.get("ended"), 10) or None})
+    return out[-MAX_GOAL_HISTORY:]
+
+
+def track_goal(profile: dict, today: str) -> None:
+    """Keeps the record of when each goal started: closes the open entry and opens a new one when the goal changed."""
+    history = _clean_goal_history(profile.get("goal_history"))
+    last = history[-1] if history else None
+    if last is None or last["ended"] is not None or last["goal_type"] != profile.get("goal_type"):
+        if last is not None and last["ended"] is None:
+            last["ended"] = today
+        history.append({"goal_type": profile.get("goal_type"), "started": today, "ended": None})
+    profile["goal_history"] = history[-MAX_GOAL_HISTORY:]
+
+
+def goal_priority(profile) -> list:
+    """The goals in his order, first = the one training follows now. Never empty for a real profile."""
+    p = normalize_profile(profile) if isinstance(profile, dict) else normalize_profile({})
+    return p["goal_order"] or [p["goal_type"]]
+
+
 def _clean_next_day(v):
     """{'day', 'set_at'} when Joey set the next program day by hand, else None."""
     if not isinstance(v, dict):
@@ -182,6 +248,10 @@ def normalize_profile(raw) -> dict:
         out[key] = _text(raw.get(key), limit)
     goal_type = parse_goal_type(raw.get("goal_type"))
     out["goal_type"] = goal_type or derive_goal_type(out["goal"])
+    out["goal_order"] = _clean_goal_order(raw.get("goal_order"))
+    if out["goal_order"]:
+        out["goal_type"] = out["goal_order"][0]               # with an order, the first goal IS the goal type
+    out["goal_history"] = _clean_goal_history(raw.get("goal_history"))
     out["days_per_week"] = _whole(raw.get("days_per_week"), 1, 7)
     out["session_minutes"] = _whole(raw.get("session_minutes"), 15, 180)
     out["limitations"] = _clean_limitations(raw.get("limitations"))
@@ -218,10 +288,12 @@ def clean_update(field, value) -> dict:
         if not text:
             raise ValueError("profile: the next program day needs a name")
         return {"field": field, "value": text}
+    if field == "goal_order":
+        return {"field": field, "value": parse_goal_order(value) if not isinstance(value, list) else parse_goal_order(", ".join(str(v) for v in value))}
     if field == "goal_type":
         goal_type = parse_goal_type(value)
         if goal_type is None:
-            raise ValueError("profile: goal type must be strength, muscle, fat loss, endurance or general")
+            raise ValueError("profile: goal type must be strength, power, muscle, fat loss, endurance or general")
         return {"field": field, "value": goal_type}
     if field == "days_per_week":
         days = _whole(value, 1, 7)
@@ -249,7 +321,13 @@ def format_profile(profile) -> str:
         return v if v not in ("", None) else "(not given)"
 
     lines = ["Training profile (" + ("setup complete" if p["setup_complete"] else "setup not finished") + "):",
-             f"Goal: {given(p['goal'])} (type: {GOAL_TYPE_LABELS[p['goal_type']]})",
+             f"Goal: {given(p['goal'])} (type: {GOAL_TYPE_LABELS[p['goal_type']]})"]
+    if p["goal_order"]:
+        lines.append("Goal order: " + " > ".join(GOAL_TYPE_LABELS[g] for g in p["goal_order"]))
+    current = p["goal_history"][-1] if p["goal_history"] and p["goal_history"][-1]["ended"] is None else None
+    if current:
+        lines.append(f"Current goal ({GOAL_TYPE_LABELS[current['goal_type']]}) since {current['started']}")
+    lines += [
              f"Experience: {given(p['experience'])}",
              f"Recent consistency: {given(p['consistency'])}",
              f"Days per week: {given(p['days_per_week'])}   Minutes per session: {given(p['session_minutes'])}",
@@ -320,8 +398,15 @@ def save_profile(clean) -> tuple:
         old = data.get("profile") if isinstance(data.get("profile"), dict) else {}
         profile["created_at"] = _text(old.get("created_at"), 40) or now
         profile["updated_at"] = now
+        kept = _clean_goal_order(old.get("goal_order"))
+        if kept and not profile["goal_order"]:                  # redoing setup never throws away an order he chose
+            profile["goal_order"] = kept
+            profile["goal_type"] = kept[0]
+        if not profile["goal_history"]:
+            profile["goal_history"] = _clean_goal_history(old.get("goal_history"))
+        track_goal(profile, now[:10])
         data["profile"] = profile
-        result["msg"] = "Training profile saved."
+        result["msg"] = "Training profile saved." + (f" (Your goal order was kept: {' > '.join(GOAL_TYPE_LABELS[g] for g in kept)}.)" if kept else "")
         return data
 
     update_json(get_profile_path(), _modify, {})
@@ -354,11 +439,22 @@ def update_field(field, value) -> tuple:
         elif field == "next_day":
             profile["next_day"] = {"day": value, "set_at": now}
             shown = value
+        elif field == "goal_order":
+            profile["goal_order"] = list(value)
+            profile["goal_type"] = value[0]
+            track_goal(profile, now[:10])
+            shown = " > ".join(GOAL_TYPE_LABELS[g] for g in value)
         else:
             profile[field] = value
             shown = STYLE_LABELS[value] if field == "program_style" else GOAL_TYPE_LABELS[value] if field == "goal_type" else str(value)
-            if field == "goal":
+            if field == "goal_type":
+                if profile["goal_order"]:                      # with an order, the chosen goal moves to the front
+                    profile["goal_order"] = [value] + [g for g in profile["goal_order"] if g != value]
+                    shown += " (goal order now: " + " > ".join(GOAL_TYPE_LABELS[g] for g in profile["goal_order"]) + ")"
+                track_goal(profile, now[:10])
+            if field == "goal" and not profile["goal_order"]:       # with an order, the goal words are just words
                 profile["goal_type"] = derive_goal_type(value)
+                track_goal(profile, now[:10])
                 shown += f" (goal type: {GOAL_TYPE_LABELS[profile['goal_type']]})"
         profile["updated_at"] = now
         data["profile"] = profile

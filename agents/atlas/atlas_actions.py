@@ -74,6 +74,8 @@ def _describe_profile_change(d: dict) -> str:
         return "clear all limitations from your training profile"
     if field == "add_limitation":
         return f"add a limitation to your training profile: {d['value']}"
+    if field == "goal_order" and isinstance(d["value"], list):
+        return "set your goal order to: " + " > ".join(profiles.GOAL_TYPE_LABELS.get(g, str(g)) for g in d["value"])
     return f"set your {label} to: {d['value']}"
 
 

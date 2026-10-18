@@ -111,6 +111,7 @@ _COMMANDS = [
     ("clear_limitations", re.compile(r"^\s*clear\s+limitations\s*[.!]?\s*$", _I)),
     ("add_limitation", re.compile(r"^\s*add\s+limitation\s+(\S.{0,299}?)\s*[.!]?\s*$", _I)),
     ("goal_type", re.compile(r"^\s*set\s+goal\s+type\s+(\S.{0,40}?)\s*[.!]?\s*$", _I)),
+    ("goal_order", re.compile(r"^\s*set\s+goal\s+order\s+(\S.{0,150}?)\s*[.!]?\s*$", _I)),          # before the generic 'set goal ...'
     ("days_per_week", re.compile(r"^\s*set\s+days(?:\s+per\s+week)?\s+(\d)\s*[.!]?\s*$", _I)),
     ("session_minutes", re.compile(r"^\s*set\s+minutes(?:\s+per\s+session)?\s+(\d{2,3})\s*[.!]?\s*$", _I)),
     ("program_style", re.compile(r"^\s*set\s+program(?:\s+style)?\s+(\S.{0,60}?)\s*[.!]?\s*$", _I)),
@@ -360,7 +361,7 @@ def _run_command(kind: str, value):
     if kind == "text":
         field, text = value
         return _propose_change(field, text)
-    return _propose_change(kind, value)            # goal_type, days_per_week, session_minutes, program_style
+    return _propose_change(kind, value)            # goal_type, goal_order, days_per_week, session_minutes, program_style
 
 
 def handle_message(message) -> Optional[str]:
