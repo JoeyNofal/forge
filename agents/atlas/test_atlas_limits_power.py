@@ -142,7 +142,7 @@ def _():
 @check("L2 wording: a skipped set shows fewer sets done; every-rep-hit text is unchanged")
 def _():
     s = R.suggest_weight("Bench press", [_day("2026-10-18", _ex([8, 8]))])
-    assert "2 of 3 sets at 135 lbs" in s["reason"] and "2 of 3 sets hit the prescribed 8 reps" in s["reason"], s["reason"]
+    assert s["action"] == "hold" and "2 of 3 sets at 135 lbs" in s["reason"] and "every rep hit in the sets you did" in s["reason"], s["reason"]
     ok = R.suggest_weight("Bench press", [_day("2026-10-18", _ex([8, 8, 8], rpe=None))])
     assert "every rep hit" in ok["reason"]
 

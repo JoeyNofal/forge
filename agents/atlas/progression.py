@@ -151,35 +151,51 @@ def evaluate_session(ex) -> dict:
     rpe = _num(ex.get("rpe"))
     base = {"top_weight": top, "implausible": implausible, "rpe": rpe, "target_rpe": target_rpe, "sets_done": len(sets), "planned_sets": planned_sets,
             "planned_reps": planned_reps, "planned_seconds": planned_secs}
-    if planned_sets is None or (planned_reps is None and planned_secs is None):
+    if planned_sets is None or (planned_reps is None and planned_secs is None) or not sets:
         return {**base, "status": "unknown", "reps_hit": None}
     if planned_reps is not None:
         hits = sum(1 for d in sets if (_num(d.get("reps")) or 0) >= planned_reps)
     else:
         hits = sum(1 for d in sets if (_num(d.get("seconds")) or 0) >= (planned_secs or 0))
-    reps_hit = hits >= planned_sets
-    too_hard = rpe is not None and target_rpe is not None and rpe >= target_rpe + 2
-    if not reps_hit or too_hard:
-        status = "struggle"
-    elif rpe is None or target_rpe is None or rpe <= target_rpe:
-        status = "success"
+    # The RPE he reports is the main signal; reps break ties. Only the sets he DID are judged, and a skipped set
+    # can never produce an increase. His own "struggled" (read from his note and approved by him) beats the table.
+    reps_hit = hits >= len(sets)                       # every set he did hit the prescription
+    skipped = len(sets) < planned_sets
+    struggled = ex.get("struggled") is True
+    gap = rpe - target_rpe if rpe is not None and target_rpe is not None else None
+    if struggled:
+        status, why = "struggle", "you noted it was a struggle"
+    elif gap is not None and gap >= 2:
+        status, why = "struggle", "RPE 2 or more over the target"
+    elif gap is not None and not reps_hit:
+        if gap >= 0:
+            status, why = "struggle", "reps missed at or above the target RPE"
+        else:
+            status, why = "neutral", "reps missed, but the effort was below the target"
+    elif gap is not None and gap > 0:
+        status, why = "neutral", "reps hit but harder than planned"
+    elif not reps_hit:
+        status, why = "neutral", "reps missed and no RPE to judge the effort"
+    elif skipped:
+        status, why = "neutral", "a prescribed set was skipped"
     else:
-        status = "neutral"
-    return {**base, "status": status, "reps_hit": reps_hit, "sets_hit": hits}
+        status, why = "success", "reps hit at or below the target RPE"
+    return {**base, "status": status, "why": why, "reps_hit": reps_hit, "sets_hit": hits, "skipped": skipped, "struggled": struggled}
 
 
 def _session_text(date: str, ev: dict) -> str:
     done = f"{ev['sets_done']} of {_fmt(ev['planned_sets'])} sets"
     if ev["reps_hit"]:
-        reps = "every rep hit"
+        reps = "every rep hit in the sets you did" if ev.get("skipped") else "every rep hit"
     elif ev.get("sets_hit") is not None and ev.get("planned_sets") is not None:
         goal = f"{_fmt(ev['planned_reps'])} reps" if ev.get("planned_reps") is not None else f"{_fmt(ev.get('planned_seconds'))} sec"
-        reps = f"{ev['sets_hit']} of {_fmt(ev['planned_sets'])} sets hit the prescribed {goal}"
+        reps = f"{ev['sets_hit']} of {_fmt(ev['sets_done'])} sets hit the prescribed {goal}"
     else:
         reps = "no prescription to compare"
     rpe = (f"RPE {_fmt(ev['rpe'])} against a target of {_fmt(ev['target_rpe'])}" if ev["rpe"] is not None and ev["target_rpe"] is not None
            else "no RPE to compare")
-    return f"on {date or 'an unknown date'} you did {done} at {_fmt(ev['top_weight'])} lbs ({reps}, {rpe})"
+    noted = "; you noted a struggle" if ev.get("struggled") else ""
+    return f"on {date or 'an unknown date'} you did {done} at {_fmt(ev['top_weight'])} lbs ({reps}, {rpe}{noted})"
 
 
 # --------------------------------------------------------------
@@ -231,7 +247,7 @@ def suggest_weight(name, workouts, aliases=None, primary_muscles=None, equipment
         return result
     if last["status"] == "neutral":
         result.update(action="hold", weight_lbs=_tidy(weight),
-                      reason=f"{seen}: reps hit but harder than planned, so repeat {_fmt(weight)} lbs")
+                      reason=f"{seen}: {last.get('why') or 'not a clear success'}, so repeat {_fmt(weight)} lbs")
         return result
     previous = evaluate_session(sessions[1][1]) if len(sessions) > 1 else None
     if previous is not None and previous["status"] == "struggle":

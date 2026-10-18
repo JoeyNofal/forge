@@ -42,6 +42,7 @@ def fake_model(agent, tier, system, messages, location=""):
 C.stream_by_tier = fake_model
 C.extract_and_propose = lambda message: []
 C.web_search = lambda q: "stub search result"
+C.apply_note_readings = lambda clean: []        # the note reader (local model) has its own tests; keep this file hermetic
 
 
 def check(name):

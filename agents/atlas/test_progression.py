@@ -133,7 +133,7 @@ def _():
 
 
 # ---------------- L2 smoke: judging one session ----------------
-@check("L2 one session: success, neutral, struggle (reps missed, sets skipped, RPE 2+ over), unknown without a prescription")
+@check("L2 one session: success, neutral, struggle (reps missed at target RPE, RPE 2+ over), skipped sets neutral, unknown without a prescription")
 def _():
     e = G.evaluate_session
     assert e(ex("Squat", 100, rpe=7, target=7))["status"] == "success"
@@ -141,7 +141,7 @@ def _():
     assert e(ex("Squat", 100, rpe=8, target=7))["status"] == "neutral"
     assert e(ex("Squat", 100, rpe=9, target=7))["status"] == "struggle"
     assert e(ex("Squat", 100, rpe=7, target=7, done_reps=6))["status"] == "struggle"
-    assert e(ex("Squat", 100, rpe=7, target=7, done_sets=3))["status"] == "struggle"
+    assert e(ex("Squat", 100, rpe=7, target=7, done_sets=3))["status"] == "neutral"             # a skipped set is never a struggle, and never a success
     assert e(ex("Squat", 100, rpe=None, target=7))["status"] == "success"
     assert e(ex("Squat", 100, rpe=7, target=7, done_reps=10))["status"] == "success"           # extra reps are fine
     bare = ex("Squat", 100)

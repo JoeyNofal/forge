@@ -511,7 +511,7 @@ def log_workout_block(clean) -> tuple:
     for key in ("exercises", "warmup", "cooldown", "skipped"):
         if not isinstance(clean.get(key), list):
             raise ValueError(f"workout: '{key}' must be a list")
-    record = {k: v for k, v in clean.items() if k not in ("units_assumed", "warnings")}
+    record = {k: v for k, v in clean.items() if k not in ("units_assumed", "warnings", "note_readings")}
     record.update(id=str(uuid.uuid4()), logged_at=datetime.now().isoformat())
 
     initialize_fitness_data()

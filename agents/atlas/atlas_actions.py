@@ -219,17 +219,22 @@ def propose_injury(raw) -> tuple:
     return _propose(TYPE_LOG_INJURY, log.normalize_injury(raw))
 
 
-def propose_workout_block(text) -> tuple:
+def propose_workout_block(text, note_reader=None) -> tuple:
     """
     A pasted FORGE WORKOUT LOG block -> a proposal. Read-only: zero effect on the
     fitness file. Bad text raises BlockError / ValueError / TypeError. Returns
     (None, explanation) when this exact workout is already logged.
+    `note_reader` (optional) reads the notes under the exercises; it flags struggles on the proposal
+    and returns lines to show. Without it nothing is read (the proposal stays pure Python).
     """
     parsed = parse_workout_block(text)
     clean = log.normalize_workout_block(parsed)
     if log.is_duplicate_workout_block(clean["block_hash"]):
         return None, "This workout is already logged - nothing to propose."
+    reader_lines = note_reader(clean) if note_reader is not None else []
     action_id, message = _propose(TYPE_LOG_WORKOUT_BLOCK, clean)
+    if reader_lines:
+        message += "\n" + "\n".join(reader_lines)
     notes = clean.get("warnings") or []
     if notes:
         message += "\nHeads up (lines I could not read):\n" + "\n".join(f"- {n}" for n in notes[:5])

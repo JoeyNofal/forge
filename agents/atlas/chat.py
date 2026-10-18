@@ -49,6 +49,7 @@ from agents.atlas import atlas_setup
 from agents.atlas import exercise_draft
 from agents.atlas import exercise_library as library
 from agents.atlas import workout_coach
+from agents.atlas.note_reader import apply_note_readings
 from agents.atlas.workout_block import looks_like_workout_block
 
 # Same line ATLAS's own prompt already uses for off-topic questions.
@@ -84,7 +85,7 @@ def workout_block_reply(message: str, history: Optional[list] = None, location: 
          out. If the model fails, the proposal and the approve line are already delivered.
     """
     try:
-        action_id, text = atlas_actions.propose_workout_block(message)
+        action_id, text = atlas_actions.propose_workout_block(message, note_reader=apply_note_readings)
     except RuntimeError as e:
         yield f"I can't read or write your fitness data right now: {e}"
         return
