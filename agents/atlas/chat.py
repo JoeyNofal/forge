@@ -240,6 +240,18 @@ def history_answer(message: str) -> str:
     )
 
 
+# Context for the model: it cannot save, approve or log anything itself. A model that says "logged!" or
+# "approved, it's in the system" without a real save is making a false record (Lesson #3). Found in real
+# use: pasted log lines sent one by one made ATLAS announce workouts as logged when nothing was.
+LOGGING_NOTE = (
+    "[LOGGING: You cannot save, log, approve or change any record yourself, and you do not know whether the "
+    "system will offer to log anything. Never say you have logged, saved, recorded, approved or remembered "
+    "anything, and never say something is in the system or the log because of this message. Do not narrate "
+    "approvals or proposals. If Joey wants something logged, tell him to describe it or paste his workout log; "
+    "the system takes it from there. Just react to what Joey said.]"
+)
+
+
 def stream_atlas(message: str, history: Optional[list] = None, location: str = "",
                  model_tier: Optional[str] = None):
     """
@@ -293,7 +305,7 @@ def stream_atlas(message: str, history: Optional[list] = None, location: str = "
             yield f"I can't read your fitness data right now: {e}"
         return
 
-    context_blocks = []
+    context_blocks = [LOGGING_NOTE]
 
     try:
         context_blocks.append(
