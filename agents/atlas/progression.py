@@ -165,12 +165,18 @@ def evaluate_session(ex) -> dict:
         status = "success"
     else:
         status = "neutral"
-    return {**base, "status": status, "reps_hit": reps_hit}
+    return {**base, "status": status, "reps_hit": reps_hit, "sets_hit": hits}
 
 
 def _session_text(date: str, ev: dict) -> str:
     done = f"{ev['sets_done']} of {_fmt(ev['planned_sets'])} sets"
-    reps = "every rep hit" if ev["reps_hit"] else "reps missed"
+    if ev["reps_hit"]:
+        reps = "every rep hit"
+    elif ev.get("sets_hit") is not None and ev.get("planned_sets") is not None:
+        goal = f"{_fmt(ev['planned_reps'])} reps" if ev.get("planned_reps") is not None else f"{_fmt(ev.get('planned_seconds'))} sec"
+        reps = f"{ev['sets_hit']} of {_fmt(ev['planned_sets'])} sets hit the prescribed {goal}"
+    else:
+        reps = "no prescription to compare"
     rpe = (f"RPE {_fmt(ev['rpe'])} against a target of {_fmt(ev['target_rpe'])}" if ev["rpe"] is not None and ev["target_rpe"] is not None
            else "no RPE to compare")
     return f"on {date or 'an unknown date'} you did {done} at {_fmt(ev['top_weight'])} lbs ({reps}, {rpe})"

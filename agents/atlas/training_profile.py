@@ -9,7 +9,7 @@ RULES
 - NO model and NO network code here. The profile holds JOEY'S OWN WORDS (cleaned to one
   line and length-limited); nothing a model says is ever written into it.
 - The only thing Python works out is what can be worked out safely: a goal TYPE from his
-  goal words (strength / muscle / fat_loss / endurance / general, shown to him and changeable),
+  goal words (strength / power / muscle / fat_loss / endurance / general, shown to him and changeable),
   and numbers (days 1-7, minutes 15-180).
 - Every write is one locked read-modify-write (Lesson #4). A damaged or wrong-shaped file
   fails loudly and is never overwritten (Lesson #5). The file lives in the data folder
@@ -29,7 +29,7 @@ _REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__f
 DEFAULT_PROFILE_PATH = os.path.join(_REPO_ROOT, "data", "training_profile.json")
 
 PROFILE_VERSION = 1
-GOAL_TYPES = ("strength", "muscle", "fat_loss", "endurance", "general")
+GOAL_TYPES = ("strength", "power", "muscle", "fat_loss", "endurance", "general")
 PROGRAM_STYLES = ("ppl", "upper_lower", "full_body", "bro_split", "auto")
 STYLE_LABELS = {
     "ppl": "push / pull / legs",
@@ -38,7 +38,7 @@ STYLE_LABELS = {
     "bro_split": "bro split (chest, back, shoulders, arms, legs)",
     "auto": "you decide",
 }
-GOAL_TYPE_LABELS = {"strength": "strength", "muscle": "build muscle", "fat_loss": "fat loss",
+GOAL_TYPE_LABELS = {"strength": "strength", "power": "power", "muscle": "build muscle", "fat_loss": "fat loss",
                     "endurance": "endurance", "general": "general fitness"}
 
 # Free-text fields and their length limits.
@@ -114,6 +114,7 @@ def _clean_limitations(v) -> list:
 
 _GOAL_PATTERNS = {
     "strength": r"\b(?:strength|stronger|strong|powerlifting|1rm)\b",
+    "power": r"\b(?:power|explosive|explosiveness|plyometric|plyometrics)\b",
     "muscle": r"\b(?:muscle|muscles|hypertrophy|bulk|bulking|mass|size|bigger)\b",
     "fat_loss": r"\b(?:fat|lose weight|weight loss|cut|cutting|lean|leaner|slim|shred)\b",
     "endurance": r"\b(?:endurance|cardio|swim|swimming|marathon|stamina|conditioning|running|triathlon)\b",

@@ -15,6 +15,7 @@ RULES
 from typing import Any, Optional
 
 from agents.atlas import training_profile as profiles
+from shared.keyword_gate import contains_keyword
 
 CORE_FINISHER = ["abs", "core"]
 
@@ -44,6 +45,7 @@ PROGRAMS: dict[str, dict[str, Any]] = {
 # sets / reps / rest are (low, high) ranges; RPE is a single number.
 GOAL_PARAMS: dict[str, dict[str, Any]] = {
     "strength": {"sets": (4, 4), "reps": (3, 6), "rest_seconds": (180, 180), "rpe_main": 8, "rpe_accessory": 7},
+    "power": {"sets": (3, 5), "reps": (3, 5), "rest_seconds": (120, 180), "rpe_main": 7, "rpe_accessory": 6},
     "muscle": {"sets": (3, 4), "reps": (8, 12), "rest_seconds": (90, 90), "rpe_main": 8, "rpe_accessory": 7},
     "fat_loss": {"sets": (2, 3), "reps": (12, 20), "rest_seconds": (45, 60), "rpe_main": 7, "rpe_accessory": 6},
     "endurance": {"sets": (2, 3), "reps": (12, 20), "rest_seconds": (45, 60), "rpe_main": 7, "rpe_accessory": 6},
@@ -61,6 +63,33 @@ def _has(table, key) -> bool:
 def goal_params(goal_type) -> dict:
     """The numbers for a goal type; anything unknown gets the 'general' numbers."""
     return GOAL_PARAMS[goal_type] if _has(GOAL_PARAMS, goal_type) else GOAL_PARAMS["general"]
+
+
+# LIMITATIONS. While one of Joey's own limitation notes mentions the biceps or the shoulder, plans never
+# include direct biceps work, the starter warmups skip shoulder circles, and overhead or heavy pulling moves
+# carry a "check with your physical therapist" line. Python decides this from his words; no model is involved.
+LIMIT_BICEPS_WORDS = ["bicep", "biceps"]
+LIMIT_SHOULDER_WORDS = ["shoulder", "shoulders", "labrum", "rotator"]
+SHOULDER_WARMUPS_TO_AVOID = ["windmill arms", "arm circles", "shoulder circles", "shoulder rolls"]
+PT_CHECK_NOTE = "Check with your physical therapist before overhead or heavy pulling moves."
+
+
+def limit_flags(profile) -> dict:
+    """{'drop_muscles', 'avoid_warmups', 'pt_note', 'reason'}; all empty when no limitation mentions the biceps or shoulder."""
+    raw = profile.get("limitations") if isinstance(profile, dict) else None
+    texts = [t for t in raw if isinstance(t, str)] if isinstance(raw, list) else []
+    joined = " ".join(texts)[:20000]
+    hit = bool(joined) and (contains_keyword(joined, LIMIT_BICEPS_WORDS) or contains_keyword(joined, LIMIT_SHOULDER_WORDS))
+    if not hit:
+        return {"drop_muscles": [], "avoid_warmups": [], "pt_note": "", "reason": ""}
+    return {"drop_muscles": ["biceps"], "avoid_warmups": list(SHOULDER_WARMUPS_TO_AVOID), "pt_note": PT_CHECK_NOTE,
+            "reason": "one of your limitations mentions the biceps or shoulder"}
+
+
+def focus_for(focus, profile) -> list:
+    """A day's focus muscles with any muscle your limitations rule out taken away."""
+    drop = set(limit_flags(profile)["drop_muscles"])
+    return [m for m in focus if isinstance(m, str) and m not in drop] if isinstance(focus, list) else []
 
 
 def session_shape(minutes) -> dict:
@@ -185,7 +214,7 @@ def describe_program(profile, workouts) -> str:
     gp = goal_params(p["goal_type"])
     lines = [f"Your program: {PROGRAMS[style]['label']} ({reason})", "Days in order:"]
     for i, day in enumerate(PROGRAMS[style]["days"], 1):
-        lines.append(f"  {i}. {day['label']}: {', '.join(day['focus'])}, plus a core (abs) finisher")
+        lines.append(f"  {i}. {day['label']}: {', '.join(focus_for(day['focus'], p))}, plus a core (abs) finisher")
     last_date = state["last"]["date"] if state["last"] else ""
     if state["last"] is None:
         lines.append(f"Next: {state['next']['label']} ({state['reason']}).")
@@ -200,4 +229,8 @@ def describe_program(profile, workouts) -> str:
     lines.append(f"For your goal ({profiles.GOAL_TYPE_LABELS[p['goal_type']]}): {_range(*gp['sets'])} sets of {_range(*gp['reps'])} reps, "
                  f"rest {_range(*gp['rest_seconds'], unit=' sec')}, target RPE {gp['rpe_main']} on main lifts and {gp['rpe_accessory']} on accessories "
                  f"(warmups {WARMUP_RPE}).")
+    flags = limit_flags(p)
+    if flags["drop_muscles"]:
+        lines.append(f"Because {flags['reason']}: {', '.join(flags['drop_muscles'])} is left out of your plans, warmups skip "
+                     f"{', '.join(flags['avoid_warmups'])}. {flags['pt_note']}")
     return "\n".join(lines)

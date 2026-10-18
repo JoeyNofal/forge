@@ -59,7 +59,7 @@ def _():
             imported |= {a.name for a in node.names}
         elif isinstance(node, ast.ImportFrom):
             imported.add(node.module or "")
-    assert imported <= {"typing", "agents.atlas"}, imported
+    assert imported <= {"typing", "agents.atlas", "shared.keyword_gate"}, imported      # keyword_gate = the shared pure word-boundary helper
     for banned in ("open(", "update_json", "stream_by_tier", "atlas_actions", "requests"):
         assert banned not in SRC, banned
     assert not re.search(r"(api[_-]?key|sk-[A-Za-z0-9]|AIza|NEXUS SYSTEM)", SRC, re.I)
