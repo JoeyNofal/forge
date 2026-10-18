@@ -1030,3 +1030,145 @@ Real-model (L3) smoke files kept green this session: `agents.atlas.test_atlas_ex
 - Whenever a bug is found, fix it immediately.
 - Claude asks questions in ONE numbered list, plain (no multiple-choice cards), before writing code.
 - Older chat tests are kept hermetic by stubbing the newer chat steps (extraction, recall, memory).
+
+# FORGE — Completion Record, Session 15
+*(ATLAS workout template 1a→3c, exercise library, setup interview, programs, progression rules; research on existing agent projects; legion + HEAL decisions; final roadmap. Last commit pushed: 2d856e4 on main. Paste this into the Completion Record file.)*
+
+## 0. Where things stand
+- **ATLAS** now has: the filled-in-workout paste flow (block reader, approval, coaching reply), chat approve/deny for every proposal, an exercise library with Gemini-drafted how-tos, a first-time setup interview + training profile, program templates with rotation tracking, and progression rules (`next weight`).
+- **NEXT BUILD: 3d — the plan builder + `next workout`** (design agreed in section 7). After it: phone page, history analysis.
+- Everything below is CLOSED at L1–L5 on Joey's real machine unless marked otherwise.
+- Joey has not yet reported hands-on try-outs in the real chat of: `atlas setup`, `my program`, `set next day`, `next weight`, `draft exercise`, pasting a real filled-in block. Ask for his impressions early next chat (wording, order, anything missing).
+
+## 1. Standing rules (reconfirmed or new this session)
+- Claude never creates files in his folder or runs commands there. Code is given as **FIND / REPLACE blocks** or whole new files. Joey wants **exact copy-paste steps** (PowerShell, from `D:\Projects\Forge`).
+- Questions come in **ONE numbered list**, plain (no cards); he answers with a matching list.
+- Nothing is done until a full L1–L5 pass; real-model (L3) output is READ, not just counted; counts come from his real output.
+- Where a real model ignored a rule, ENFORCE it in Python, then re-test. Bugs found are fixed immediately, even in closed features.
+- **NEW (he said YES): Claude tests new code in its own private sandbox copy first** (clone of the GitHub repo; mocked tests only; short output; never his folder; code still handed over as text). The sandbox only sees what he has PUSHED, so he must commit/push after every green increment.
+- Sandbox recipe: `git clone https://github.com/JoeyNofal/forge.git`; `pip install --break-system-packages filelock google-genai anthropic ollama google-search-results pyright`; apply edits with a script that asserts each FIND matches exactly once; run the ATLAS regression; run `python3 -m pyright <files>` (his editor is Pylance, he hates warnings, so aim for 0 errors); compare old vs new behaviour with `git worktree`. In the sandbox only, `shared/test_model_json` fails because `chromadb` is not installed (passes on his machine).
+- He is token-aware: keep sandbox output short, never dump the whole regression.
+- License rule for borrowing code (accepted): check each repo's LICENSE before copying. MIT/Apache = copy with credit (keep author name + license text, keep a THIRD_PARTY_NOTICES file). GPL/AGPL = would force FORGE's license (the repo is public). NO license = ideas only, re-implement.
+- He accepted: Claude is not a lawyer; legal/financial/medical answers are information, not advice.
+
+## 2. What was built (files, behaviour, tests)
+All under `agents/atlas/` unless noted. Counts are from his real runs at commit 2d856e4.
+
+**1a `workout_block.py` + `test_workout_block.py` (33)** — pure reader of the text block the phone page will copy back.
+- Format (v1), never typed by hand:
+  FORGE WORKOUT LOG v1 / Title: / Date: / Unit: lbs|kg / (optional) Program: / Day: / then `## Section` headers (Warmup, Cooldown or any muscle-group name), per exercise: `Exercise:`, `Prescribed: 2x10 | weight: 10 lbs | rest: 2 min | target RPE: 7`, `Set 1: 10 reps | 10 lbs` (or `30 sec |`, or `| bodyweight`), `RPE:` (the player's own), `Notes:` (may run onto more lines).
+- Keywords count only at line start followed by a colon. Empty set rows = skipped (never 0). Unitless weight = lbs, flagged "(unit assumed)". Bad lines become warnings. Limits: 20,000 chars, 10 sections, 30 exercises/section, 30 sets.
+- Program:/Day: header lines are optional (3b). They are ignored with a warning after the first section.
+
+**1b saving: `atlas_logging.py` (normalize_workout_block, log_workout_block, is_duplicate_workout_block), `atlas_actions.py`, `test_workout_log.py` (30)**
+- A saved workout (type gym, source workout_block) has: title, date, `exercises` (main lifts), separate `warmup` and `cooldown` lists, `skipped` names, per-exercise `section`, `rpe`, `set_details` [{set, reps, seconds, weight_lbs, bodyweight}], `prescribed` {sets, reps, seconds, weight_lbs, bodyweight, rest_seconds, target_rpe}, `block_hash` (duplicate fingerprint), optional `program`/`program_day`.
+- Old fields kept for the Training tracker: `sets` = completed sets, `weight_lbs` = heaviest set, `reps` = that set's reps. kg converted to lbs in Python (×2.20462). Notes never become injury entries. Exercises with no filled sets are listed as skipped.
+- Duplicate guard: the same finished workout pasted twice saves once (checked at proposal and again at save). A block WITHOUT tags keeps fingerprint `5f7ba90a82c32da0` (pinned in a test, proven identical before/after the tag change).
+- Approving a TAGGED workout appends "Next in your push / pull / legs program: Pull."
+
+**1c-i chat approve/deny + paste handling (`chat.py`, `test_atlas_chat_workout.py` 32)**
+- Whole-message commands only: `approve ab12cd34` / `deny ab12cd34` (first 6+ chars of the id) / `pending`. After an approval the SHORT id says "No pending action found"; the full id says already executed (safe, never re-runs).
+- Pasting a block (header FORGE WORKOUT LOG) is handled BEFORE the refusal gate (a note like "ate food" can never get it refused): reply = proposal + approve line, then coaching.
+
+**1c-ii coaching (`workout_coach.py` 24 tests; `shared/agent_topics.py` gained ATLAS_NOTE_DISCOMFORT_WORDS)**
+- Python builds FACTS (prescribed vs done per exercise) and "things to ask Joey about" (skipped, fewer sets, reps/seconds below prescription, heaviest set below/above prescribed weight, RPE 2+ off target, discomfort words in notes like click/pain/hurts/sharp). The model only puts it in words (Goggins voice, ~100 words, ≤2 questions about those items, no new plan, no diagnosis).
+- Real models ignored the rules, so the reply is collected whole and cleaned in Python: max 2 questions, none if nothing flagged, sentences with numbers not in the facts dropped, "saved/logged" claims dropped. The model no longer sees "none logged" lines or the word FLAGS. Known small gap: number WORDS ("two reps short") are not checked, only digits. Gemini replies read better than local gemma ones. The pasted block itself is never forwarded to the model.
+
+**2a `exercise_library.py` (30 tests)** — one locked file `data/exercise_library.json`. Entry: name, aliases, steps, primary_muscles, secondary_muscles, common_mistakes, equipment, status (ai_drafted | reviewed), id, created_at, reviewed_at. Names match exactly after tidying (case, spacing, punctuation, DB/BB/KB spelled out); no fuzzy guessing; a name that would point at two entries is refused. New entries are ALWAYS ai_drafted; only an approved `reviewed <name>` marks reviewed. Proposals SHOW the whole how-to before approval.
+**2b-i `exercise_draft.py` (14)** — asks Gemini free tier (`free_cloud`, never paid) to draft a how-to; ONLY the exercise name is sent. Python enforces: saved under the name Joey typed (the model's spelling becomes an alias), ≥3 steps, ≥1 primary muscle, "not an exercise" is refused. Real run read: drafts good; "Windmill arms" = big slow arm circles, arms moving in opposite directions (his meaning; prompt says so).
+**2b-ii chat commands (`test_atlas_chat_library` 18)** — `show exercise <name>`, `draft exercise <name>`, `reviewed <name>` (only a command when the name is really in the library, so "reviewed the plan" is normal chat), `exercise library` (first 50 listed).
+
+**3a-i `training_profile.py` (29)** — locked `data/training_profile.json`, Joey's own words (cleaned to one line, length-limited, nothing a model says is written in). Fields: goal (+ derived goal_type: strength/muscle/fat_loss/endurance/general from the EARLIEST goal word, changeable), experience, consistency, days_per_week (1–7), session_minutes (15–180), equipment, limitations (list, ≤20), activity, preferences, program_style (ppl/upper_lower/full_body/bro_split/auto), body, notes, setup_complete, next_day {day,set_at} (manual override), timestamps. Two approval actions: save whole profile, change one thing.
+**3a-ii `atlas_setup.py` (26)** — Python-led interview, NO model, 12 fixed questions one per message: goal; experience; consistency (last 3 months); days per week; minutes per session; equipment; injuries/limitations (type "none"); other activity (swimming…); likes/avoid; program style; optional body numbers; anything else. Controls: `skip`, `back`, `cancel setup`, `continue setup`, `atlas setup`/`redo setup`. At the end the whole profile is a PROPOSAL (approve to save). State file `data/atlas_setup_state.json`; an interview untouched for 12 h stops capturing messages. Profile commands (all proposals): `show profile`, `set goal …`, `set goal type strength|muscle|fat loss|endurance|general`, `set days 4`, `set minutes 60`, `set program ppl`, `set equipment|experience|consistency|activity|preferences|notes|body …`, `add limitation …`, `clear limitations`.
+**3b `programs.py` (20) + `atlas_program.py` (27 with 3c)**
+- Templates: **ppl** Push (chest, shoulders, triceps) / Pull (back, biceps, rear delts, forearms) / Legs (quads, hamstrings, glutes, calves); **upper_lower**; **full_body** A/B; **bro_split** Chest/Back/Shoulders/Arms/Legs. EVERY day carries a core (abs) finisher, dropped only under 40-minute sessions.
+- "You decide": 1–3 days → full body, 4 → upper/lower, 5+ → ppl, no days set → full body.
+- Session sizing by minutes: <25 → 2 main, 25–37 → 3, 38–52 → 4, 53–75 → 5, ≥76 → 6; warmup 3 (≤45 min) else 4; cooldown 2 (≤45) else 3.
+- Goal table (sets / reps / rest / RPE main–accessory): strength 4 / 3–6 / 180 s / 8–7; muscle 3–4 / 8–12 / 90 s / 8–7; fat_loss & endurance 2–3 / 12–20 / 45–60 s / 7–6; general 3 / 8–12 / 75 s / 7–7; warmup RPE 5.
+- Rotation: advances one day per TAGGED workout regardless of calendar days; untagged or other-style workouts never move it; changing style restarts at day 1; the latest tagged workout is by (date, logged_at); `set next day <label>` is an approved override that lasts until the next tagged workout.
+- Commands: `my program` / `show program`, `set next day Pull`, `next weight <exercise>` (also "next weight for …").
+**3c `progression.py` (21)** — pure Python weights. Last 2 sessions of that exact exercise (names matched like the library, aliases allowed). SUCCESS = every prescribed set hit the prescribed reps (or seconds) and RPE ≤ target (missing RPE allowed, with a note); STRUGGLE = reps missed / sets skipped / RPE ≥ target+2; else NEUTRAL. Success → +5 lbs (big lift) or +2.5 (small lift), rounded to equipment (dumbbells ≥20 lbs in 5s, everything else 2.5s), an easy session gets the same normal step; neutral or one struggle → repeat; two struggles in a row → ~10% lighter (rounded down); no history → NO weight, only "pick a weight that feels like RPE 6"; bodyweight → no weight; weights over 5,000 lbs are flagged as typos. Small lift = name words (curl, raise, extension, pushdown, kickback, calf, crunch, face pull, wrist, fly, shrug, plank) or library muscles all small; anything with press/overhead/military in the name is BIG (even shoulder presses).
+
+## 3. Chat command precedence (agents/atlas/chat.py, stream_atlas)
+1 approve/deny/pending → 2 pasted workout block → 3 library commands → 4 program commands (my program, set next day, next weight) → 5 setup interview + profile commands → 6 refusal gate → history shortcut → normal chat. All commands match only when the WHOLE message is the command (word-boundary rule, Lesson #6).
+
+## 4. Data files and environment variables (all under `data/`, gitignored unless noted)
+`fitness.json` (FITNESS_DATA_PATH), `exercise_library.json` (EXERCISE_LIBRARY_PATH), `training_profile.json` (TRAINING_PROFILE_PATH), `atlas_setup_state.json` (ATLAS_SETUP_STATE_PATH), pending approvals (PENDING_ACTIONS_PATH). Tests always point these at TEMP files.
+
+## 5. Real bugs found and fixed this session (lessons)
+- Control-character cleaner deleted characters AFTER collapsing spaces (double spaces); first fix wrongly deleted tabs/newlines → now `_squash` (whitespace → one space, other control chars dropped). Fixed in training_profile AND exercise_library.
+- Unlocked read of the setup state file let 16 of 20 concurrent messages leak to the normal chat model → readers now take the writers' lock.
+- A 5,000-digit number became infinity and crashed int conversion (workout_block); absurd weights (1e308) produced nonsense in progression → MAX_PLAUSIBLE_LBS; unhashable values from a damaged file crashed program lookups → `_has()` guard.
+- Coach instructions repeated the fence marker lines (count 2) → reworded; model slips (extra questions, invented "40% rule", scolding about a missing warmup, "no flags means you aren't pushing") → Python cleaner + removed the "none logged" lines and the word FLAGS.
+- Stale static checks fixed: test_atlas.py banned `.lower()` in chat.py and any approve call; test_atlas_logging banned the text "json.dump" (matched json.dumps).
+- One unexplained flake: `test_atlas_chat_workout` "L4 20 workouts pasted at once" failed once in a full run, never reproduced in 10 more runs (the test now prints why if it recurs; treat a repeat as a real bug).
+- A stray junk file with a garbled name (contained a git diff-stat) was pushed once to the PUBLIC repo; removed; a scan of all tracked files found no API keys. Always check `git status` for `.env` or strange files before `git add -A`.
+
+## 6. Decisions log (design)
+- Template/phone page: layout per exercise = muscle-group header, then name, setsxreps, weight, rest, target RPE, tips; one row per set (reps + weight, or seconds); "Your RPE" and notes below. Android phone, ONE fixed HTML page kept on the phone (offline, autosaves on the phone, kg/lbs toggle, date defaults to today); the plan is PASTED into it; the filled block is copied back and pasted into ATLAS chat. Tracker import later (Phase 5). The page does nothing smart; ATLAS decides the workout.
+- "ATLAS learns" = history + Python-computed trends in context, not model training.
+- Intake is Python-led (reasons: coverage, his words stay his words, privacy/cost). OPTIONAL later: one short model follow-up question after key answers (goal, injuries, experience), answers still saved in his words. Not requested yet.
+- Privacy: health/limitations text is only sent to Gemini inside plan requests (he accepted); the profile file stays local.
+- Default ATLAS tier: free_cloud. Paid cloud is optional.
+
+## 7. NEXT BUILD — 3d the plan builder (design AGREED by Joey)
+Agreed: `next workout` command (after an approved log ATLAS only says what is next and WAITS); plan length by `session_shape`; model picks exercises/structure only, Python sets every number; plan uses ATLAS's current tier; **variety: keep main lifts steady, rotate accessories (~60% stay the same) unless he says otherwise**; **warmups offered only from ones he has done without a discomfort note + a standard starter set (windmill arms, shoulder rolls, bodyweight squats)**; show a short readable summary THEN the paste-able plan block with each exercise's how-to embedded (works offline); exercises not in the library are listed ("Not in your library yet: X, Y. Type `draft exercise X`") and the rest of the plan still works; open injuries/limitations make the model avoid stressing exercises + a printed note (partly a model instruction; Python enforces only where the library knows the muscles).
+Proposed (not yet agreed, confirm): a new module (plan_builder.py) that gathers facts in Python — profile, `rotation_state` day, `session_shape`, `goal_params`, `suggest_weight` per exercise, open injuries, allowed warmups — asks the model for a JSON plan (exercise NAMES + short tips only), validates it, attaches sets/reps/rest/target RPE/weights from Python, adds the core finisher and cooldown, embeds library how-tos; plan block format "FORGE WORKOUT PLAN v1" with Title/Date/Unit/Program:/Day: lines and the same `Exercise:`/`Prescribed:` lines as the log block so the phone page can echo them; deterministic fallback from the last session of that day if the model fails; reply cleaned in Python like the coaching reply; real-model L3 read on local + Gemini free.
+After 3d: **phone page** (single HTML file), **history analysis** (increment 5: ATLAS adapts from history; trends in Python).
+
+## 8. Research findings (web, Oct 2026; sources disagree on some numbers; nothing was cloned/run)
+- No ready-made set of agents like his exists; useful pieces only.
+- CIPHER: Aider (terminal pair programmer, git-tracked), OpenCode (MIT, most-starred), OpenHands (MIT core), Goose; idea: CIPHER DRIVES one of them as a tool under the approval gate. Tools churn fast (Gemini CLI retired June 2026, Roo Code archived May, Void archived June).
+- ATLAS: pt-agent (Oura recovery), Fitness Assistant (RAG over ~1,200 NSCA/ACSM guideline docs: idea for guideline-backed advice), awesome-llm-apps health planner (Agno).
+- DRIVE: carvector-mcp (specs, recalls, OBD-II trouble-code lookup; data service needs a key), Mater (LangGraph + Ollama + OBD telemetry), CarSoul-AI, COBALTGPT (single-car agent); live OBD needs an adapter on his 2016 Civic (optional).
+- ASSET: Actual Budget (MIT, local-first), "money" CLI, Alderfi (rules first, local model for ambiguous 15–25%), FinA (keyword-routed 5 agents). Borrow categorisation/anomaly patterns, not a replacement.
+- CASE: PAKTON, Lex, doc.haus; all contract-review for law firms, none covers Indiana law; borrow citation + human-review patterns.
+- FLAME/STOCK: pantry.ai (Open Food Facts barcodes, expiry-first; NO LICENSE = ideas only), a Pantry app with a halal filter and recipe scoring by pantry match, PantryFin (base-unit inventory math: best idea for STOCK).
+- PULSE: Eir (autonomous Windows repair: too autonomous, PULSE must propose and he approves), hematite-cli (Windows fix recipes), PC Manager (80+ tools with LOW→CRITICAL danger levels).
+- HEAL (health): HealthBot (ICML 2026, local longitudinal health, report interpretation, trends, visit prep, meds), OpenHealth (local-first, Ollama), MedOS (emergency detection), BalanceCycle, DocAgent.
+- Frameworks: OpenClaw (MIT, ~390k stars, 9 CVEs disclosed March 2026, ClawHub skill supply-chain risk) and Hermes Agent (MIT, Nous Research, self-improving skills; NOT the same as the "Hermes" model from Session 1). Do not replace FORGE's core with them (they conflict with the approval rule and would discard the tested guardrails).
+- Licenses confirmed via GitHub API (then rate-limited): Actual Budget MIT, Hermes Agent MIT, OpenClaw MIT, pantry.ai none.
+
+## 9. FINAL ROADMAP (his order)
+- **Phase A — finish ATLAS:** 3d plan builder + `next workout` → phone page → history analysis. (Optional here: ATLAS memory (c), same pattern as DRIVE; photo scan stays deferred until image upload exists.)
+- **Phase B — revisit the finished agents** (CIPHER, NEXUS, ASSET, DRIVE, ATLAS leftovers) and add what was promised in Session 1 plus the research ideas: task scheduler/crontab; helper sub-agents (light version); skill/plugin system incl. **Hermes-style self-improving skills done as approval PROPOSALS** (text-only skills first, capped, reviewed; code changes go through CIPHER + approval + tests); borrowed pieces (CIPHER driving Aider/OpenCode; ASSET categorisation layers; DRIVE OBD trouble codes; ATLAS guideline RAG); Instagram reel extractor (NEXUS) still scoped.
+- **Phase C — finish the remaining agents** with all of that built in from the start: STOCK (own pantry file, direct saves with a "Logged:" line, base-unit math, Open Food Facts), FLAME (halal only, checks STOCK), CASE, PULSE, then **HEAL**.
+- **Phase D — the legion** (section 11). Then dashboard + companion apps (Training tracker fixes, DRIVE Tracker channel-name mismatch + locking), voice, mobile app, Autonomous Build System.
+
+## 10. HEAL — the 10th agent (decided)
+H.E.A.L. = Health Records, Evaluation, Appointments and Labs. Voice = **Dr. House** (very aggressive, sardonic, "everybody lies", wants the data). LOCAL-ONLY like ASSET (no model_tier, never cloud). Python-enforced safety rails, never the character's call: urgent symptoms get a serious, clear "get care now" with the act DROPPED; never mocks a possibly serious symptom; never discourages seeing a doctor; no diagnosing; no dosing. It is a health organizer + visit coach (records, medications, appointments, trends, plain-words explanations, questions for the doctor, when-to-see-a-doctor guidance). Inputs: typed notes first, lab PDFs later (needs file upload + a local document parser). Sharing with ATLAS: HEAL publishes only a short, user-approved "training notes" list (for example "avoid heavy overhead pressing until cleared") that ATLAS may read; ATLAS never sees raw medical data; HEAL may read ATLAS limitations.
+
+## 11. The NEXUS legion (decided direction; built LAST)
+- NEXUS leads a swarm: hundreds of short-lived ROLE-BASED WORKERS (researcher, designer, builder, tester, reviewer, integrator) flowing through a TASK GRAPH (dependent and independent tasks), a limited number running at once (start 5–10, measure, scale). NOT hundreds of permanent personalities.
+- Briefing loop (valuable even before the legion): NEXUS sends a numbered question list; he answers; NEXUS asks another list while anything is unclear (Python keeps a checklist: goal, deliverables, constraints, acceptance tests, environment, budget/time, risks, out-of-scope; unanswered items become flagged assumptions he approves) until a written agenda he approves; then plan (validated DAG, exclusive file owners, a pass/fail check per task), workers, verification (real test runs, not a worker's claim), guardrails (limits, kill switch, logs).
+- **It must be FREE:** only local Ollama models on his RTX 5070 Ti 16GB + the free Gemini tier; budgets are time, GPU hours, request counts and retries, not dollars; a paid-escalation switch exists but stays OFF. Expect it to be slow (queue, overnight runs) and weaker than paid models at complex multi-file work. Gemini free limits are per PROJECT (extra keys do not help), have been cut before, and free-tier content may be used to improve Google's products, so private data stays local. 16GB cards: gpt-oss:20b (~14GB) or qwen3 14B are the commonly recommended coders; 30B coders need 24GB and slow badly when they spill into system RAM (measure on his machine first). Model router: local first, Gemini free for planning/hard steps, automatic backoff and fallback to local on "too many requests".
+- Approval is at the RUN level: he approves the agenda, plan and limits; workers act only in a separate sandbox folder (he is OK installing Docker/WSL for isolation); anything touching real FORGE code or his system arrives as ONE reviewable change.
+- First real test: something complex like a slice of FORGE itself (for example rebuild one agent from a written spec) before pointing it at anything bigger.
+- Evidence behind the cautions: multi-agent systems use far more tokens, only pay off on wide parallel work, and fail through bad specs, misunderstandings and weak verification (Berkeley study of 1,600+ traces); parallel agents editing the same files overwrite each other. Related projects: Claude-Flow, Kimi Agent Swarm, OpenClaw sub-agents, Composio Agent Orchestrator, Spec Kit, the Loop Engineering Kit's "grill" interview, BMAD Method.
+
+## 12. Open items / not yet decided
+- 3d format details marked "proposed" in section 7; the exact plan block layout the phone page will parse.
+- Phone page build (single HTML file) and how it gets onto his Android phone (he is fine with a file on the phone; pasting plans in).
+- Whether to add ATLAS memory (c) in Phase A.
+- ATLAS injury-severity default "mild" when unstated (revisit); optional model follow-up questions in setup.
+- ATLAS photo scan + macro estimates from food photos (BACKLOG), later FLAME builds a halal diet from them.
+- STOCK/FLAME/CASE/PULSE/HEAL specifics (each needs its own decisions before code).
+- Instagram reel extractor "how it is saved" detail; scheduler/sub-agents/skills designs.
+- DRIVE's prompt still hardcodes the 2016 Civic; DRIVE local replies invent colourful Clarkson flourishes (sanity-check car claims).
+- Phase 5 tracker fixes: preload/main channel mismatch, locking before switch-over, chat edit/delete of a wrong log entry.
+
+## 13. Regression baseline (commit 2d856e4) and commands
+ATLAS (`agents\atlas`): atlas 15, actions 26, chat_library 18, chat_workout 32, extract 31, l4_l5 15, logging 26, program 27, setup 26, tools 14, units 34, exercise_draft 14, exercise_library 30, programs 20, progression 21, training_profile 29, workout_block 33, workout_coach 24, workout_log 30.
+Shared (`shared`): action_gate 24, asset_memory 12, asset_memory_l4_l5 8, drive_memory 30, model_client 22, model_client_l4_l5 8, model_json 11, nhtsa 26, normalizers 14, phase0 35, phase0_l4_l5 9. CIPHER / NEXUS / ASSET / DRIVE counts: see Session 14's baseline above (unchanged).
+Real-model (L3) files that were read this session: `agents.atlas.test_workout_coach_l3` (44 mechanical, read), `test_exercise_draft_l3` (38, read), `test_atlas_chat_library_l3` (12, read).
+
+    cd "D:\Projects\Forge"
+    Get-ChildItem agents\atlas\test_*.py | Where-Object { $_.BaseName -notlike "*_l3" } | ForEach-Object { "== " + $_.BaseName; python -m ("agents.atlas." + $_.BaseName) 2>&1 | Select-String -Pattern "passed|FAIL" }
+    Get-ChildItem shared\test_*.py | Where-Object { $_.BaseName -notlike "*_l3" } | ForEach-Object { "== " + $_.BaseName; python -m ("shared." + $_.BaseName) 2>&1 | Select-String -Pattern "passed|FAIL" }
+
+After every green increment: `git status` (look for .env or odd files), `git add -A`, `git commit -m "..."`, `git push`.
+
+## 14. How the next chat should start
+1. Read this record + the three project files. Ask Joey (one numbered list) for his hands-on impressions of setup / my program / next weight / draft exercise, and confirm the "proposed" 3d points.
+2. Clone the repo into the sandbox, install the packages in section 1, confirm the baseline passes there.
+3. Build 3d in the sandbox in small increments (facts gatherer → model call with Python validation → plan block renderer → `next workout` command → real-model read), hand him verified FIND/REPLACE blocks + exact PowerShell steps, and wait for his green run before moving on.
