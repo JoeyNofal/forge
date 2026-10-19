@@ -56,6 +56,14 @@ MEDICAL_WORDS = ["diagnose", "diagnosis", "treat", "treatment", "cure", "heal", 
                  "medication", "medicine", "therapy", "therapist", "inflammation", "injury", "injured"]
 
 
+# While a shoulder/biceps limitation is on file, a tip may not touch the injured joint (the model ignored this
+# rule when it was only in the prompt: "externally rotating your shoulders" got through). "shoulder blades" and
+# "shoulder width" are ordinary cues and stay allowed.
+JOINT_WORDS = ["shoulder", "shoulders", "labrum", "rotator", "rotate", "rotates", "rotating", "rotation",
+               "externally", "internally", "bicep", "biceps"]
+_JOINT_OK_RE = re.compile(r"\bshoulder[\s-]?(?:blades?|width)\b")
+
+
 class PlanError(Exception):
     """ATLAS could not build a plan; the message is plain English and safe to show Joey."""
 
@@ -79,8 +87,9 @@ def goal_numbers(goal_params: dict, role: str) -> dict:
     return {"sets": sets[0], "reps": reps[1], "rest_seconds": rest[0], "target_rpe": goal_params["rpe_accessory"]}
 
 
-def clean_tip(tip) -> str:
-    """A tip Joey may see, or '' (dropped): one short line, no numbers, no promises, no medical words, no markup."""
+def clean_tip(tip, limited: bool = False) -> str:
+    """A tip Joey may see, or '' (dropped): one short line, no numbers, no promises, no medical words, no markup.
+    With limited=True (a shoulder/biceps limitation is on file) it also may not mention the injured joint."""
     if not isinstance(tip, str):
         return ""
     text = " ".join("".join(c if c.isprintable() else " " for c in tip).split())
@@ -88,6 +97,8 @@ def clean_tip(tip) -> str:
         return ""
     low = text.lower().replace("\u2019", "'")
     if contains_keyword(low, NUMBER_WORDS) or contains_keyword(low, PROMISE_WORDS) or contains_keyword(low, MEDICAL_WORDS):
+        return ""
+    if limited and contains_keyword(_JOINT_OK_RE.sub(" ", low), JOINT_WORDS):
         return ""
     return text
 
@@ -204,6 +215,7 @@ def screen_picks(data: dict, facts: dict, entries: list, taken_keys: set, limit:
     if not isinstance(raw, list):
         return accepted, left_out, ["'exercises' was missing or not a list"]
     fixed = {_plain(x) for x in facts["warmups"] + facts["cooldowns"] + facts["core_choices"]}
+    limited = bool(facts["limits"].get("pt_note")) or bool(facts["limits"].get("drop_muscles"))
     for item in raw:
         if len(accepted) >= limit:
             break
@@ -225,7 +237,7 @@ def screen_picks(data: dict, facts: dict, entries: list, taken_keys: set, limit:
         taken_keys.add(key)
         item_d = item if isinstance(item, dict) else {}
         accepted.append({"name": name, "muscle": _muscle_for(item_d.get("muscle"), facts["day"]["focus"], entry),
-                         "tip": clean_tip(item_d.get("tip"))})
+                         "tip": clean_tip(item_d.get("tip"), limited)})
     return accepted, left_out, problems
 
 

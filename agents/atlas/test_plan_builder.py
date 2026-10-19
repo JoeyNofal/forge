@@ -187,6 +187,25 @@ def _():
     assert B.clean_tip("Keep it\nsmooth and slow.") == "Keep it smooth and slow."
 
 
+@check("L2 tips: while a shoulder/biceps limitation is on file a tip may not touch the joint; ordinary cues stay")
+def _():
+    bad = ["Pull the rope towards your face, externally rotating your shoulders.", "Keep your shoulder down and back.",
+           "Protect the labrum on the way down.", "Do not let your biceps take over.", "Rotating your arms outward helps."]
+    for t in bad:
+        assert B.clean_tip(t, True) == "", t
+    ok = ["Squeeze your shoulder blades together.", "Set your feet shoulder-width apart.", "Brace your core before you lift.",
+          "Keep your chest up and core braced."]
+    for t in ok:
+        assert B.clean_tip(t, True) == t, t
+    assert B.clean_tip("Keep your shoulder down and back.", False) == "Keep your shoulder down and back."
+    p, _f = plan(Fake([reply_json(POOL[:5], tips={POOL[0]: "Externally rotate your shoulders at the top.", POOL[1]: "Brace your core."})]))
+    by = {e["name"]: e for e in p["exercises"]}
+    assert by[POOL[0]]["tip"] == "" and by[POOL[1]]["tip"] == "Brace your core."
+    free = {"session_minutes": 60, "program_style": "ppl", "setup_complete": True}
+    p2, _f = plan(Fake([reply_json(POOL[:5], tips={POOL[0]: "Externally rotate your shoulders at the top."})]), profile=free)
+    assert {e["name"]: e for e in p2["exercises"]}[POOL[0]]["tip"] == "Externally rotate your shoulders at the top."
+
+
 @check("L2 names: list markers stripped; numbers, long names and junk refused")
 def _():
     assert B._clean_name("1. Goblet squat") == ("Goblet squat", "")
