@@ -158,7 +158,8 @@ def _is_core(name, section) -> bool:
 
 
 def last_session_for(style: str, day_index: int, workouts) -> Optional[dict]:
-    """The latest saved workout tagged with this program style and day -> {'date', 'exercises': [names in order]}."""
+    """The latest saved workout tagged with this program style and day -> {'date', 'exercises': [names in order],
+    'sections': {name: the muscle-group header it was logged under}}."""
     best = None
     for w in _list_of_dicts(workouts):
         tag = w.get("program")
@@ -171,13 +172,17 @@ def last_session_for(style: str, day_index: int, workouts) -> Optional[dict]:
     if best is None:
         return None
     names = []
+    sections: dict = {}
     for e in best[1].get("exercises") if isinstance(best[1].get("exercises"), list) else []:
         name = e.get("name") if isinstance(e, dict) else e
         section = e.get("section") if isinstance(e, dict) else None
         clean = _clip(name, 100)
         if clean and not _is_core(clean, section) and _plain(clean) not in {_plain(n) for n in names}:
             names.append(clean)
-    return {"date": str(best[1].get("date") or ""), "exercises": names}
+            sec = _clip(section, 40)
+            if sec:
+                sections[clean] = sec
+    return {"date": str(best[1].get("date") or ""), "exercises": names, "sections": sections}
 
 
 def _library_entry_for(name, entries: list) -> Optional[dict]:
@@ -191,6 +196,9 @@ def _library_entry_for(name, entries: list) -> Optional[dict]:
         if key in names:
             return e
     return None
+
+
+library_entry_for = _library_entry_for        # public name, used by plan_builder
 
 
 def _candidates(entries: list, focus: list, flags: dict) -> list:

@@ -239,7 +239,8 @@ def _():
           tagged("Pull", "2026-10-03", ["Row"]), tagged("Push", "2026-10-04", ["Other style"], program="upper_lower"),
           {"date": "2026-10-05", "exercises": [{"name": "Untagged"}]}]
     r = P.last_session_for("ppl", 0, ws)
-    assert r == {"date": "2026-10-01", "exercises": ["Bench press", "Incline press"]}
+    assert r == {"date": "2026-10-01", "exercises": ["Bench press", "Incline press"],
+                 "sections": {"Bench press": "Chest", "Incline press": "Chest"}}
     assert P.last_session_for("ppl", 2, ws) is None
 
 
