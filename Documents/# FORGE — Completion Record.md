@@ -1172,3 +1172,111 @@ After every green increment: `git status` (look for .env or odd files), `git add
 1. Read this record + the three project files. Ask Joey (one numbered list) for his hands-on impressions of setup / my program / next weight / draft exercise, and confirm the "proposed" 3d points.
 2. Clone the repo into the sandbox, install the packages in section 1, confirm the baseline passes there.
 3. Build 3d in the sandbox in small increments (facts gatherer → model call with Python validation → plan block renderer → `next workout` command → real-model read), hand him verified FIND/REPLACE blocks + exact PowerShell steps, and wait for his green run before moving on.
+
+# FORGE — Completion Record, Session 16
+*(terminal chat script, power goal, shoulder rule, RPE-led progression, struggle notes read by the local model, logging note, goal order, 3d plan-builder decisions. Last commit pushed: fa694f3 on main. Paste this into the Completion Record file.)*
+
+## 0. Where things stand
+- **ATLAS** now has everything from Session 15 plus: a terminal chat to use it (`chat_atlas.py`), a `power` goal type, a shoulder/biceps limitation rule, an RPE-led progression rule, struggle notes read by the local model, a "cannot log or approve" note in normal chat, and a stored goal order with goal start dates.
+- Everything below is CLOSED at L1-L5 on Joey's real machine. Whole non-L3 suite on his machine at commit 137d1a2: 0 suites not fully green. fa694f3 only changed chat_atlas.py.
+- **NEXT BUILD: 3d, the plan builder + `next workout`.** All design questions are answered (section 7). First small piece: the facts-gatherer.
+- Joey has now tried in the real chat: `atlas setup`, `my program`, `set next day`, `next weight`, `draft exercise`, pasting a workout. All behaved correctly.
+- His real profile is saved in `data/training_profile.json` (goal type power, 60 min, shoulder limitation, goal order set).
+
+## 1. Standing rules (new or reconfirmed)
+- Claude never creates files in his folder. Code arrives as FIND / REPLACE blocks or whole new files; he wants exact copy-paste steps (PowerShell, from `D:\Projects\Forge`). Questions come in ONE numbered list.
+- **Walkthroughs must be very explicit** (he once pasted a log line by line because the "type paste first" step was easy to miss).
+- Claude tests new code in its own private sandbox copy first (clone of GitHub; mocked tests only), so he must commit/push after every green increment. The sandbox has no Ollama: real-model checks (L3) run on his machine and he pastes the output for Claude to READ.
+- **NEW design preference: he does NOT want keyword lists to understand what he writes ("I want ATLAS to be an AI agent, not a chatbot").** A model reads his words; Python only guards the model's output and does all numbers and rules.
+- Bug rule unchanged: found bugs are fixed immediately, even in closed features.
+- **Use `python chat_atlas.py --test` for experiments and plain `python chat_atlas.py` for real use.** No `$env:` lines needed. The banner says REAL DATA / TEST MODE / WARNING.
+- Whole-suite command (accepts both output styles; older CIPHER/NEXUS/ASSET/shared suites print "N passed, 0 failed, N total", newer ones "N/N passed"):
+
+      $bad = 0
+      Get-ChildItem -Recurse -Filter "test_*.py" agents,shared | Where-Object { $_.BaseName -notlike "*_l3" } | ForEach-Object {
+        $mod = ($_.FullName.Substring((Get-Location).Path.Length+1) -replace '\\','.' -replace '\.py$','')
+        $line = python -m $mod 2>&1 | Select-String -Pattern " passed" | Select-Object -Last 1
+        if (-not $line -or $line.Line -notmatch '^(\d+)/\1 passed|^(\d+) passed, 0 failed, \2 total') { "NOT GREEN: $mod  $($line.Line)"; $bad++ }
+      }
+      "suites not fully green: $bad"
+
+- After every green increment: `git status` (look for `.env` or odd files), `git add -A`, `git commit -m "..."`, `git push`.
+
+## 2. What was built (all under `agents/atlas/` unless noted; counts from his real runs)
+
+**Terminal chat (`chat_atlas.py`, repo root, commits 2c0b3c9, 6cb144b, fa694f3)**
+- FORGE has no dashboard yet, so this is the way to talk to ATLAS. Paste a workout log directly (first line `FORGE WORKOUT LOG`), then type `END`; typing `paste` first also works. A lone log fragment is refused with a hint instead of being sent to ATLAS.
+- `--test` mode points all five data files at throwaway files inside the one run. The banner shows which profile and fitness files are in use, and warns if a leftover `TRAINING_PROFILE_PATH` is redirecting it.
+
+**Power goal type + shoulder/biceps rule + wording (commit 6f13f58; `test_atlas_limits_power` 15)**
+- `power` goal type: 3-5 sets, 3-5 reps, rest 120-180 s, RPE 7 main / 6 accessory. Words power / explosive / plyometric find it; "powerlifting" stays strength. `set goal type power` works.
+- While one of his limitation notes mentions biceps / shoulder / labrum / rotator (whole words, `programs.limit_flags`): biceps is dropped from every day in `my program` (`focus_for`), warmups skip windmill arms / arm circles / shoulder circles / shoulder rolls, and a "check with your physical therapist before overhead or heavy pulling moves" line is shown. The warmup and PT parts are functions and constants waiting for the plan builder to use them. `programs.py` now imports `shared.keyword_gate` (its static test whitelist was updated).
+- Progression wording fixed: "2 of 3 sets hit the prescribed 8 reps" replaced the confusing "reps missed".
+
+**RPE-led progression + struggle notes (commit e84f0cf; `test_progression_rpe` 13, `test_note_reader` 16, `test_note_reader_l3` 49 real-model checks)**
+- Per exercise, only the sets he DID are judged; the RPE he reports is the main signal:
+  - RPE 2+ over target: struggle.
+  - RPE 1 over: reps hit -> neutral (repeat the weight); reps missed -> struggle.
+  - RPE equal to target: reps hit -> success; reps missed -> struggle.
+  - RPE below target: reps hit -> success; reps missed -> neutral.
+  - No RPE: reps hit -> success (with a note); reps missed -> neutral.
+- A skipped set never gives an increase (at best repeat) and is never a struggle by itself. No sets done = unknown, never success.
+- His own struggle word beats the table. `note_reader.py`: when a workout is pasted, the LOCAL model (never the cloud) reads the Notes line under each MAIN exercise and says struggled / fine / unclear. Python guards: the model sees only the note text (no weights or RPE), anything odd becomes "unclear" and is never counted, every reading is shown in the proposal ("Struggle noted: Bench press (your note: ...)"), nothing saves until he approves, and a down model gives one visible line and sets no flags. Saved as `struggled: True` on that exercise; the proposal-only `note_readings` is never saved; the duplicate fingerprint is unchanged.
+- Two struggles in a row still deload about 10%.
+- Real model read (49/49): obvious notes all right ("no struggle", "didn't struggle at all", "wasn't too heavy" correctly "fine"). Ambiguous ones wobble between a single call and a batch ("hard but I finished all my reps", "could have done more"). That is safe because he sees each reading and approves.
+- His real-chat note test matched expectations: Bench press flagged, "no struggle, felt smooth" not flagged, "skipped the last set, didn't feel like it" not flagged and the weight repeated at 100 lbs.
+
+**"Cannot log" note in normal chat (commit 6cb144b; `test_atlas_logging_note` 7)**
+- `LOGGING_NOTE` in `chat.py`: the model is told it cannot save, log, approve or change anything, and must not claim it did.
+
+**Goal order (commit 137d1a2; `test_goal_order` 19)**
+- `set goal order power, strength, muscle, endurance, fat loss` is a proposal. Separators: commas, then, and, >, arrows, semicolons. Unknown goals and repeats are refused.
+- The first goal in the order IS the goal type, and training numbers follow it. With an order set, `set goal type X` moves X to the front (inserting it if missing), and `set goal ...` text no longer changes the goal type.
+- `goal_history` records when each goal started and ended (cap 50). `show profile` shows "Goal order: ..." and "Current goal (power) since <date>".
+- Redoing `atlas setup` keeps his order and history. His real order: power > strength > build muscle > endurance > fat loss (set 2026-10-18).
+
+## 3. Real bugs found and fixed (lessons)
+- **ATLAS normal chat claimed "APPROVE. It's logged. It's in the damn system" when nothing was logged** (found when log lines were sent one by one). Fixed with `LOGGING_NOTE` (DRIVE already had the same kind of note; ATLAS did not).
+- A control character (`\x00`) in a note would have reached the model: stripped in `note_reader._one_line`.
+- Old tests that encoded the old rule were updated (a skipped set is now neutral, not a struggle). `test_programs` whitelists the new pure helper import.
+- His real profile looked blank once: leftover temp-file environment variables from an earlier terminal made the chat silently use a throwaway file. His real file was untouched. Fix: banner + `--test` mode (see section 1).
+- My whole-suite command wrongly flagged 20 older suites because they print a different summary format; the command now accepts both. All 20 had 0 failures.
+- Setup quirks seen in his run: a range answer ("30 to 120 minutes") saves the FIRST number (30); "it varies, sometimes 3 days, sometimes none" saved 3. He corrected minutes with `set minutes 60`. No code change.
+
+## 4. Decisions log
+- Cursing in ATLAS (Goggins voice) is KEPT.
+- `next workout <minutes>` overrides the saved 60 for one workout.
+- **No explosive exercises by default** (see the exclusion list in section 7); explosive work only if he asks and his PT agrees. Claude is not a doctor or PT; the physical therapist decides what is safe for the labrum tear. He has not yet been told by his PT or doctor which movements are OK or off-limits.
+- **Goal-phase proposals (build LATER, in the history-analysis increment):** ATLAS proposes moving to the next goal only when it judges him ready, like a professional trainer, always as an approval proposal and pure Python. DRAFT criteria (numbers not yet confirmed): at least 4 weeks AND 12 logged sessions in the current goal; most tracked main lifts went up at least once in his last 6 sessions; no run of struggles; no discomfort notes in his last 3 sessions; if clearly stalled, propose a lighter week or different exercises, not a goal switch.
+- Intake stays Python-led; the model is used to READ his free-text notes (section 2), with Python guarding the output.
+
+## 5. Chat command precedence (agents/atlas/chat.py, stream_atlas)
+1 approve/deny/pending -> 2 pasted workout block (now with the note reader) -> 3 library commands -> 4 program commands (my program, set next day, next weight) -> 5 setup interview + profile commands (now incl. `set goal order`, matched BEFORE the generic `set goal ...`) -> 6 refusal gate -> history shortcut -> normal chat (with LOGGING_NOTE). All commands match only when the WHOLE message is the command.
+
+## 6. Regression baseline (commit 137d1a2 code, fa694f3 head)
+ATLAS (`agents\atlas`): atlas 15, actions 26, chat_library 18, chat_workout 32, extract 31, l4_l5 15, logging 26, program 27, setup 26, tools 14, units 34, exercise_draft 14, exercise_library 30, programs 20, progression 21, training_profile 29, workout_block 33, workout_coach 24, workout_log 30, **limits_power 15, progression_rpe 13, note_reader 16, atlas_logging_note 7, goal_order 19**.
+Shared, CIPHER, NEXUS, ASSET, DRIVE: unchanged from Session 14 (all green in his whole-suite run).
+Real-model (L3) files read this session: `agents.atlas.test_note_reader_l3` (49/49, output read).
+
+## 7. NEXT BUILD, 3d the plan builder: design AGREED (all his answers)
+- `next workout` (and `next workout 90` for a minutes override). After an approved log ATLAS only says what is next and WAITS. Nothing is saved until he pastes the filled-in log back.
+- **Flow:** Python gathers facts (profile and goal order, rotation day, `session_shape`, `goal_params`, `suggest_weight` per exercise, open injuries, limits flags, allowed warmups, his exercise library) -> the model picks exercise NAMES and short tips only (JSON) -> Python validates, sets EVERY number, removes disallowed exercises, adds the core finisher, warmup and cooldown from the lists below, embeds library how-tos -> reply = short readable summary, then a paste-able plan block "FORGE WORKOUT PLAN v1" (Title / Date / Unit / Program: / Day: lines and the same `Exercise:` / `Prescribed:` lines as the log block, so the phone page can echo them). Exercises not in the library are listed ("Not in your library yet: X, Y. Type `draft exercise X`") and the rest of the plan still works. If the model fails: deterministic fallback from his last session of that day. The reply is cleaned in Python like the coaching reply (invented numbers dropped, no "saved/logged" claims).
+- **Variety:** keep main lifts steady, rotate accessories (about 60% stay the same) unless he says otherwise.
+- **`draft missing`** (YES): drafts how-tos for every exercise of the latest plan that is not in the library, one proposal each.
+- **Warmups (approved list, nothing that loads the shoulder):** 3-5 min easy bike or walking, bodyweight squats, glute bridges, hip circles, leg swings, cat-cow. Warmups he has done without a discomfort note may be added later.
+- **Cooldown (approved):** hamstring stretch, quad stretch, hip flexor stretch, calf stretch, child's pose.
+- **Core finisher (approved, model picks only from this list):** plank, side plank, dead bug, bird dog, glute-bridge march, crunches.
+- **Exclusions and notes (enforced in Python):** never include names with "curl" or chin-ups; rows, pulldowns, pull-ups, overhead/military moves and shoulder presses are allowed WITH a "check with your PT" line next to them; no explosive moves by default (jumps, cleans, snatches, throws, slams, burpees, kettlebell swings).
+- **Privacy:** the plan request, including his shoulder limitation sentence, goes to the Gemini free tier (ATLAS's current tier is free_cloud). He is OK with it. Paid cloud stays optional.
+- **First plans:** he has no logged history, so most exercises will not be in the library and no weights will be suggested, only "pick a weight that feels like RPE 6".
+- **Increments:** (1) facts-gatherer, (2) model call + Python validation, (3) plan block renderer, (4) `next workout` + `draft missing` commands, (5) real-model read on local and Gemini free. After 3d: phone page (single HTML file), then history analysis (trends in Python, goal-phase proposals).
+
+## 8. Roadmap (unchanged from Session 15) and open items
+- Phase A: finish ATLAS = 3d -> phone page -> history analysis (ATLAS memory (c) optional, photo scan deferred). Phase B: revisit finished agents (scheduler, light sub-agents, skills/plugin system with approval-gated self-improving skills, borrowed pieces, Instagram reel extractor). Phase C: STOCK, FLAME (halal only), CASE, PULSE, HEAL (Dr. House, local-only). Phase D: the NEXUS legion (free, local Ollama + Gemini free tier), dashboard and companion apps, voice, mobile, Autonomous Build System.
+- Open: confirm the draft goal-phase numbers when history analysis is built; whether to add ATLAS memory (c) in Phase A; ATLAS injury severity default "mild"; optional model follow-up questions in setup; photo scan and macros backlog; STOCK/FLAME/CASE/PULSE/HEAL specifics; reel extractor save format; DRIVE prompt still hardcodes the 2016 Civic and its local replies invent Clarkson flourishes; Phase 5 tracker fixes (preload/main channel mismatch, locking before switch-over, chat edit/delete of a wrong log entry).
+- Setup parsing could be smarter about ranges and "it varies" answers (it takes the first number). Not requested yet.
+
+## 9. How the next chat should start
+1. Read this record and the three project files. Clone the repo into the sandbox (`git clone`, install packages from the Session 15 record plus `chromadb`), confirm the baseline passes there (commit fa694f3).
+2. Build 3d increment 1 (the facts-gatherer, pure Python, no model) in the sandbox with tests; hand him FIND/REPLACE blocks or new files with exact PowerShell steps, and wait for his green run before moving on.
+3. Keep every walkthrough step explicit, and remind him to commit and push after each green increment.
