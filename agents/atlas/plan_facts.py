@@ -46,6 +46,8 @@ CORE_CHOICES = ["plank", "side plank", "dead bug", "bird dog", "glute-bridge mar
 
 # Names the plan never contains while a limitation mentions the biceps (see programs.limit_flags).
 BICEPS_NAME_WORDS = ["curl", "curls"]
+# ...except leg work: "leg curl" / "hamstring curl" train the hamstrings, not the biceps (Joey's call, Session 17).
+LEG_CURL_WORDS = ["leg", "legs", "hamstring", "hamstrings"]
 # Explosive moves: excluded unless Joey asks AND his physical therapist agrees (allow_explosive=True).
 EXPLOSIVE_WORDS = ["jump", "jumps", "jumping", "clean", "cleans", "snatch", "snatches", "throw", "throws",
                    "slam", "slams", "burpee", "burpees", "plyo", "plyometric", "plyometrics",
@@ -107,7 +109,8 @@ def exclusion_reason(name, flags: Any = None, primary_muscles=None, allow_explos
     raw_drop = flags.get("drop_muscles") if isinstance(flags, dict) else None
     drop: list = raw_drop if isinstance(raw_drop, list) else []
     if "biceps" in drop:
-        if contains_keyword(text, BICEPS_NAME_WORDS) or _CHIN_RE.search(text):
+        is_curl = contains_keyword(text, BICEPS_NAME_WORDS) and not contains_keyword(text, LEG_CURL_WORDS)
+        if is_curl or _CHIN_RE.search(text):
             return "your limitations rule out direct biceps work (curls and chin-ups)"
         muscles = [m for m in primary_muscles if isinstance(m, str)] if isinstance(primary_muscles, list) else []
         if any(contains_keyword(m, MUSCLE_WORDS["biceps"]) for m in muscles):

@@ -187,7 +187,11 @@ def _():
     for n in ("Barbell curl", "Hammer Curls", "Chin-Ups", "chin ups", "Chinups", "Reverse-grip curl", "EZ bar curls"):
         assert P.exclusion_reason(n, FLAGS), n
         assert P.exclusion_reason(n, NO_FLAGS) == "", n
-    assert P.exclusion_reason("Leg curl", FLAGS)      # known: the agreed rule also blocks leg curls
+    for n in ("Leg curl", "Lying leg curls", "Seated hamstring curl", "Nordic hamstring curl"):     # leg work is allowed
+        assert P.exclusion_reason(n, FLAGS) == "", n
+    for n in ("Dumbbell curl", "Wrist curl", "Preacher curl", "Chin-up"):                           # still blocked
+        assert P.exclusion_reason(n, FLAGS), n
+    assert P.exclusion_reason("Leg curl", FLAGS, ["Biceps"])      # a library entry that says biceps is still out
     for n in ("Curling stone carry", "Bench press", "Dumbbell row", "Lat pulldown"):
         assert P.exclusion_reason(n, FLAGS) == "", n
 
