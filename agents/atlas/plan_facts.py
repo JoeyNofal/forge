@@ -59,6 +59,11 @@ EXPLOSIVE_WORDS = ["jump", "jumps", "jumping", "clean", "cleans", "snatch", "sna
 PT_CHECK_WORDS = ["row", "rows", "pulldown", "pulldowns", "pull down", "pull downs", "pull up", "pull ups",
                   "pullup", "pullups", "overhead", "military", "shoulder press", "face pull", "face pulls"]
 _CHIN_RE = re.compile(r"\bchin\s?ups?\b")
+# Lateral (side) raises: his doctor allows them ONLY with an arm-angle progression (Session 17). Until ATLAS can
+# prescribe that angle, it never picks them while a shoulder/biceps limitation is on file. Leg and hip raises are fine.
+LATERAL_WORDS = ["lateral", "side"]
+RAISE_WORDS = ["raise", "raises"]
+LEG_WORDS = ["leg", "legs", "hip", "hips"]
 
 # Words a library entry might use for each program muscle (a HINT for candidates only).
 MUSCLE_WORDS = {
@@ -104,11 +109,20 @@ def _valid_minutes(v) -> bool:
 # WHAT MAY NOT APPEAR, AND WHAT GETS A NOTE (used by the validator in the next increment)
 # --------------------------------------------------------------
 
+def is_lateral_raise(name) -> bool:
+    """A shoulder side/lateral raise (any equipment, any word order), not a leg or hip raise."""
+    text = _plain(name)
+    return (contains_keyword(text, LATERAL_WORDS) and contains_keyword(text, RAISE_WORDS)
+            and not contains_keyword(text, LEG_WORDS))
+
+
 def exclusion_reason(name, flags: Any = None, primary_muscles=None, allow_explosive: bool = False) -> str:
     """'' when the exercise may appear in a plan, else a plain-English reason it may not."""
     text = _plain(name)
     if not text:
         return "no name"
+    if isinstance(flags, dict) and flags.get("pt_note") and is_lateral_raise(name):
+        return "lateral raises need the arm-angle progression your doctor gave you, and ATLAS cannot prescribe that angle yet"
     raw_drop = flags.get("drop_muscles") if isinstance(flags, dict) else None
     drop: list = raw_drop if isinstance(raw_drop, list) else []
     if "biceps" in drop:

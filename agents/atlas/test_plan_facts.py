@@ -196,6 +196,21 @@ def _():
         assert P.exclusion_reason(n, FLAGS) == "", n
 
 
+@check("L2 lateral raises are out (any equipment or word order) while a shoulder/biceps limitation is on file; leg/hip raises are fine")
+def _():
+    for n in ("Dumbbell Lateral Raise", "lateral raises", "Side raise", "Cable side lateral raise", "Lateral delt raise",
+              "Seated Lateral Raise", "SIDE RAISES", "Lateral-raise machine"):
+        assert P.is_lateral_raise(n), n
+        assert P.exclusion_reason(n, FLAGS) and "arm-angle" in P.exclusion_reason(n, FLAGS), n
+        assert P.exclusion_reason(n, NO_FLAGS) == "", n
+    for n in ("Front raise", "Side plank", "Side-lying leg raise", "Lateral lunge", "Leg raise", "Hip raise", "Raise to the front",
+              "Bench press", "Reverse fly"):
+        assert not P.is_lateral_raise(n), n
+        assert P.exclusion_reason(n, FLAGS) == "", n
+    for junk in (None, "", 5, [], {}):
+        assert P.is_lateral_raise(junk) is False
+
+
 @check("L2 exclusions: a library entry whose PRIMARY muscle is biceps is out; secondary biceps is fine")
 def _():
     assert P.exclusion_reason("Zottman", FLAGS, ["Biceps brachii"])

@@ -174,6 +174,8 @@ def build_prompt(facts: dict, taken: list, have: int, problems: Optional[list] =
     if taken:
         lines.append("ALREADY IN TODAY'S WORKOUT (do not repeat, do not replace): " + "; ".join(taken))
     never = ["explosive moves (jumps, cleans, snatches, throws, slams, burpees, kettlebell swings)"]
+    if flags.get("pt_note"):
+        never.insert(0, "lateral raises and side raises of any kind (the app cannot prescribe them yet)")
     if "biceps" in flags["drop_muscles"]:
         never.insert(0, "curls of any kind except leg or hamstring curls, and chin-ups")
     lines.append("NEVER PICK: " + "; ".join(never) + ".")
