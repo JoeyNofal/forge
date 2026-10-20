@@ -65,8 +65,14 @@ def tagged(day, date, names, program="ppl"):
             "exercises": [{"name": n, "section": "Chest"} for n in names]}
 
 
-def facts(profile=None, workouts=None, injuries=None, entries=None, **kw):
-    return PF.build_facts(PROFILE if profile is None else profile, workouts or [], injuries or [], entries or [], **kw)
+# Three tagged workouts of ANOTHER program style: they end the ease-in but never move the ppl rotation (programs.py rule).
+EXPERIENCED = [{"program": "bro_split", "program_day": "Chest", "date": f"2026-09-0{i}", "logged_at": f"2026-09-0{i}T10:00:00", "exercises": []}
+               for i in (1, 2, 3)]
+
+
+def facts(profile=None, workouts=None, injuries=None, entries=None, fresh=False, **kw):
+    base = [] if fresh else EXPERIENCED
+    return PF.build_facts(PROFILE if profile is None else profile, base + (workouts or []), injuries or [], entries or [], **kw)
 
 
 PUSH_BACK = dict(PROFILE, next_day={"day": "Push", "set_at": "2026-10-02T09:00:00"})
@@ -234,6 +240,34 @@ def _():
 
 
 # ---------------------------------------------------------------- L2 plans
+@check("L2 EASE-IN: the first 3 tagged workouts get one fewer set and RPE capped at 6; reps, rest, warmup, cooldown, core unchanged")
+def _():
+    f = facts(fresh=True)
+    assert f["ease_in"]["active"] and f["ease_in"]["number"] == 1
+    p = with_fake(Fake(), lambda: B.build_plan(f, [], [], None))
+    for e in p["exercises"]:
+        want = {"sets": 4, "reps": 3, "rest_seconds": 180, "target_rpe": 6} if e["role"] == "main" else {"sets": 2, "reps": 5, "rest_seconds": 120, "target_rpe": 6}
+        assert {k: e[k] for k in want} == want, e
+    assert p["notes"][0].startswith("Ease-in: workout 1 of 3") and "RPE 6" in p["notes"][0]
+    assert p["core"]["sets"] == 2 and p["core"]["target_rpe"] == 6 and p["warmup"][1]["sets"] == 1 and p["cooldown"][0]["sets"] == 1
+    normal, _f = plan()
+    assert all("Ease-in" not in n for n in normal["notes"]) and normal["exercises"][0]["sets"] == 5 and normal["exercises"][0]["target_rpe"] == 7
+
+
+@check("L2 EASE-IN counts tagged workouts only; sets never go below 1; a gentler goal is not made harder")
+def _():
+    two = [dict(EXPERIENCED[0], date="2026-09-0%d" % i, logged_at="2026-09-0%dT10:00:00" % i) for i in (1, 2)]
+    untagged = [{"date": "2026-09-05", "exercises": [{"name": "Bench press"}]}] * 5
+    f = facts(workouts=untagged, fresh=True)
+    assert f["ease_in"]["active"] and f["ease_in"]["done"] == 0
+    f2 = PF.build_facts(PROFILE, two, [], [])
+    assert f2["ease_in"]["active"] and f2["ease_in"]["number"] == 3
+    gp = dict(f["goal_params"], sets=(1, 1), rpe_main=5, rpe_accessory=5)
+    f3 = dict(f, goal_params=gp)
+    p = with_fake(Fake(), lambda: B.build_plan(f3, [], [], None))
+    assert all(e["sets"] == 1 and e["target_rpe"] == 5 for e in p["exercises"])
+
+
 @check("L2 no history: model picks fill every slot; roles main,main,acc,acc,acc; Python numbers; one model call")
 def _():
     p, fake = plan()

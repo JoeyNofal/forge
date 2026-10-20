@@ -30,7 +30,7 @@ PROGRAMS: dict[str, dict[str, Any]] = {
         {"label": "Lower", "focus": ["quads", "hamstrings", "glutes", "calves"]},
     ]},
     "full_body": {"label": "full body A/B", "days": [
-        {"label": "Full body A", "focus": ["quads", "chest", "back", "shoulders"]},
+        {"label": "Full body A", "focus": ["quads", "hamstrings", "glutes", "chest", "back", "shoulders"]},
         {"label": "Full body B", "focus": ["hamstrings", "glutes", "back", "chest", "biceps", "triceps", "forearms"]},
     ]},
     "bro_split": {"label": "bro split", "days": [

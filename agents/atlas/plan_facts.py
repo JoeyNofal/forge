@@ -33,6 +33,9 @@ OPEN_STATUSES = ("active", "recovering")      # an injury that is still open (sa
 VALID_SEVERITIES = ("mild", "moderate", "severe")
 DEFAULT_UNIT = "lbs"
 KEEP_ACCESSORY_SHARE = 0.6                    # about 60% of accessories stay the same from last time
+EASE_IN_WORKOUTS = 3                          # the first tagged workouts are lighter (Joey's call, Session 17)
+EASE_IN_SETS_OFF = 1                          # one fewer set on every exercise
+EASE_IN_RPE_CAP = 6                           # and no target effort harder than this
 MAX_INJURIES = 20
 MAX_CANDIDATES = 60
 MAX_LIBRARY_NAMES = 200
@@ -149,6 +152,19 @@ def _open_injuries(injuries) -> list:
         if len(out) >= MAX_INJURIES:
             break
     return out
+
+
+def _is_tagged(w: dict) -> bool:
+    tag = w.get("program")
+    return isinstance(tag, str) and (tag in programs.PROGRAMS or profiles.parse_program_style(tag) is not None)
+
+
+def ease_in_state(workouts) -> dict:
+    """Is he still in the ease-in? One per TAGGED workout already logged (any program), so it needs no extra setup."""
+    done = sum(1 for w in _list_of_dicts(workouts) if _is_tagged(w))
+    active = done < EASE_IN_WORKOUTS
+    return {"active": active, "done": done, "number": done + 1, "total": EASE_IN_WORKOUTS,
+            "sets_off": EASE_IN_SETS_OFF if active else 0, "rpe_cap": EASE_IN_RPE_CAP if active else None}
 
 
 def _is_core(name, section) -> bool:
@@ -284,7 +300,7 @@ def build_facts(profile, workouts, injuries, library_entries, minutes_override=N
         "warmups": [w for w in WARMUP_CHOICES if _plain(w) not in {_plain(a) for a in flags["avoid_warmups"]}],
         "cooldowns": list(COOLDOWN_CHOICES), "core_choices": list(CORE_CHOICES),
         "core_finisher": shape["core_finisher"],
-        "previous": previous, "variety": variety,
+        "previous": previous, "variety": variety, "ease_in": ease_in_state(workouts),
         "weights": progression.suggest_for(keep, workouts, entries) if keep else {},
         "library_candidates": _candidates(entries, focus, flags),
         "library_names": [_clip(e.get("name"), 100) for e in entries if _clip(e.get("name"), 100)][:MAX_LIBRARY_NAMES],
@@ -320,6 +336,9 @@ def describe_facts(facts) -> str:
         f"Keeping (accessories): {', '.join(v['keep_accessories']) or 'none'}",
         f"Open slots for new picks: {v['open_slots']}",
     ]
+    ease = facts.get("ease_in")
+    if isinstance(ease, dict) and ease.get("active"):
+        lines.append(f"Ease-in: workout {ease['number']} of {ease['total']} (one fewer set per exercise, target effort no harder than RPE {ease['rpe_cap']})")
     lines += [f"Left out: {x['name']} - {x['reason']}" for x in v["dropped"]]
     lines += [f"Weight {n}: {s['reason']}" for n, s in facts["weights"].items()]
     lines.append(f"Library exercises that fit today: {len(facts['library_candidates'])}")

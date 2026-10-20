@@ -276,6 +276,12 @@ def _exercise(name, role, facts, entries, muscle=None, tip="", kept=False) -> di
            "kept": kept, "in_library": entry is not None, "pt_note": facts_mod.pt_note_for(name, facts["limits"]),
            "seconds": None, "weight_lbs": None, "weight_note": ""}
     row.update(goal_numbers(facts["goal_params"], role))
+    ease = facts.get("ease_in")
+    if isinstance(ease, dict) and ease.get("active"):          # the first workouts are lighter: fewer sets, gentler effort
+        row["sets"] = max(1, row["sets"] - int(ease.get("sets_off") or 0))
+        cap = ease.get("rpe_cap")
+        if isinstance(cap, int) and row["target_rpe"] > cap:
+            row["target_rpe"] = cap
     return row
 
 
@@ -322,6 +328,10 @@ def assemble(facts: dict, new_picks: list, core: str, workouts, entries: list, s
             e["weight_lbs"], e["weight_note"] = s.get("weight_lbs"), str(s.get("reason") or "")
             if s.get("action") == "bodyweight":
                 e["weight_note"] = "bodyweight: " + e["weight_note"]
+    ease = facts.get("ease_in")
+    if isinstance(ease, dict) and ease.get("active"):
+        notes = [f"Ease-in: workout {ease['number']} of {ease['total']}. One fewer set per exercise and a gentler target "
+                 f"(no harder than RPE {ease['rpe_cap']}) while you rebuild. Start light."] + notes
     if any(e["pt_note"] for e in exercises) and facts["limits"]["pt_note"] and facts["limits"]["pt_note"] not in notes:
         notes = notes + [facts["limits"]["pt_note"]]
     return {

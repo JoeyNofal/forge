@@ -308,6 +308,34 @@ def _():
     assert facts()["weights"] == {}
 
 
+@check("L2 ease-in state: counts TAGGED workouts only (any program); active for the first 3, then off")
+def _():
+    tag = lambda t: {"program": t, "date": "2026-10-01", "exercises": []}
+    assert P.ease_in_state([]) == {"active": True, "done": 0, "number": 1, "total": 3, "sets_off": 1, "rpe_cap": 6}
+    assert P.ease_in_state([tag("ppl"), tag("full_body")])["number"] == 3
+    off = P.ease_in_state([tag("ppl"), tag("upper_lower"), tag("bro_split")])
+    assert off == {"active": False, "done": 3, "number": 4, "total": 3, "sets_off": 0, "rpe_cap": None}
+    junk = [None, "x", 5, {}, {"program": None}, {"program": ""}, {"program": "banana"}, {"program": ["ppl"]}, tag("ppl")]
+    assert P.ease_in_state(junk)["done"] == 1
+    assert P.ease_in_state(None)["active"] and P.ease_in_state("x")["done"] == 0
+    assert facts()["ease_in"]["active"] and facts(workouts=[tag("ppl")] * 3)["ease_in"]["active"] is False
+    assert "Ease-in: workout 1 of 3" in P.describe_facts(facts())
+
+
+@check("L2 Full body A now lists hamstrings and glutes; Full body B is unchanged")
+def _():
+    days = {d["label"]: d["focus"] for d in programs.PROGRAMS["full_body"]["days"]}
+    assert days["Full body A"] == ["quads", "hamstrings", "glutes", "chest", "back", "shoulders"]
+    assert days["Full body B"] == ["hamstrings", "glutes", "back", "chest", "biceps", "triceps", "forearms"]
+
+
+@check("L5 ease-in with 20,000 workouts stays fast")
+def _():
+    ws = [{"program": "ppl", "date": "2026-01-01", "exercises": []} for _i in range(20000)]
+    t = time.time()
+    assert P.ease_in_state(ws)["active"] is False and time.time() - t < 5
+
+
 @check("L2 library candidates: matching muscles only, biceps/curl/explosive entries removed, junk entries ignored")
 def _():
     lib = [{"name": "Bench press", "primary_muscles": ["Pectoralis major"], "equipment": ["barbell"], "status": "ai_drafted"},
