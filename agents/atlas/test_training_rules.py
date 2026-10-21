@@ -373,6 +373,31 @@ def _():
     assert R.list_rules_text(None) == "You have no rules yet."
 
 
+@check("L2 check_ladder_value accepts only whole numbers between the start and the end")
+def _():
+    lad = norm(LADDER)
+    assert R.check_ladder_value(lad, 20) == 20 and R.check_ladder_value(lad, 0) == 0 and R.check_ladder_value(lad, 45) == 45
+    for v in (46, -1, True, 2.5, "20", None, 10 ** 30):
+        assert raises(lambda x=v: R.check_ladder_value(lad, x), R.RuleError), v
+
+
+@check("L2 get_rule reads one rule by id or unique start (never writes); duplicate_of finds an identical active rule")
+def _():
+    def run(path):
+        a = R.add_rule(EXPLOSIVE)
+        before = open(path, "rb").read()
+        assert R.get_rule(a["id"]) == a and R.get_rule(a["id"][:4]) == a and open(path, "rb").read() == before
+        for ident in ("zzzz", "", None, "ab"):
+            assert raises(lambda i=ident: R.get_rule(i), R.RuleError), ident
+        same = R.duplicate_of(norm(dict(EXPLOSIVE, words=list(reversed(EXPLOSIVE["words"])), text="again")), R.load_rules())
+        assert same is not None and same["id"] == a["id"]
+        assert R.duplicate_of(norm(CURLS), R.load_rules()) is None
+        assert R.duplicate_of(norm(EXPLOSIVE), [dict(a, active=False)]) is None
+        for junk in (None, "x", 5, {}):
+            assert R.duplicate_of(junk, R.load_rules()) is None and R.duplicate_of(norm(EXPLOSIVE), junk) is None
+    with_temp(run)
+
+
 # ---------------------------------------------------------------- loud failures
 @check("L5 a damaged or wrong-shaped file fails LOUDLY on every read and write and is never overwritten")
 def _():

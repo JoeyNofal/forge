@@ -45,6 +45,7 @@ from agents.atlas import atlas_tools
 from agents.atlas import atlas_actions
 from agents.atlas.atlas_extract import extract_and_propose
 from agents.atlas import atlas_program
+from agents.atlas import atlas_rules
 from agents.atlas import atlas_setup
 from agents.atlas import exercise_draft
 from agents.atlas import exercise_library as library
@@ -287,6 +288,10 @@ def stream_atlas(message: str, history: Optional[list] = None, location: str = "
     program_text = atlas_program.handle_message(message)      # 'my program', 'set next day Pull' (increment 3b)
     if program_text is not None:
         yield program_text
+        return
+    rules_text = atlas_rules.handle_message(message)           # 'rules', 'add rule ...', 'set angle ...' (Phase 1 item 1.2)
+    if rules_text is not None:
+        yield rules_text
         return
     # First-time setup interview and profile commands (increment 3a-ii). None = not setup's business.
     setup_text = atlas_setup.handle_message(message)

@@ -304,6 +304,30 @@ def _find(entries: list, ident) -> int:
     raise RuleError(f"no rule found with the id '{key}'")
 
 
+def get_rule(ident) -> dict:
+    """The clean rule with this id (the full id or a unique start of 4+ characters). READS only; RuleError when none/ambiguous."""
+    entries = _load_data().get("rules", [])
+    return normalize_rule(entries[_find(entries, ident)])
+
+
+def check_ladder_value(rule: dict, value) -> int:
+    """The value, if it is a whole number lying between this ladder's start and end; else RuleError. Pure."""
+    number = _int(value, "value")
+    _ladder_ok(rule["start"], rule["step"], rule["end"], number)
+    return number
+
+
+def duplicate_of(rule, rules) -> Optional[dict]:
+    """The ACTIVE rule in `rules` that means exactly the same as `rule`, or None."""
+    if not isinstance(rule, dict) or not isinstance(rules, list):
+        return None
+    mine = _fingerprint(rule)
+    for other in rules:
+        if isinstance(other, dict) and other.get("active") is True and _fingerprint(other) == mine:
+            return other
+    return None
+
+
 def remove_rule(ident) -> dict:
     """Deletes ONE rule and returns what was removed."""
     result: dict[str, Any] = {}

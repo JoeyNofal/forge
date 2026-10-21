@@ -26,6 +26,7 @@ from agents.atlas import atlas_logging as log
 from agents.atlas import exercise_library as library
 from agents.atlas import programs
 from agents.atlas import training_profile as profiles
+from agents.atlas import training_rules as rules_mod
 from agents.atlas.atlas_tools import load_fitness_data
 from agents.atlas.workout_block import parse_workout_block
 from shared.action_gate import ActionGate
@@ -41,6 +42,9 @@ TYPE_ADD_EXERCISE = "add_exercise"
 TYPE_MARK_EXERCISE_REVIEWED = "mark_exercise_reviewed"
 TYPE_SAVE_PROFILE = "save_profile"
 TYPE_UPDATE_PROFILE = "update_profile"
+TYPE_ADD_RULE = "add_rule"
+TYPE_REMOVE_RULE = "remove_rule"
+TYPE_SET_LADDER = "set_ladder"
 
 
 # ─────────────────────────────────────────────
@@ -121,6 +125,14 @@ def describe(action_type: str, d: dict) -> str:
             return f"save your training profile (goal: {d['goal'] or 'not given'})"
         if action_type == TYPE_UPDATE_PROFILE:
             return _describe_profile_change(d)
+        if action_type == TYPE_ADD_RULE:
+            blocks = d.get("blocks") if isinstance(d.get("blocks"), list) else []
+            note = (f"\nThis would block {d.get('blocks_total', len(blocks))} exercise(s) in your library: " + ", ".join(str(b) for b in blocks)) if blocks else ""
+            return "add this rule:\n" + rules_mod.describe_rule(d["rule"]) + note
+        if action_type == TYPE_REMOVE_RULE:
+            return f"remove rule {d['id']}:\n" + rules_mod.describe_rule(d["rule"])
+        if action_type == TYPE_SET_LADDER:
+            return f"set the {d['label']} of rule {d['id']} to {d['value']}"
     except (KeyError, TypeError):
         pass
     return f"{action_type}: {d}"
@@ -181,6 +193,31 @@ def _run_update_profile(d: dict) -> tuple:
     return bool(ok), result
 
 
+def _run_add_rule(d: dict) -> tuple:
+    try:
+        rule = rules_mod.add_rule(d.get("rule"))
+    except rules_mod.RuleError as e:
+        return False, str(e)
+    return True, f"Rule saved ({rule['id']}). It will be used the next time ATLAS builds a plan."
+
+
+def _run_remove_rule(d: dict) -> tuple:
+    try:
+        rule = rules_mod.remove_rule(d.get("id"))
+    except rules_mod.RuleError as e:
+        return False, str(e)
+    return True, f"Rule removed ({rule.get('id')})."
+
+
+def _run_set_ladder(d: dict) -> tuple:
+    try:
+        rule = rules_mod.set_ladder_value(d.get("id"), d.get("value"))
+    except rules_mod.RuleError as e:
+        return False, str(e)
+    unit = f" {rule['unit']}" if rule.get("unit") else ""
+    return True, f"Set: {rule['label']} is now {rule['current']}{unit}."
+
+
 _gate = ActionGate(
     AGENT_NAME,
     "ATLAS",
@@ -195,6 +232,9 @@ _gate = ActionGate(
         TYPE_MARK_EXERCISE_REVIEWED: _run_mark_exercise_reviewed,
         TYPE_SAVE_PROFILE: _run_save_profile,
         TYPE_UPDATE_PROFILE: _run_update_profile,
+        TYPE_ADD_RULE: _run_add_rule,
+        TYPE_REMOVE_RULE: _run_remove_rule,
+        TYPE_SET_LADDER: _run_set_ladder,
     },
 )
 
@@ -283,6 +323,29 @@ def propose_profile_update(field, value) -> tuple:
     """One change to the profile (set goal, add a limitation...) -> a proposal. Read-only. Bad values raise ValueError."""
     change = profiles.clean_update(field, value)
     return _propose(TYPE_UPDATE_PROFILE, change)
+
+
+def propose_add_rule(rule, blocks=None, blocks_total=None) -> tuple:
+    """A drafted rule -> a proposal that SHOWS exactly what it does. Read-only: nothing is saved until Joey approves."""
+    clean = rules_mod.normalize_rule(rule, keep_id=False)
+    names = [str(b) for b in blocks][:8] if isinstance(blocks, list) else []
+    details = {"rule": clean, "blocks": names, "blocks_total": blocks_total if isinstance(blocks_total, int) else len(names)}
+    return _propose(TYPE_ADD_RULE, details)
+
+
+def propose_remove_rule(ident) -> tuple:
+    """Checks NOW (read-only) that the rule exists, then proposes removing it."""
+    rule = rules_mod.get_rule(ident)
+    return _propose(TYPE_REMOVE_RULE, {"id": rule["id"], "rule": rule})
+
+
+def propose_set_ladder(ident, value) -> tuple:
+    """Checks NOW (read-only) that the rule is a ladder and the value is in range, then proposes setting it."""
+    rule = rules_mod.get_rule(ident)
+    if rule["kind"] != "ladder":
+        raise rules_mod.RuleError("that rule is not a ladder")
+    number = rules_mod.check_ladder_value(rule, value)
+    return _propose(TYPE_SET_LADDER, {"id": rule["id"], "label": rule["label"], "value": number})
 
 
 def propose_injury_update(raw) -> tuple:

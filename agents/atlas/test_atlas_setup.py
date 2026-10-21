@@ -207,9 +207,25 @@ def _():
     assert m("add limitation left knee") == ("add_limitation", "left knee") and m("clear limitations") == ("clear_limitations", None)
     for no in ("please set goal build muscle", "set days abc", "set days 12", "set minutes 5", "set goal", "set days", "add limitation",
                "I should atlas setup", "atlas setup now", "show profile please", "profile", "skip", "back", "set weight 5",
-               "set goal a\nset goal b", "", "x" * 600):
+               "", "x" * 600):
         assert m(no) is None, no[:40]
     assert raises(lambda: S.match_command(None), TypeError)      # pyright: ignore[reportArgumentType]
+
+
+@check("L2 a command that is too long (or has line breaks) is ANSWERED plainly and saves nothing (it used to fall into normal chat)")
+def _():
+    fresh()
+    long_lim = "add limitation " + "x" * 348
+    assert S.match_command(long_lim) == ("too_long", ("add limitation", 348, 300))
+    long_goal: Any = S.match_command("set goal " + "y " * 400)
+    assert long_goal is not None and long_goal[0] == "too_long" and long_goal[1][2] == 500
+    two_lines: Any = S.match_command("set goal a\nset goal b")
+    assert two_lines is not None and two_lines[0] == "too_long"
+    for msg in (long_lim, "set equipment " + "z" * 600, "add limitation line one\nline two"):
+        out = say(msg)
+        assert "Nothing was saved" in out and "limit" in out and not pending(), msg[:30]
+    assert say("add limitation left knee").startswith("Proposed")      # a normal-length one still works
+    assert S.handle_message("add limitation and then some chat") is not None and S.handle_message("tell me about limitations") is None
 
 
 # ---------------- L2 smoke: the interview ----------------

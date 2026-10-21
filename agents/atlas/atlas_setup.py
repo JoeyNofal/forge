@@ -118,6 +118,9 @@ _COMMANDS = [
     ("text", re.compile(r"^\s*set\s+(goal|experience|consistency|equipment|activity|preferences|notes|body)\s+"
                         r"(\S.{0,499}?)\s*[.!]?\s*$", _I)),
 ]
+# A command that no pattern above accepted because it is too long (or has line breaks) must be ANSWERED, not
+# silently sent to the chat model (found for real: a 348-character 'add limitation' was just chatted about).
+_TOO_LONG_RE = re.compile(r"^\s*(add\s+limitation|set\s+(?:goal|experience|consistency|equipment|activity|preferences|notes|body))\s+(\S[\s\S]*)$", _I)
 _SKIP_RE = re.compile(r"^\s*skip\s*[.!]?\s*$", _I)
 _BACK_RE = re.compile(r"^\s*back\s*[.!]?\s*$", _I)
 
@@ -130,6 +133,10 @@ def match_command(message):
             if kind == "text":
                 return "text", (m.group(1).lower(), m.group(2))
             return kind, (m.group(1) if m.lastindex else None)
+    m = _TOO_LONG_RE.match(message)
+    if m:
+        which = " ".join(m.group(1).lower().split())
+        return "too_long", (which, len(" ".join(m.group(2).split())), 300 if which == "add limitation" else 500)
     return None
 
 
@@ -354,6 +361,10 @@ def _run_command(kind: str, value):
         if profile is None:
             return "You don't have a training profile yet. Type 'atlas setup' and I'll ask you the questions a trainer would."
         return profiles.format_profile(profile)
+    if kind == "too_long":
+        which, length, limit = value
+        return (f"I didn't understand '{which} ...': it is {length} characters or has line breaks, and the limit is {limit} "
+                f"characters on one line. Nothing was saved. Split it into shorter parts, one '{which} ...' for each.")
     if kind == "clear_limitations":
         return _propose_change("clear_limitations", None)
     if kind == "add_limitation":
