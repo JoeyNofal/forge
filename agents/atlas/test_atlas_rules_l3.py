@@ -2,8 +2,9 @@
 ATLAS rules, Phase 1 item 1.2 - L3: the REAL local model (Ollama) drafts rules from real sentences.
 
 Needs Ollama running with ATLAS's local model. It SAVES NOTHING and touches NO real data: it only calls the
-drafting function (atlas_rules.draft_rule) and prints what it understood, then checks a few things in Python.
-READ the printed drafts: a green count is not enough, the words must mean what you meant.
+drafting function (atlas_rules.draft_rule_with_notes) and prints what it understood, then checks a few things in
+Python. READ the printed drafts: a green count is not enough, the words must mean what you meant. When a draft is
+refused or looks wrong, the model's RAW answers are printed too.
 
 Run from the repo root:  python -m agents.atlas.test_atlas_rules_l3
 """
@@ -18,17 +19,19 @@ from agents.atlas import atlas_rules as W
 from agents.atlas import training_rules as R
 from shared.model_json import ExtractionError
 
-# (his sentence, a check on the drafted rule or None when a refusal/question is expected)
+EXPLOSIVE_WORDS = {"jump", "jumps", "clean", "cleans", "snatch", "throw", "slam", "burpee", "plyo", "plyometric", "swing"}
+
+# (his sentence, a check on the drafted rule, or None when a refusal/question is expected)
 CASES = [
     ("no explosive moves, doctor's orders",
-     lambda r: r["kind"] == "forbid" and {"jump", "clean"} & set(r["words"])),
+     lambda r: r["kind"] == "forbid" and bool(EXPLOSIVE_WORDS & set(r["words"]))),
     ("lateral raises only with the arm angle progression: back to a wall, arms up at 45 degrees from the wall, "
      "5 degrees closer to the wall each workout",
      lambda r: r["kind"] == "ladder" and (r["start"], r["step"], r["end"]) == (45, -5, 0)),
     ("RPE 5 for anything upper body while I ease in",
      lambda r: r["kind"] == "effort_cap" and r["scope"] == "upper_body" and r["rpe_max"] == 5 and r["only_ease_in"] is True),
     ("no curls or chin-ups for now, except leg and hamstring curls",
-     lambda r: r["kind"] == "forbid" and "curl" in " ".join(r["words"]) and {"leg", "hamstring"} & set(r["except_words"])),
+     lambda r: r["kind"] == "forbid" and any("curl" in w for w in r["words"]) and bool({"leg", "hamstring"} & set(r["except_words"]))),
     ("leave biceps out of the workouts for now",
      lambda r: r["kind"] == "drop_muscle" and r["muscles"] == ["biceps"]),
     ("no overhead pressing until my doctor says so",
@@ -38,8 +41,11 @@ CASES = [
     ("planks should get 5 seconds longer each workout, start at 20 seconds and go up to 60",
      lambda r: r["kind"] == "ladder" and (r["start"], r["step"], r["end"]) == (20, 5, 60)),
     ("put a note on every row: keep my shoulder blades down",
-     lambda r: r["kind"] == "note" and "row" in " ".join(r["words"])),
-    ("no jumping", lambda r: r["kind"] == "forbid" and "jump" in " ".join(r["words"])),
+     lambda r: r["kind"] == "note" and any("row" in w for w in r["words"])),
+    ("no jumping",
+     lambda r: r["kind"] == "forbid" and any(w.startswith("jump") for w in r["words"])),
+    ("no kettlebell exercises",
+     lambda r: r["kind"] == "forbid" and any("kettlebell" in w for w in r["words"])),
     ("I want to be careful", None),
     ("make it harder", None),
 ]
@@ -48,17 +54,23 @@ ok_count = 0
 for sentence, check in CASES:
     print("=" * 78)
     print("YOU:", sentence)
+    good = False
     try:
-        rule = W.draft_rule(sentence)
+        rule, notes = W.draft_rule_with_notes(sentence)
         print(R.describe_rule(rule))
+        for n in notes:
+            print("NOTE:", n)
         good = bool(check(rule)) if check else False
         verdict = "as expected" if good else ("UNEXPECTED: a rule was drafted where a question was expected" if not check else "CHECK THE WORDS ABOVE")
     except (R.RuleError, ExtractionError) as e:
         print("REFUSED:", e)
         good = check is None
-        verdict = "as expected (it asked or refused)" if good else "NOT DRAFTED (the model's answer was refused)"
+        verdict = "as expected (it asked or refused)" if good else "NOT DRAFTED (the model's answers were refused)"
+    print(f"-> {verdict}   (model tries: {len(W.LAST_RAW)})")
+    if not good:
+        for i, raw in enumerate(W.LAST_RAW, 1):
+            print(f"   RAW ANSWER {i}: {raw[:700]}")
     ok_count += 1 if good else 0
-    print("->", verdict)
 
 print("=" * 78)
 print(f"{ok_count}/{len(CASES)} drafts matched what the sentence says (nothing was saved). Read each draft above.")

@@ -30,6 +30,7 @@ import re
 import time
 import uuid
 from datetime import datetime
+from functools import lru_cache
 from typing import Any, Optional
 
 from shared.file_store import load_json, update_json
@@ -54,6 +55,8 @@ MAX_NOTE = 200
 MAX_LABEL = 60
 MAX_UNIT = 12
 MAX_NUMBER = 1000
+MAX_EXAMPLES = 8
+MAX_EXAMPLE_CHARS = 60
 ID_MIN_PREFIX = 4
 
 
@@ -128,6 +131,23 @@ def _muscles(v, required: bool) -> list:
     return out
 
 
+def _examples(v, label: str) -> list:
+    """Exercise names given as examples (kept as written, no repeats, at most 8)."""
+    if v is None:
+        return []
+    if not isinstance(v, list):
+        raise RuleError(f"{label} must be a list of exercise names")
+    out: list = []
+    seen: set = set()
+    for item in v:
+        text = _line(item, MAX_EXAMPLE_CHARS)
+        key = _plain(text)
+        if key and key not in seen:
+            seen.add(key)
+            out.append(text)
+    return out[:MAX_EXAMPLES]
+
+
 def _ladder_ok(start: int, step: int, end: int, current: int) -> None:
     if step == 0:
         raise RuleError("the step cannot be zero")
@@ -156,6 +176,14 @@ def normalize_rule(raw, keep_id: bool = True) -> dict:
         rule["except_words"] = _words(raw.get("except_words"), "exception words", False)
         if set(rule["words"]) & set(rule["except_words"]):
             raise RuleError("a word cannot be both blocked and an exception")
+        rule["examples"] = _examples(raw.get("examples"), "examples")
+        rule["allowed_examples"] = _examples(raw.get("allowed_examples"), "allowed_examples")
+        for ex in rule["examples"]:                 # a rule is CHECKED against its own examples
+            if not _blocked(ex, rule["words"], rule["except_words"]):
+                raise RuleError(f"the words would not block '{ex}', which is listed as an example of what the rule blocks")
+        for ex in rule["allowed_examples"]:
+            if _blocked(ex, rule["words"], rule["except_words"]):
+                raise RuleError(f"the words would block '{ex}', which should stay allowed")
         rule["reason"] = _line(raw.get("reason"), MAX_REASON) or "blocked by one of your rules"
     elif kind == "note":
         rule["words"] = _words(raw.get("words"), "words to match", True)
@@ -406,14 +434,40 @@ def _active(rules, kind: str) -> list:
     return [r for r in rules if isinstance(r, dict) and r.get("kind") == kind and r.get("active") is True] if isinstance(rules, list) else []
 
 
+@lru_cache(maxsize=1024)
+def _variants(words: tuple) -> tuple:
+    """Each word with its plural and singular form (curl -> curls, jumps -> jump, chin up -> chin ups), so a rule written
+    with one form still matches the other. Words ending in 'ss' (press) are not shortened."""
+    out: list = []
+    for w in words:
+        options = [w]
+        if w.endswith(("ss", "x", "ch", "sh")):
+            options.append(w + "es")                      # press -> presses, box -> boxes
+        elif w.endswith("s"):
+            if len(w) > 3:
+                options.append(w[:-1])                    # curls -> curl
+        else:
+            options.append(w + "s")                       # curl -> curls
+        for v in options:
+            if v and v not in out:
+                out.append(v)
+    return tuple(out)
+
+
 def _matches(name, words) -> bool:
-    return contains_keyword(_plain(name), words) if isinstance(words, list) and words else False
+    if not isinstance(words, list) or not words or not all(isinstance(w, str) for w in words):
+        return False
+    return contains_keyword(_plain(name), list(_variants(tuple(words))))
+
+
+def _blocked(name, words, except_words) -> bool:
+    return _matches(name, words) and not _matches(name, except_words)
 
 
 def forbid_reason(name, rules) -> str:
     """'' when no rule blocks this exercise, else the reason of the first rule that does."""
     for r in _active(rules, "forbid"):
-        if _matches(name, r.get("words")) and not _matches(name, r.get("except_words")):
+        if _blocked(name, r.get("words"), r.get("except_words")):
             return str(r.get("reason") or "blocked by one of your rules")
     return ""
 
@@ -482,6 +536,12 @@ def describe_rule(rule) -> str:
         if rule.get("except_words"):
             body += f" (unless it also contains: {', '.join(rule['except_words'])})"
         body += f". Reason shown: {rule.get('reason', '')}"
+        shown = [str(x) for x in rule.get("examples", []) if isinstance(x, str)] if isinstance(rule.get("examples"), list) else []
+        allowed = [str(x) for x in rule.get("allowed_examples", []) if isinstance(x, str)] if isinstance(rule.get("allowed_examples"), list) else []
+        if shown:
+            body += f"\nBlocks, for example: {', '.join(shown)}"
+        if allowed:
+            body += f"\nStill allowed: {', '.join(allowed)}"
     elif k == "note":
         body = f"Add this note to exercises containing: {', '.join(rule.get('words', []))}. Note: {rule.get('note', '')}"
     elif k == "effort_cap":

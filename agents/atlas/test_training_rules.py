@@ -398,6 +398,46 @@ def _():
     with_temp(run)
 
 
+@check("L2 singular and plural forms match each other (curl/curls, jump/jumps, chin up/chin ups); 'press' is not cut to 'pres'")
+def _():
+    assert R._variants(("curl",)) == ("curl", "curls") and "curl" in R._variants(("curls",))
+    assert R._variants(("press",)) == ("press", "presses") and "pres" not in R._variants(("press",))
+    assert R._variants(("chin up",)) == ("chin up", "chin ups") and "chin up" in R._variants(("chin ups",))
+    assert R._variants(("box",)) == ("box", "boxes") and R._variants(("jumps",)) == ("jumps", "jump") and R._variants(("abs",)) == ("abs",)
+    one_form = [norm({"kind": "forbid", "text": "no curls or chin-ups", "words": ["curl", "chin up"], "except_words": ["leg"]})]
+    for n in ("Hammer curls", "Barbell curl", "Chin-Ups", "Chin up", "Wide chin ups"):
+        assert R.forbid_reason(n, one_form), n
+    for n in ("Leg curls", "Leg curl", "Squat", "Curly bar", "Chinese food"):
+        assert R.forbid_reason(n, one_form) == "", n
+    other = [norm({"kind": "forbid", "text": "no jumps", "words": ["jumps", "plyometrics"]})]
+    for n in ("Jump squat", "Box jump", "Plyometric push-up"):
+        assert R.forbid_reason(n, other), n
+    assert R.notes_for("Seated rows", [norm({"kind": "note", "text": "x", "words": ["row"], "note": "n"})]) == ["n"]
+    assert R.ladder_for("Dumbbell lateral raises", [norm({"kind": "ladder", "text": "x", "words": ["lateral raise"], "label": "a",
+                                                          "start": 45, "step": -5, "end": 0})]) is not None
+
+
+@check("L2 a 'never plan' rule is CHECKED against its own examples: examples must be blocked, allowed examples must stay allowed")
+def _():
+    ok = norm({"kind": "forbid", "text": "no explosive moves", "words": ["jump", "clean", "slam"], "except_words": [],
+               "examples": ["Jump squat", "Power clean", "Box jumps", "jump squat", "  "], "allowed_examples": ["Goblet squat"]})
+    assert ok["examples"] == ["Jump squat", "Power clean", "Box jumps"] and ok["allowed_examples"] == ["Goblet squat"]
+    assert bad({"kind": "forbid", "text": "x", "words": ["explosive"], "examples": ["Jump squat"]}, "would not block 'Jump squat'")
+    assert bad({"kind": "forbid", "text": "x", "words": ["curl"], "examples": ["Leg curl"], "except_words": ["leg"]}, "would not block 'Leg curl'")
+    assert bad({"kind": "forbid", "text": "x", "words": ["curl"], "allowed_examples": ["Barbell curl"]}, "would block 'Barbell curl'")
+    assert norm({"kind": "forbid", "text": "x", "words": ["curl"], "except_words": ["leg"], "allowed_examples": ["Leg curl"],
+                 "examples": ["Hammer curls"]})["allowed_examples"] == ["Leg curl"]
+    assert bad({"kind": "forbid", "text": "x", "words": ["curl"], "examples": "Barbell curl"}, "list")
+    many = norm({"kind": "forbid", "text": "x", "words": ["curl"], "examples": [f"curl {chr(97 + i)}" for i in range(15)]})
+    assert len(many["examples"]) == R.MAX_EXAMPLES
+    assert len(norm({"kind": "forbid", "text": "x", "words": ["curl"], "examples": ["curl " + "y" * 200]})["examples"][0]) == R.MAX_EXAMPLE_CHARS
+    assert norm(EXPLOSIVE)["examples"] == [] and norm(CURLS)["allowed_examples"] == []            # rules without examples stay valid
+    text = R.describe_rule(ok)
+    assert "Blocks, for example: Jump squat, Power clean, Box jumps" in text and "Still allowed: Goblet squat" in text
+    assert "Blocks, for example" not in R.describe_rule(norm(EXPLOSIVE))
+    assert isinstance(R.describe_rule({"kind": "forbid", "examples": 5, "allowed_examples": [None, 3], "words": ["x"]}), str)
+
+
 # ---------------------------------------------------------------- loud failures
 @check("L5 a damaged or wrong-shaped file fails LOUDLY on every read and write and is never overwritten")
 def _():

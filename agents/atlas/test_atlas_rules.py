@@ -83,23 +83,29 @@ def FAKE_OFF(system, user, timeout=0):          # a model that must not be calle
     raise AssertionError("the model must not be called here")
 
 
+_UNSET: Any = object()
+
+
 class Model:
     """Stands in for complete_ollama_json: scripted replies (text, dict, or Exception), thread-safe call log."""
     def __init__(self, *replies):
         self.replies = list(replies)
         self.calls: list = []
         self.lock = threading.Lock()
+        self.last: Any = _UNSET
 
     def __call__(self, system, user, timeout=0):
         with self.lock:
             self.calls.append((system, user))
-            r = self.replies.pop(0) if self.replies else self.replies_default()
+            if self.replies:
+                self.last = self.replies.pop(0)
+            r = self.last if self.last is not _UNSET else self.replies_default()
         if isinstance(r, Exception):
             raise r
         return r if isinstance(r, str) else json.dumps(r)
 
     def replies_default(self):
-        return {"kind": "forbid", "words": ["overhead"], "reason": "no overhead for now"}
+        return dict(FORBID)
 
 
 def use(model):
@@ -127,7 +133,8 @@ def run(msg) -> str:
     return "".join(C.stream_atlas(msg))
 
 
-FORBID = {"kind": "forbid", "words": ["overhead", "military"], "except_words": [], "reason": "no overhead pressing for now"}
+FORBID = {"kind": "forbid", "words": ["overhead", "military"], "except_words": [], "reason": "no overhead pressing for now",
+          "examples": ["Overhead press", "Military press", "Seated overhead press"], "allowed_examples": ["Bench press", "Leg press"]}
 LADDER_SENTENCE = "lateral raises start at 45 degrees from the wall and go 5 degrees closer each workout"
 LADDER = {"kind": "ladder", "words": ["lateral raise", "lateral raises"], "label": "arm angle from the wall", "unit": "degrees",
           "start": 45, "step": -5, "end": 0}
@@ -275,7 +282,7 @@ def _():
     assert "no higher than RPE 5 for all upper-body exercises, only during the ease-in" in ok
     use(Model(dict(LADDER, start=30)))
     assert "number 30" in say("add rule " + LADDER_SENTENCE)
-    use(Model(dict(LADDER, step=5)))
+    use(Model(dict(LADDER, start=0, step=5, end=0)))
     assert "toward the end" in say("add rule " + LADDER_SENTENCE)
     use(Model(dict(LADDER, start=45, step=-5, end=0)))
     assert "Here is what I understood" in say("add rule " + LADDER_SENTENCE)
@@ -313,6 +320,118 @@ def _():
     m = use(Model())
     out = say("add rule " + "no overhead pressing " * 20)
     assert "characters" in out and "300" in out and "Split it" in out and m.calls == [] and pending() == []
+
+
+@check("L2 REAL-MODEL FINDING 1: a rule whose words match none of its own examples ('explosive' vs jump squat) is refused, the model is asked again with the reason")
+def _():
+    fresh()
+    literal = {"kind": "forbid", "words": ["explosive"], "examples": ["Jump squat", "Box jump", "Power clean"], "reason": "no explosive moves"}
+    fixed = {"kind": "forbid", "words": ["jump", "clean", "snatch", "slam"], "examples": ["Jump squat", "Box jump", "Power clean"],
+             "allowed_examples": ["Goblet squat"], "reason": "no explosive moves"}
+    m = use(Model(literal, fixed))
+    out = say("add rule no explosive moves, doctor's orders")
+    assert out.startswith("Here is what I understood") and "Never plan an exercise whose name contains: jump, clean, snatch, slam" in out
+    assert "Blocks, for example: Jump squat, Box jump, Power clean" in out and "Still allowed: Goblet squat" in out
+    assert len(m.calls) == 2 and m.calls[0][1] == "no explosive moves, doctor's orders"
+    retry = m.calls[1][1]
+    assert retry.startswith("no explosive moves, doctor's orders\n\nYOUR LAST ANSWER WAS REFUSED:") and "would not block 'Jump squat'" in retry
+    assert len(W.LAST_RAW) == 2 and "explosive" in W.LAST_RAW[0] and "snatch" in W.LAST_RAW[1]
+    A.approve_and_execute(approve_id(out))
+    saved = R.load_rules()
+    assert R.forbid_reason("Jump squat", saved) and R.forbid_reason("Power cleans", saved) and R.forbid_reason("Goblet squat", saved) == ""
+
+
+@check("L2 a draft the checks refuse twice is explained plainly, with the reason, and nothing is proposed (exactly 2 model calls)")
+def _():
+    fresh()
+    literal = {"kind": "forbid", "words": ["explosive"], "examples": ["Jump squat", "Box jump", "Power clean"]}
+    m = use(Model(literal, literal))
+    out = say("add rule no explosive moves")
+    assert out.startswith("I couldn't turn that into a rule") and "would not block 'Jump squat'" in out and "Nothing was saved" in out
+    assert len(m.calls) == 2 and pending() == [] and R.load_rules() == []
+
+
+@check("L2 a 'never plan' draft with fewer than 3 examples is refused (retry, then plain message)")
+def _():
+    fresh()
+    m = use(Model({"kind": "forbid", "words": ["jump"], "examples": ["Jump squat"]}))
+    out = say("add rule no jumping")
+    assert "at least 3 example exercise names" in out and len(m.calls) == 2 and pending() == []
+    use(Model({"kind": "forbid", "words": ["jump"], "examples": ["Jump squat"]},
+              {"kind": "forbid", "words": ["jump"], "examples": ["Jump squat", "Box jumps", "Jump lunge"]}))
+    assert "Here is what I understood" in say("add rule no jumping")
+
+
+@check("L2 REAL-MODEL FINDING 2: one form of a word covers the other (curl/curls, chin up/chin ups) in drafts and in saved rules")
+def _():
+    fresh()
+    use(Model({"kind": "forbid", "words": ["curl", "chin up"], "except_words": ["leg", "hamstring"],
+               "examples": ["Hammer curls", "Barbell curl", "Chin-ups", "Wide chin up"], "allowed_examples": ["Leg curl", "Hamstring curls"],
+               "reason": "no curls or chin-ups"}))
+    out = say("add rule no curls or chin-ups for now, except leg and hamstring curls")
+    assert "Here is what I understood" in out
+    A.approve_and_execute(approve_id(out))
+    saved = R.load_rules()
+    for n in ("Hammer curls", "Chin-Ups", "Preacher curl", "EZ bar curls"):
+        assert R.forbid_reason(n, saved), n
+    for n in ("Leg curls", "Lying hamstring curl", "Squat"):
+        assert R.forbid_reason(n, saved) == "", n
+
+
+@check("L2 an allowed example the words would block is refused; fixing it with an exception word works on the retry")
+def _():
+    fresh()
+    first = {"kind": "forbid", "words": ["curl"], "examples": ["Hammer curl", "Barbell curl", "Preacher curl"], "allowed_examples": ["Leg curl"]}
+    second = dict(first, except_words=["leg"])
+    m = use(Model(first, second))
+    out = say("add rule no curls except leg curls")
+    assert "Here is what I understood" in out and len(m.calls) == 2 and "would block 'Leg curl'" in m.calls[1][1]
+
+
+@check("L2 REAL-MODEL FINDING 3: a ladder step pointing the wrong way is flipped, and the flip is shown to him")
+def _():
+    fresh()
+    use(Model(dict(LADDER, start=45, step=5, end=0)))
+    out = say("add rule " + LADDER_SENTENCE)
+    assert "Note: I flipped the direction of the step to -5, so it moves from 45 toward 0." in out and "step -5 degrees" in out
+    A.approve_and_execute(approve_id(out))
+    got = R.ladder_for("Dumbbell lateral raise", R.load_rules())
+    assert got is not None and got["step"] == -5 and got["value"] == 45
+    use(Model(dict(LADDER, words=["plank"], label="hold time", unit="seconds", start=20, step=-5, end=60)))
+    assert "flipped the direction of the step to +5" in say("add rule planks hold 5 seconds longer each workout from 20 seconds up to 60")
+
+
+@check("L2 retries: unparsable first answer then a good one works (2 calls); a model that is down or says 'unclear' is NOT retried")
+def _():
+    fresh()
+    m = use(Model("not json", FORBID))
+    assert "Here is what I understood" in say("add rule no overhead pressing") and len(m.calls) == 2
+    down = use(Model(RuntimeError("down")))
+    assert "couldn't turn that into a rule" in say("add rule no overhead pressing") and len(down.calls) == 1
+    unclear = use(Model({"kind": "unclear", "question": "what?"}))
+    assert "could not tell" in say("add rule hmm") and len(unclear.calls) == 1
+    junk = use(Model("not json"))
+    out = say("add rule no overhead pressing")
+    assert "couldn't turn that into a rule" in out and len(junk.calls) == 2
+
+
+@check("L2 the retry message contains only his sentence and the refusal reason (never profile or health data)")
+def _():
+    fresh()
+    m = use(Model({"kind": "forbid", "words": ["explosive"], "examples": ["Jump squat", "Box jump", "Power clean"]}, FORBID))
+    say("add rule no explosive moves")
+    assert m.calls[1][0] == W.SYSTEM_PROMPT and "profile" not in m.calls[1][1].lower() and "labrum" not in m.calls[1][1].lower()
+    assert m.calls[1][1].count("\n") == 2
+
+
+@check("L2 the starter rules carry examples that their own words pass, and the proposals show them")
+def _():
+    fresh()
+    out = say("rules setup")
+    assert "Blocks, for example: Jump squat, Box jump, Power clean" in out and "Still allowed: Leg curl, Hamstring curl" in out
+    for preset in W.STARTER_RULES:
+        if preset["kind"] == "forbid":
+            assert len(preset["examples"]) >= 3 and R.normalize_rule(preset, keep_id=False)["allowed_examples"]
 
 
 @check("L2 remove rule: a proposal that shows the rule; approve removes it; deny keeps it; unknown and ambiguous ids are plain messages")
@@ -406,7 +525,8 @@ def _():
     fresh()
 
     def reply_for(system, user, timeout=0):
-        return json.dumps({"kind": "forbid", "words": [user.split()[-1]], "reason": "r"})
+        word = user.split()[-1]
+        return json.dumps({"kind": "forbid", "words": [word], "reason": "r", "examples": [f"{word} one", f"{word} two", f"{word} three"]})
 
     W.complete_ollama_json = reply_for
     outs, errs = [], []
