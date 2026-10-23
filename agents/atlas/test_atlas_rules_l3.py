@@ -2,7 +2,7 @@
 ATLAS rules, Phase 1 item 1.2 - L3: the REAL local model (Ollama) drafts rules from real sentences.
 
 Needs Ollama running with ATLAS's local model. It SAVES NOTHING and touches NO real data: it only calls the
-drafting function (atlas_rules.draft_rule_with_notes) and prints what it understood, then checks a few things in
+drafting function (atlas_rules.draft_rule) and prints what it understood, then checks a few things in
 Python. READ the printed drafts: a green count is not enough, the words must mean what you meant. When a draft is
 refused or looks wrong, the model's RAW answers are printed too.
 
@@ -56,10 +56,8 @@ for sentence, check in CASES:
     print("YOU:", sentence)
     good = False
     try:
-        rule, notes = W.draft_rule_with_notes(sentence)
+        rule = W.draft_rule(sentence)
         print(R.describe_rule(rule))
-        for n in notes:
-            print("NOTE:", n)
         good = bool(check(rule)) if check else False
         verdict = "as expected" if good else ("UNEXPECTED: a rule was drafted where a question was expected" if not check else "CHECK THE WORDS ABOVE")
     except (R.RuleError, ExtractionError) as e:

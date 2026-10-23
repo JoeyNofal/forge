@@ -15,9 +15,14 @@ HOW THE DRAFTING IS KEPT SAFE (the lessons from the real-model runs, enforced in
 - Every number in the drafted rule must appear as digits in your sentence (the local model copies numbers from
   its own examples). A zero is allowed (for example a ladder that ends at 0).
 - A "never plan" draft must list real example exercises it blocks (and any that stay allowed), and Python CHECKS
-  the drafted words against those examples. This catches a rule like "never plan anything containing 'explosive'",
-  which no exercise name contains and which would block nothing. A draft the checks refuse gets ONE retry with
-  the reason; a wrong step direction on a ladder is repaired and the repair is shown to you.
+  the drafted words against those examples.
+- Every word and example must be made of words that really appear in exercise names (exercise_vocab, plus the
+  names in his own library). The real model once wrote the rule words ["explosive"] AND invented examples such as
+  "explosive jump" so its own self-check passed; a category word like that blocks nothing. It also invented a note
+  rule on the word "exercise" from the vague sentence "I want to be careful". Both are refused now.
+- Numbers are NEVER repaired silently. A ladder whose start, step and end do not fit together is refused, and the
+  retry message states the numbers (a "repair" once turned a swapped start and end into a consistent-looking rule
+  that started at the straight-out position). A draft the checks refuse gets ONE retry with the reason.
 - Nothing is saved by drafting. You see the exact rule (and, for a "never plan" rule, which of your library
   exercises it would block), and it is saved only when you approve it.
 - A message counts as a command ONLY when the WHOLE message is the command (Lesson #6).
@@ -25,7 +30,7 @@ HOW THE DRAFTING IS KEPT SAFE (the lessons from the real-model runs, enforced in
 import re
 from typing import Any, Optional
 
-from agents.atlas import atlas_actions, exercise_library
+from agents.atlas import atlas_actions, exercise_library, exercise_vocab
 from agents.atlas import training_rules as rules_mod
 from shared.model_client import complete_ollama_json
 from shared.model_json import ExtractionError, model_call_failed, parse_model_json
@@ -142,41 +147,69 @@ def _numbers_stated(rule: dict, sentence: str) -> None:
                                       f"(write numbers as digits, for example '5 degrees')")
 
 
-def _repair_ladder(data: dict, notes: list) -> None:
-    """A step that points the wrong way (start 45, end 0, step +5) is flipped to point from the start toward the end;
-    the repair is reported so Joey sees it in the proposal."""
+def _check_ladder_direction(data: dict) -> None:
+    """A ladder whose start, step and end do not fit together is REFUSED with the numbers stated (never repaired)."""
     if data.get("kind") != "ladder":
         return
     start, step, end = data.get("start"), data.get("step"), data.get("end")
-    for n in (start, step, end):
-        if not isinstance(n, int) or isinstance(n, bool):
-            return
     if not (isinstance(start, int) and isinstance(step, int) and isinstance(end, int)):
         return
+    if isinstance(start, bool) or isinstance(step, bool) or isinstance(end, bool):
+        return
     if step != 0 and start != end and (end - start) * step < 0:
-        data["step"] = -step
-        notes.append(f"I flipped the direction of the step to {-step:+d}, so it moves from {start} toward {end}.")
+        raise rules_mod.RuleError(f"the start {start}, the step {step:+d} and the end {end} do not fit together: a step of {step:+d} makes "
+                                  f"the number go {'up' if step > 0 else 'down'}, but the end {end} is {'above' if end > start else 'below'} "
+                                  f"the start {start}. The start is where the person begins and the step moves it toward the end")
 
 
-def _build(data: dict, text: str) -> tuple:
-    """(clean rule, notes) from the model's answer, or RuleError. Every guard lives here."""
-    notes: list = []
+def _library_words() -> frozenset:
+    """The words in the names of Joey's own library exercises (they count as exercise-name words too)."""
+    try:
+        entries = exercise_library.list_entries()
+    except RuntimeError:
+        return frozenset()
+    names: list = []
+    for e in entries:
+        if isinstance(e, dict):
+            names.append(e.get("name"))
+            names += e["aliases"] if isinstance(e.get("aliases"), list) else []
+    return exercise_vocab.tokens_of(names)
+
+
+def _check_vocabulary(rule: dict) -> None:
+    """Every word and example name must be made of words that appear in exercise names (a category word blocks nothing)."""
+    texts: list = []
+    if rule["kind"] in ("forbid", "note", "ladder"):
+        texts += rule.get("words", [])
+    if rule["kind"] == "forbid":
+        texts += rule.get("except_words", []) + rule.get("examples", []) + rule.get("allowed_examples", [])
+    unknown = exercise_vocab.unknown_words(texts, _library_words())
+    if unknown:
+        one = len(unknown) == 1
+        raise rules_mod.RuleError(f"{', '.join(unknown[:6])} {'is not a word that appears' if one else 'are not words that appear'} in exercise names, "
+                                  f"so a rule built on {'it' if one else 'them'} would block or match nothing. "
+                                  f"Use words from real exercise names (for example 'goblet squat' or 'cable row')")
+
+
+def _build(data: dict, text: str) -> dict:
+    """The clean rule from the model's answer, or RuleError. Every guard lives here."""
     data = _coerce_numbers(data)
     data["text"] = text                                        # his words are stored, never the model's
     data["active"] = True                                      # a drafted rule is never one that silently does nothing
     data.pop("id", None)
     data.pop("created_at", None)
-    _repair_ladder(data, notes)
+    _check_ladder_direction(data)
     rule = rules_mod.normalize_rule(data, keep_id=False)       # includes: examples are blocked by the words, allowed examples are not
     _numbers_stated(rule, text)
     if rule["kind"] == "forbid" and len(rule.get("examples", [])) < MIN_EXAMPLES:
         raise rules_mod.RuleError(f"a 'never plan' rule needs at least {MIN_EXAMPLES} example exercise names it should block, "
                                   f"so the words can be checked against them")
-    return rule, notes
+    _check_vocabulary(rule)
+    return rule
 
 
-def draft_rule_with_notes(sentence: str) -> tuple:
-    """(clean rule, notes) drafted from ONE sentence of his, or RuleError / ExtractionError. Saves nothing.
+def draft_rule(sentence: str) -> dict:
+    """The clean rule drafted from ONE sentence of his, or RuleError / ExtractionError. Saves nothing.
     An answer the checks refuse gets ONE retry, with the reason; a model that is down or says 'unclear' is not retried."""
     text = _clean_sentence(sentence)
     if not text:
@@ -208,9 +241,7 @@ def draft_rule_with_notes(sentence: str) -> tuple:
     raise failure
 
 
-def draft_rule(sentence: str) -> dict:
-    """The clean rule drafted from ONE sentence of his (see draft_rule_with_notes)."""
-    return draft_rule_with_notes(sentence)[0]
+
 
 
 def _library_hits(rule: dict) -> tuple:
@@ -247,7 +278,7 @@ def show_rules() -> str:
 
 def add_rule_reply(sentence: str) -> str:
     try:
-        rule, notes = draft_rule_with_notes(sentence)
+        rule = draft_rule(sentence)
         if rules_mod.duplicate_of(rule, rules_mod.load_rules()):
             return "You already have a rule that means the same thing. Type 'rules' to see it. Nothing was saved."
         names, total = _library_hits(rule)
@@ -257,9 +288,8 @@ def add_rule_reply(sentence: str) -> str:
                 f"You can say it another way, or type 'rules setup' for the starter set.")
     except rules_mod.RuleError as e:
         return f"I couldn't turn that into a rule: {e}. Nothing was saved."
-    note_lines = "".join(f"\nNote: {n}" for n in notes)
     return ("Here is what I understood. Read the words carefully, they are exactly what ATLAS will enforce:\n\n"
-            + text + note_lines + _approve_hint(action_id))
+            + text + _approve_hint(action_id))
 
 
 def remove_rule_reply(ident: str) -> str:

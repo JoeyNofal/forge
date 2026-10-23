@@ -388,17 +388,65 @@ def _():
     assert "Here is what I understood" in out and len(m.calls) == 2 and "would block 'Leg curl'" in m.calls[1][1]
 
 
-@check("L2 REAL-MODEL FINDING 3: a ladder step pointing the wrong way is flipped, and the flip is shown to him")
+@check("L2 REAL-MODEL FINDING 3: a ladder whose start, step and end do not fit is REFUSED with the numbers stated, never repaired")
 def _():
     fresh()
-    use(Model(dict(LADDER, start=45, step=5, end=0)))
+    swapped = dict(LADDER, start=0, step=-5, end=45)            # what the real model wrote: start and end swapped
+    m = use(Model(swapped, LADDER))
     out = say("add rule " + LADDER_SENTENCE)
-    assert "Note: I flipped the direction of the step to -5, so it moves from 45 toward 0." in out and "step -5 degrees" in out
-    A.approve_and_execute(approve_id(out))
-    got = R.ladder_for("Dumbbell lateral raise", R.load_rules())
-    assert got is not None and got["step"] == -5 and got["value"] == 45
-    use(Model(dict(LADDER, words=["plank"], label="hold time", unit="seconds", start=20, step=-5, end=60)))
-    assert "flipped the direction of the step to +5" in say("add rule planks hold 5 seconds longer each workout from 20 seconds up to 60")
+    assert out.startswith("Here is what I understood") and "start 45 degrees" in out and "step -5 degrees" in out and "until 0 degrees" in out
+    assert len(m.calls) == 2 and "the start 0, the step -5 and the end 45 do not fit together" in m.calls[1][1]
+    assert "flipped" not in out
+    twice = use(Model(swapped))
+    out = say("add rule " + LADDER_SENTENCE)
+    assert out.startswith("I couldn't turn that into a rule") and "do not fit together" in out and "Nothing was saved" in out
+    assert len(twice.calls) == 2 and len(pending()) == 1          # only the first, good draft is queued
+    for bad_ladder in (dict(LADDER, start=45, step=5, end=0), dict(LADDER, start=0, step=-5, end=45)):
+        use(Model(bad_ladder))
+        refused = say("add rule " + LADDER_SENTENCE)
+        assert "do not fit together" in refused and "Here is what I understood" not in refused
+    assert R.load_rules() == []
+
+
+@check("L2 REAL-MODEL FINDING 4: a rule built on a category word is refused even when the model invents examples that contain it")
+def _():
+    fresh()
+    cheat = {"kind": "forbid", "words": ["explosive"], "except_words": [], "reason": "doctor's orders",
+             "examples": ["explosive jump", "explosive curl", "explosive push-up"], "allowed_examples": []}
+    m = use(Model(cheat))
+    out = say("add rule no explosive moves, doctor's orders")
+    assert out.startswith("I couldn't turn that into a rule")
+    assert "explosive is not a word that appears in exercise names" in out and "Nothing was saved" in out
+    assert len(m.calls) == 2 and "explosive is not a word that appears in exercise names" in m.calls[1][1] and pending() == []
+    good = {"kind": "forbid", "words": ["jump", "clean", "snatch", "slam"], "examples": ["Jump squat", "Box jump", "Power clean"],
+            "allowed_examples": ["Goblet squat"], "reason": "no explosive moves"}
+    use(Model(cheat, good))
+    assert "Never plan an exercise whose name contains: jump, clean, snatch, slam" in say("add rule no explosive moves, doctor's orders")
+
+
+@check("L2 REAL-MODEL FINDING 5: a vague sentence that the model turns into a note on the word 'exercise' is refused")
+def _():
+    fresh()
+    m = use(Model({"kind": "note", "words": ["exercise"], "note": "be careful"}))
+    out = say("add rule I want to be careful")
+    assert out.startswith("I couldn't turn that into a rule") and "exercise is not a word that appears in exercise names" in out
+    assert len(m.calls) == 2 and pending() == []
+    use(Model({"kind": "ladder", "words": ["workout"], "label": "x", "start": 5, "step": 1, "end": 9}))
+    assert "workout is not a word" in say("add rule something that goes from 5 to 9 by 1")
+
+
+@check("L2 words from his OWN library names count as exercise words; unknown words in several places are all listed")
+def _():
+    fresh()
+    from agents.atlas import exercise_library as lib
+    ok, _msg = lib.add_entry({"name": "Zebra squat", "steps": ["a", "b", "c"], "primary_muscles": ["quads"], "equipment": [], "aliases": ["Quagga squat"]})
+    assert ok, _msg
+    use(Model({"kind": "forbid", "words": ["zebra", "quagga"], "examples": ["Zebra squat", "Quagga squat", "Zebra jump"], "reason": "r"}))
+    assert "Here is what I understood" in say("add rule no zebra or quagga work")
+    fresh()
+    use(Model({"kind": "forbid", "words": ["zebra", "quagga"], "except_words": ["foo"], "examples": ["Zebra squat", "Quagga squat", "Zebra jump"], "reason": "r"}))
+    out = say("add rule no zebra or quagga work")
+    assert "zebra, quagga, foo are not words that appear in exercise names" in out
 
 
 @check("L2 retries: unparsable first answer then a good one works (2 calls); a model that is down or says 'unclear' is NOT retried")
@@ -429,9 +477,13 @@ def _():
     fresh()
     out = say("rules setup")
     assert "Blocks, for example: Jump squat, Box jump, Power clean" in out and "Still allowed: Leg curl, Hamstring curl" in out
+    from agents.atlas import exercise_vocab as V
     for preset in W.STARTER_RULES:
         if preset["kind"] == "forbid":
             assert len(preset["examples"]) >= 3 and R.normalize_rule(preset, keep_id=False)["allowed_examples"]
+        if preset["kind"] in ("forbid", "note", "ladder"):             # presets pass the same vocabulary check as model drafts
+            texts = preset["words"] + preset.get("except_words", []) + preset.get("examples", []) + preset.get("allowed_examples", [])
+            assert V.unknown_words(texts) == [], (preset["text"], V.unknown_words(texts))
 
 
 @check("L2 remove rule: a proposal that shows the rule; approve removes it; deny keeps it; unknown and ambiguous ids are plain messages")
@@ -526,21 +578,24 @@ def _():
 
     def reply_for(system, user, timeout=0):
         word = user.split()[-1]
-        return json.dumps({"kind": "forbid", "words": [word], "reason": "r", "examples": [f"{word} one", f"{word} two", f"{word} three"]})
+        return json.dumps({"kind": "forbid", "words": [word], "reason": "r",
+                           "examples": [f"barbell {word}", f"dumbbell {word}", f"cable {word}"]})
 
     W.complete_ollama_json = reply_for
     outs, errs = [], []
+    real_words = ["squat", "lunge", "curl", "row", "press", "raise", "fly", "extension", "crunch", "bridge",
+                  "thrust", "swing", "snatch", "clean", "jerk", "jump", "hop", "throw", "slam", "carry"]
 
     def work(i):
         try:
-            outs.append((i, say(f"add rule never plan thing{chr(97 + i)}word")))
+            outs.append((i, say(f"add rule never plan {real_words[i]}")))
         except Exception as e:
             errs.append(repr(e))
     ts = [threading.Thread(target=work, args=(i,)) for i in range(20)]
     [t.start() for t in ts]
     [t.join() for t in ts]
     assert not errs and len(outs) == 20 and len(pending()) == 20 and R.load_rules() == []
-    assert all(f"thing{chr(97 + i)}word" in out for i, out in outs)
+    assert all(f"contains: {real_words[i]}" in out for i, out in outs)
 
 
 @check("L4 20 threads approving the SAME draft at once: exactly one rule is saved")
