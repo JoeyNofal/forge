@@ -400,10 +400,11 @@ def _():
 
 @check("L2 singular and plural forms match each other (curl/curls, jump/jumps, chin up/chin ups); 'press' is not cut to 'pres'")
 def _():
-    assert R._variants(("curl",)) == ("curl", "curls") and "curl" in R._variants(("curls",))
-    assert R._variants(("press",)) == ("press", "presses") and "pres" not in R._variants(("press",))
-    assert R._variants(("chin up",)) == ("chin up", "chin ups") and "chin up" in R._variants(("chin ups",))
-    assert R._variants(("box",)) == ("box", "boxes") and R._variants(("jumps",)) == ("jumps", "jump") and R._variants(("abs",)) == ("abs",)
+    assert {"curl", "curls"} <= set(R._variants(("curl",))) and "curl" in R._variants(("curls",))
+    assert {"press", "presses"} <= set(R._variants(("press",))) and "pres" not in R._variants(("press",))
+    assert {"chin up", "chin ups"} <= set(R._variants(("chin up",))) and "chin up" in R._variants(("chin ups",))
+    assert {"box", "boxes"} <= set(R._variants(("box",))) and {"jumps", "jump"} <= set(R._variants(("jumps",)))
+    assert R._variants(("abs",))[0] == "abs" and "ab" not in R._variants(("abs",))        # too short to shorten
     one_form = [norm({"kind": "forbid", "text": "no curls or chin-ups", "words": ["curl", "chin up"], "except_words": ["leg"]})]
     for n in ("Hammer curls", "Barbell curl", "Chin-Ups", "Chin up", "Wide chin ups"):
         assert R.forbid_reason(n, one_form), n
@@ -415,6 +416,21 @@ def _():
     assert R.notes_for("Seated rows", [norm({"kind": "note", "text": "x", "words": ["row"], "note": "n"})]) == ["n"]
     assert R.ladder_for("Dumbbell lateral raises", [norm({"kind": "ladder", "text": "x", "words": ["lateral raise"], "label": "a",
                                                           "start": 45, "step": -5, "end": 0})]) is not None
+
+
+@check("L2 -ing forms match both ways (jump/jumping, raise/raising, run/running, slam/slamming, row/rowing); real real-model case 'no jumping'")
+def _():
+    for a, b in (("jump", "jumping"), ("jumping", "jump"), ("raise", "raising"), ("raising", "raise"), ("run", "running"),
+                 ("running", "run"), ("slam", "slamming"), ("row", "rowing"), ("rowing", "row"), ("lunge", "lunging"), ("curl", "curling")):
+        assert b in R._variants((a,)), (a, b)
+    jumping = [norm({"kind": "forbid", "text": "no jumping", "words": ["jumping"]})]
+    plain_jump = [norm({"kind": "forbid", "text": "no jump", "words": ["jump"]})]
+    for n in ("Jump squat", "Jump rope", "Box jumps", "Jumping jacks", "Jump lunge"):
+        assert R.forbid_reason(n, jumping) and R.forbid_reason(n, plain_jump), n
+    for n in ("Jumbo shrug", "Squat", "Bench press", "Goblet squat", "Cleaner stance deadlift"):
+        assert R.forbid_reason(n, jumping) == "" and R.forbid_reason(n, plain_jump) == "", n
+    assert R.forbid_reason("Rowing machine", [norm({"kind": "forbid", "text": "x", "words": ["row"]})])    # documented: the safe direction over-blocks a little
+    assert R.forbid_reason("Praise the bar", [norm({"kind": "forbid", "text": "x", "words": ["raise"]})]) == ""
 
 
 @check("L2 a 'never plan' rule is CHECKED against its own examples: examples must be blocked, allowed examples must stay allowed")

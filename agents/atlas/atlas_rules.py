@@ -13,7 +13,7 @@ HOW THE DRAFTING IS KEPT SAFE (the lessons from the real-model runs, enforced in
 - Its answer is untrusted DATA: it must be one of the five rule kinds and passes the same checks as any rule
   (training_rules.normalize_rule). The "words you used" stored with the rule are YOURS, never the model's.
 - Every number in the drafted rule must appear as digits in your sentence (the local model copies numbers from
-  its own examples). A zero is allowed (for example a ladder that ends at 0).
+  its own examples). The only exception is a ladder that ENDS at 0; a start of 0 you did not write is refused.
 - A "never plan" draft must list real example exercises it blocks (and any that stay allowed), and Python CHECKS
   the drafted words against those examples.
 - Every word and example must be made of words that really appear in exercise names (exercise_vocab, plus the
@@ -138,12 +138,14 @@ def _coerce_numbers(data: dict) -> dict:
 
 
 def _numbers_stated(rule: dict, sentence: str) -> None:
-    """Every nonzero number in the rule must appear as digits in Joey's sentence (the model copies numbers from its examples)."""
+    """Every number in the rule must appear as digits in Joey's sentence (the local model copies numbers from its examples).
+    The ONLY number allowed to be missing is a ladder's END of 0 ('all the way'). A start of 0 that he never wrote is refused:
+    the real model once drafted the lateral-raise ladder as start 0 (the straight-out position) up to 45."""
     stated = {int(n) for n in re.findall(r"\d+", sentence)}
     for key in _NUMBER_KEYS:
         v = rule.get(key)
-        if isinstance(v, int) and not isinstance(v, bool) and v != 0 and abs(v) not in stated:
-            raise rules_mod.RuleError(f"the draft used the number {abs(v)}, but that number is not in what you wrote "
+        if isinstance(v, int) and not isinstance(v, bool) and abs(v) not in stated and not (v == 0 and key == "end"):
+            raise rules_mod.RuleError(f"the draft used the number {abs(v)} for the {key}, but that number is not in what you wrote "
                                       f"(write numbers as digits, for example '5 degrees')")
 
 

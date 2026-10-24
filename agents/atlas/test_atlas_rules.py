@@ -408,6 +408,35 @@ def _():
     assert R.load_rules() == []
 
 
+@check("L2 REAL-MODEL FINDING 6: a ladder that STARTS at a 0 he never wrote is refused (the model drafted start 0 up to 45), an end of 0 is fine")
+def _():
+    fresh()
+    wrong = dict(LADDER, start=0, step=5, end=45)               # consistent, so only the number check can catch it
+    m = use(Model(wrong, LADDER))
+    out = say("add rule " + LADDER_SENTENCE)
+    assert out.startswith("Here is what I understood") and "start 45 degrees" in out and "until 0 degrees" in out
+    assert len(m.calls) == 2 and "the number 0 for the start" in m.calls[1][1]
+    twice = use(Model(wrong))
+    refused = say("add rule " + LADDER_SENTENCE)
+    assert "the number 0 for the start" in refused and "Nothing was saved" in refused and len(twice.calls) == 2
+    use(Model(dict(LADDER, start=45, step=-5, end=0)))
+    assert "until 0 degrees" in say("add rule " + LADDER_SENTENCE)         # a 0 END needs no mention
+    use(Model(dict(LADDER, start=10, step=-5, end=0)))
+    assert "number 10 for the start" in say("add rule " + LADDER_SENTENCE)
+
+
+@check("L2 REAL-MODEL FINDING 7: 'no jumping' drafted with the word 'jumping' now covers jump rope and jump squats")
+def _():
+    fresh()
+    use(Model({"kind": "forbid", "words": ["jumping"], "examples": ["jumping jacks", "jump rope", "box jump", "jump lunge"], "reason": "no jumping"}))
+    out = say("add rule no jumping")
+    assert "Here is what I understood" in out and "Blocks, for example: jumping jacks, jump rope, box jump, jump lunge" in out
+    A.approve_and_execute(approve_id(out))
+    saved = R.load_rules()
+    for n in ("Jump squat", "Jump rope", "Box jumps", "Jumping jacks"):
+        assert R.forbid_reason(n, saved), n
+
+
 @check("L2 REAL-MODEL FINDING 4: a rule built on a category word is refused even when the model invents examples that contain it")
 def _():
     fresh()

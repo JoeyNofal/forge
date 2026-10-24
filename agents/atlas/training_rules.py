@@ -436,8 +436,9 @@ def _active(rules, kind: str) -> list:
 
 @lru_cache(maxsize=1024)
 def _variants(words: tuple) -> tuple:
-    """Each word with its plural and singular form (curl -> curls, jumps -> jump, chin up -> chin ups), so a rule written
-    with one form still matches the other. Words ending in 'ss' (press) are not shortened."""
+    """Each word with its plural, singular and -ing forms (curl -> curls, jumps -> jump, jump <-> jumping, raise -> raising,
+    run -> running, chin up -> chin ups), so a rule written with one form still matches the others. Words ending in 'ss'
+    (press) are not shortened. A form that is not a real word is harmless: it simply never matches an exercise name."""
     out: list = []
     for w in words:
         options = [w]
@@ -448,6 +449,18 @@ def _variants(words: tuple) -> tuple:
                 options.append(w[:-1])                    # curls -> curl
         else:
             options.append(w + "s")                       # curl -> curls
+        base = w[:-1] if (w.endswith("s") and not w.endswith("ss") and len(w) > 3) else w
+        if base.endswith("ing") and len(base) > 5:
+            stem = base[:-3]                              # jumping -> jump, raising -> raise, running -> run
+            options += [stem, stem + "s", stem + "e"]
+            if len(stem) > 2 and stem[-1] == stem[-2]:
+                options.append(stem[:-1])
+        else:
+            options.append(base + "ing")                  # jump -> jumping, row -> rowing
+            if base.endswith("e"):
+                options.append(base[:-1] + "ing")         # raise -> raising
+            if len(base) >= 3 and base[-1] not in "aeiouwxy" and base[-2] in "aeiou" and base[-3] not in "aeiou":
+                options.append(base + base[-1] + "ing")   # run -> running, slam -> slamming
         for v in options:
             if v and v not in out:
                 out.append(v)
