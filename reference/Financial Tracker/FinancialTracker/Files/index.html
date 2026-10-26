@@ -1,0 +1,2657 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Financial Tracker</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Mono:wght@400;500&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"></script>
+<style>
+:root {
+  --bg: #0f0f11;
+  --surface: #18181c;
+  --surface2: #222228;
+  --surface3: #2a2a32;
+  --border: #2e2e38;
+  --accent: #c8a96e;
+  --accent2: #7eb8a4;
+  --accent3: #e07b7b;
+  --text: #f0ede8;
+  --text2: #a09890;
+  --text3: #6a6460;
+  --green: #6db891;
+  --red: #e07b7b;
+  --yellow: #d4a84b;
+  --blue: #7eb8d4;
+  --radius: 12px;
+  --radius-sm: 8px;
+  --shadow: 0 4px 24px rgba(0,0,0,0.4);
+  --font-display: 'DM Serif Display', serif;
+  --font-body: 'DM Sans', sans-serif;
+  --font-mono: 'DM Mono', monospace;
+  --nav-width: 220px;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; overflow: hidden; }
+
+body {
+  font-family: var(--font-body);
+  background: var(--bg);
+  color: var(--text);
+  display: flex;
+  height: 100vh;
+  overflow: hidden;
+}
+
+/* ── SIDEBAR NAV ── */
+#sidebar {
+  width: var(--nav-width);
+  background: var(--surface);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  z-index: 10;
+}
+#sidebar-header {
+  padding: 24px 20px 16px;
+  border-bottom: 1px solid var(--border);
+}
+#sidebar-header h1 {
+  font-family: var(--font-display);
+  font-size: 1.25rem;
+  color: var(--accent);
+  letter-spacing: 0.01em;
+  line-height: 1.2;
+}
+#sidebar-header p {
+  font-size: 0.7rem;
+  color: var(--text3);
+  margin-top: 3px;
+  font-family: var(--font-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+#nav-links {
+  flex: 1;
+  padding: 12px 0;
+  overflow-y: auto;
+}
+.nav-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 20px;
+  cursor: pointer;
+  color: var(--text2);
+  font-size: 0.875rem;
+  font-weight: 400;
+  border-left: 3px solid transparent;
+  transition: all 0.15s;
+  user-select: none;
+}
+.nav-item:hover { background: var(--surface2); color: var(--text); }
+.nav-item.active {
+  color: var(--accent);
+  border-left-color: var(--accent);
+  background: rgba(200,169,110,0.07);
+  font-weight: 500;
+}
+.nav-icon { font-size: 1rem; width: 20px; text-align: center; }
+
+#sidebar-footer {
+  padding: 16px 20px;
+  border-top: 1px solid var(--border);
+}
+#file-status {
+  font-size: 0.7rem;
+  font-family: var(--font-mono);
+  color: var(--text3);
+  margin-bottom: 8px;
+}
+#file-status span { color: var(--green); }
+#load-file-btn {
+  width: 100%;
+  padding: 8px;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text2);
+  font-size: 0.75rem;
+  cursor: pointer;
+  font-family: var(--font-body);
+  transition: all 0.15s;
+}
+#load-file-btn:hover { background: var(--surface3); color: var(--text); }
+
+/* ── MAIN CONTENT ── */
+#main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  min-width: 0;
+}
+
+#topbar {
+  height: 56px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 24px;
+  flex-shrink: 0;
+}
+#topbar-title {
+  font-family: var(--font-display);
+  font-size: 1.1rem;
+  color: var(--text);
+}
+#topbar-right { display: flex; align-items: center; gap: 12px; }
+
+#save-indicator {
+  font-size: 0.7rem;
+  font-family: var(--font-mono);
+  color: var(--text3);
+}
+#save-indicator.saved { color: var(--green); }
+#save-indicator.saving { color: var(--yellow); }
+
+#content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 28px 28px;
+  scrollbar-width: thin;
+  scrollbar-color: var(--surface3) transparent;
+}
+
+/* ── CARDS & GRID ── */
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 20px;
+  margin-bottom: 20px;
+}
+.card-title {
+  font-family: var(--font-display);
+  font-size: 1rem;
+  color: var(--text);
+  margin-bottom: 4px;
+}
+.card-subtitle {
+  font-size: 0.72rem;
+  color: var(--text3);
+  font-family: var(--font-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin-bottom: 16px;
+}
+.grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; }
+.grid-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
+
+.balance-card {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px;
+}
+.balance-card .label {
+  font-size: 0.7rem;
+  color: var(--text3);
+  font-family: var(--font-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  margin-bottom: 6px;
+}
+.balance-card .amount {
+  font-family: var(--font-mono);
+  font-size: 1.4rem;
+  font-weight: 500;
+}
+.balance-card .amount.pos { color: var(--green); }
+.balance-card .amount.neg { color: var(--red); }
+.balance-card .amount.neutral { color: var(--text); }
+.balance-card .sub-label {
+  font-size: 0.68rem;
+  color: var(--text3);
+  margin-top: 4px;
+}
+.badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 20px;
+  font-size: 0.68rem;
+  font-family: var(--font-mono);
+  font-weight: 500;
+  margin-top: 6px;
+}
+.badge-green { background: rgba(109,184,145,0.15); color: var(--green); border: 1px solid rgba(109,184,145,0.3); }
+.badge-red { background: rgba(224,123,123,0.15); color: var(--red); border: 1px solid rgba(224,123,123,0.3); }
+.badge-yellow { background: rgba(212,168,75,0.15); color: var(--yellow); border: 1px solid rgba(212,168,75,0.3); }
+.badge-blue { background: rgba(126,184,212,0.15); color: var(--blue); border: 1px solid rgba(126,184,212,0.3); }
+.badge-accent { background: rgba(200,169,110,0.15); color: var(--accent); border: 1px solid rgba(200,169,110,0.3); }
+
+/* ── ALERTS ── */
+#alerts-bar {
+  display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 20px;
+}
+.alert-chip {
+  display: flex; align-items: center; gap: 6px;
+  padding: 6px 12px;
+  border-radius: 20px;
+  font-size: 0.75rem;
+  font-weight: 500;
+}
+.alert-chip.warn { background: rgba(212,168,75,0.12); border: 1px solid rgba(212,168,75,0.3); color: var(--yellow); }
+.alert-chip.info { background: rgba(126,184,212,0.12); border: 1px solid rgba(126,184,212,0.3); color: var(--blue); }
+.alert-chip.crit { background: rgba(224,123,123,0.12); border: 1px solid rgba(224,123,123,0.3); color: var(--red); }
+
+/* ── TABLES ── */
+.data-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+.data-table th {
+  text-align: left; padding: 10px 12px;
+  font-size: 0.68rem; font-family: var(--font-mono); text-transform: uppercase;
+  letter-spacing: 0.07em; color: var(--text3);
+  border-bottom: 1px solid var(--border);
+  font-weight: 400;
+}
+.data-table td {
+  padding: 10px 12px;
+  border-bottom: 1px solid rgba(46,46,56,0.6);
+  color: var(--text2);
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+}
+.data-table tr:last-child td { border-bottom: none; }
+.data-table tr:hover td { background: rgba(255,255,255,0.02); color: var(--text); }
+.data-table td.desc { font-family: var(--font-body); color: var(--text); }
+.data-table td.pos { color: var(--green); }
+.data-table td.neg { color: var(--red); }
+
+/* ── FORMS ── */
+.form-row { display: flex; gap: 12px; margin-bottom: 12px; flex-wrap: wrap; }
+.form-group { display: flex; flex-direction: column; gap: 5px; flex: 1; min-width: 140px; }
+.form-group label { font-size: 0.72rem; color: var(--text3); font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.06em; }
+.form-group input, .form-group select, .form-group textarea {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  padding: 9px 12px;
+  font-size: 0.85rem;
+  font-family: var(--font-body);
+  outline: none;
+  transition: border-color 0.15s;
+}
+.form-group input:focus, .form-group select:focus, .form-group textarea:focus {
+  border-color: var(--accent);
+}
+.form-group select option { background: var(--surface2); }
+
+.btn {
+  padding: 9px 18px;
+  border-radius: var(--radius-sm);
+  font-size: 0.85rem;
+  font-family: var(--font-body);
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s;
+  border: none;
+}
+.btn-primary { background: var(--accent); color: #1a1408; }
+.btn-primary:hover { background: #d4b87a; }
+.btn-secondary { background: var(--surface2); color: var(--text2); border: 1px solid var(--border); }
+.btn-secondary:hover { background: var(--surface3); color: var(--text); }
+.btn-danger { background: rgba(224,123,123,0.15); color: var(--red); border: 1px solid rgba(224,123,123,0.3); }
+.btn-danger:hover { background: rgba(224,123,123,0.25); }
+.btn-sm { padding: 5px 12px; font-size: 0.75rem; }
+
+/* ── PROGRESS BARS ── */
+.progress-bar { height: 6px; background: var(--surface3); border-radius: 3px; overflow: hidden; margin-top: 8px; }
+.progress-fill { height: 100%; border-radius: 3px; transition: width 0.5s; }
+.progress-fill.green { background: var(--green); }
+.progress-fill.yellow { background: var(--yellow); }
+.progress-fill.red { background: var(--red); }
+.progress-fill.accent { background: var(--accent); }
+
+/* ── SECTION TITLES ── */
+.section-header {
+  display: flex; align-items: baseline; justify-content: space-between;
+  margin-bottom: 16px;
+}
+.section-title {
+  font-family: var(--font-display);
+  font-size: 1.5rem;
+  color: var(--text);
+}
+.section-date {
+  font-size: 0.72rem;
+  font-family: var(--font-mono);
+  color: var(--text3);
+}
+
+/* ── CHART CONTAINERS ── */
+.chart-container { position: relative; height: 220px; }
+.chart-container-lg { position: relative; height: 300px; }
+
+/* ── PAYCHECK SPECIFIC ── */
+.paycheck-card {
+  background: var(--surface2); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 16px; margin-bottom: 12px;
+}
+.paycheck-card.approved { border-left: 3px solid var(--green); }
+.paycheck-card.predicted { border-left: 3px solid var(--yellow); }
+.paycheck-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 12px; }
+.paycheck-date { font-family: var(--font-mono); font-size: 0.75rem; color: var(--text3); }
+.paycheck-net { font-family: var(--font-mono); font-size: 1.3rem; color: var(--green); font-weight: 500; }
+.paycheck-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.paycheck-field { font-size: 0.72rem; }
+.paycheck-field .pf-label { color: var(--text3); font-family: var(--font-mono); text-transform: uppercase; font-size: 0.62rem; letter-spacing: 0.06em; }
+.paycheck-field .pf-val { color: var(--text); font-family: var(--font-mono); margin-top: 2px; }
+.paycheck-actions { display: flex; gap: 6px; margin-top: 12px; flex-wrap: wrap; }
+
+/* ── LEDGER ── */
+.ledger-tabs { display: flex; gap: 6px; margin-bottom: 16px; flex-wrap: wrap; }
+.ledger-tab {
+  padding: 6px 14px; border-radius: 20px;
+  font-size: 0.75rem; font-family: var(--font-mono); text-transform: uppercase;
+  letter-spacing: 0.05em; cursor: pointer; border: 1px solid var(--border);
+  background: var(--surface2); color: var(--text3); transition: all 0.15s;
+}
+.ledger-tab.active { background: rgba(200,169,110,0.15); color: var(--accent); border-color: rgba(200,169,110,0.4); }
+
+/* ── CREDIT SCORE ── */
+.score-display {
+  text-align: center; padding: 20px;
+}
+.score-number {
+  font-family: var(--font-display);
+  font-size: 4rem;
+  line-height: 1;
+}
+.score-label { font-size: 0.75rem; font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.08em; margin-top: 6px; }
+
+/* ── SETTINGS ── */
+.setting-group { margin-bottom: 24px; }
+.setting-group-title {
+  font-size: 0.7rem; font-family: var(--font-mono); text-transform: uppercase;
+  letter-spacing: 0.08em; color: var(--accent); margin-bottom: 14px;
+  padding-bottom: 8px; border-bottom: 1px solid var(--border);
+}
+
+/* ── EXPENSE LIST ── */
+.expense-item {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 10px 0; border-bottom: 1px solid var(--border);
+}
+.expense-item:last-child { border-bottom: none; }
+.expense-name { font-size: 0.85rem; color: var(--text); }
+.expense-meta { font-size: 0.72rem; color: var(--text3); font-family: var(--font-mono); margin-top: 2px; }
+.expense-amount { font-family: var(--font-mono); font-size: 0.9rem; color: var(--text2); }
+
+/* ── SCROLLBAR ── */
+::-webkit-scrollbar { width: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--surface3); border-radius: 2px; }
+
+/* ── TOAST ── */
+#toast {
+  position: fixed; bottom: 24px; left: 50%;
+  transform: translateX(-50%) translateY(80px);
+  background: var(--surface2); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 12px 20px;
+  font-size: 0.82rem; color: var(--text); z-index: 9999;
+  box-shadow: var(--shadow); transition: transform 0.3s;
+  pointer-events: none;
+}
+#toast.show { transform: translateX(-50%) translateY(0); }
+#toast.success { border-color: rgba(109,184,145,0.4); }
+#toast.error { border-color: rgba(224,123,123,0.4); }
+
+/* ── FORECAST ── */
+.forecast-row { display: grid; grid-template-columns: 40px 100px 80px 90px 110px 110px; gap: 8px; padding: 8px 0; border-bottom: 1px solid rgba(46,46,56,0.5); font-family: var(--font-mono); font-size: 0.75rem; align-items: center; }
+.forecast-row.header { color: var(--text3); font-size: 0.65rem; text-transform: uppercase; letter-spacing: 0.06em; border-bottom-color: var(--border); padding-bottom: 10px; }
+.forecast-row:hover { background: rgba(255,255,255,0.01); }
+
+/* ── MODAL ── */
+.modal-overlay {
+  position: fixed; inset: 0; background: rgba(0,0,0,0.6);
+  z-index: 100; display: flex; align-items: center; justify-content: center;
+  opacity: 0; pointer-events: none; transition: opacity 0.2s;
+}
+.modal-overlay.open { opacity: 1; pointer-events: all; }
+.modal {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 24px; width: 500px;
+  max-width: 95vw; max-height: 85vh; overflow-y: auto;
+  transform: translateY(20px); transition: transform 0.2s;
+}
+.modal-overlay.open .modal { transform: translateY(0); }
+.modal-title { font-family: var(--font-display); font-size: 1.2rem; margin-bottom: 16px; }
+.modal-actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 20px; }
+
+/* ── EMPTY STATE ── */
+.empty-state {
+  text-align: center; padding: 48px 20px; color: var(--text3);
+}
+.empty-state .icon { font-size: 2.5rem; margin-bottom: 12px; opacity: 0.4; }
+.empty-state p { font-size: 0.85rem; }
+
+/* file picker hidden */
+#file-input { display: none; }
+</style>
+</head>
+<body>
+
+<!-- SIDEBAR -->
+<nav id="sidebar">
+  <div id="sidebar-header">
+    <h1>Vault</h1>
+    <p>Financial OS</p>
+  </div>
+  <div id="nav-links">
+    <div class="nav-item active" data-view="dashboard"><span class="nav-icon">◈</span> Dashboard</div>
+    <div class="nav-item" data-view="inputs"><span class="nav-icon">⊕</span> Inputs</div>
+    <div class="nav-item" data-view="paychecks"><span class="nav-icon">◎</span> Paychecks</div>
+    <div class="nav-item" data-view="ledgers"><span class="nav-icon">≡</span> Ledgers</div>
+    <div class="nav-item" data-view="forecast"><span class="nav-icon">⟶</span> Forecast</div>
+    <div class="nav-item" data-view="groceries"><span class="nav-icon">◻</span> Groceries</div>
+    <div class="nav-item" data-view="credit"><span class="nav-icon">◇</span> Credit Score</div>
+    <div class="nav-item" data-view="settings"><span class="nav-icon">⚙</span> Settings</div>
+  </div>
+  <div id="sidebar-footer">
+    <div id="file-status">Data: <span id="file-name-display">No file loaded</span></div>
+    <button id="load-file-btn">↑ Load / Change File</button>
+    <button id="import-old-btn" style="width:100%;padding:7px;margin-top:6px;background:var(--surface2);border:1px dashed rgba(200,169,110,0.3);border-radius:var(--radius-sm);color:var(--accent);font-size:0.72rem;cursor:pointer;font-family:var(--font-body);transition:all 0.15s" title="Import data exported from the old app">⇄ Import from Old App</button>
+  </div>
+</nav>
+
+<!-- MAIN -->
+<div id="main">
+  <div id="topbar">
+    <div id="topbar-title">Dashboard</div>
+    <div id="topbar-right">
+      <div id="save-indicator">—</div>
+    </div>
+  </div>
+  <div id="content">
+    <div id="view-container"></div>
+  </div>
+</div>
+
+<!-- TOAST -->
+<div id="toast"></div>
+
+<!-- FILE INPUT -->
+<input type="file" id="file-input" accept=".json" style="display:none">
+<input type="file" id="import-old-input" accept=".json" style="display:none">
+
+<!-- MODAL -->
+<div class="modal-overlay" id="modal-overlay">
+  <div class="modal" id="modal-content"></div>
+</div>
+
+<script>
+// ============================================================
+// DATA LAYER
+// ============================================================
+const DEFAULT_DATA = {
+  accounts: { vault: 0, flex: 0, funds: 0, cc: 0, cc2: 0, car_loan: 0, brex: 0 },
+  fundsSubAccounts: { carFund: 0, savingsFund: 0 },
+  transactions: [],   // {id, accountId, date, description, amount, balance, type}
+  paychecks: [],      // {id, date, workWeekEnd, hours, bonus, grossPay, taxes, deductions, netPay, approved}
+  fixedExpenses: [],  // {id, name, amount, frequency, dueDay, startDate, endDate, account}
+  groceries: {},      // "YYYY-MM": number
+  creditScores: [],   // {id, date, score, source, notes, type} type = 'vantage' or 'fico'
+  settings: {
+    regularRate: 35.21,
+    overtimeMultiplier: 1.5,
+    nightshiftMultiplier: 1.13,
+    benefitsDeduction: 30.92,
+    otherDeductions: 54.49,
+    retirementPercent: 4,
+    flexFloor: 500,
+    ccTargetMin: 0,
+    ccTargetMax: 0,
+    ccLimit: 1800,
+    ccPaymentDueDay: 21,
+    ccStatementDay: 24,
+    cc2TargetMin: 0,
+    cc2TargetMax: 0,
+    cc2Limit: 7000,
+    cc2PaymentDueDay: 21,
+    cc2StatementDay: 24,
+    creditScoreTarget: 800,
+    creditScoreTarget2: 800,
+    carLoanInitial: 18500,
+    carLoanMonthlyTarget: 1500,
+    carFundTarget: 1500,
+    carFundMinimum: 1000,
+    vaultBufferMonths: 7,
+    alternatingSundayStart: '2026-03-13',
+    groceryStartYear: 2024,
+    groceryStartMonth: 9,
+    brexStartingBalance: 0
+  }
+};
+
+const App = {
+  data: JSON.parse(JSON.stringify(DEFAULT_DATA)),
+  fileHandle: null,
+  currentView: 'dashboard',
+  charts: {},
+  saveTimeout: null,
+
+  // ── FILE I/O (Electron native) ──
+  async loadFile() {
+    try {
+      if (window.electronAPI) {
+        const result = await window.electronAPI.loadFile();
+        if (!result.ok) return;
+        App.data = App.mergeWithDefaults(JSON.parse(result.data));
+        const name = result.path.split('\\').pop().split('/').pop();
+        document.getElementById('file-name-display').textContent = name;
+        App.renderCurrentView();
+        App.showToast('Data loaded successfully', 'success');
+      } else {
+        // Browser fallback
+        if (window.showOpenFilePicker) {
+          const [handle] = await window.showOpenFilePicker({
+            types: [{ description: 'JSON', accept: { 'application/json': ['.json'] } }]
+          });
+          App.fileHandle = handle;
+          const file = await handle.getFile();
+          const text = await file.text();
+          App.data = App.mergeWithDefaults(JSON.parse(text));
+          document.getElementById('file-name-display').textContent = file.name;
+          App.renderCurrentView();
+          App.showToast('Data loaded successfully', 'success');
+        } else {
+          document.getElementById('file-input').click();
+        }
+      }
+    } catch(e) {
+      if (e.name !== 'AbortError') App.showToast('Failed to load file: ' + e.message, 'error');
+    }
+  },
+
+  async importOldData(fileOrNull) {
+    try {
+      let raw;
+      if (window.electronAPI) {
+        const result = await window.electronAPI.importFile();
+        if (!result.ok) return;
+        raw = JSON.parse(result.data);
+      } else {
+        // Browser: fileOrNull is a File object
+        const text = await fileOrNull.text();
+        raw = JSON.parse(text);
+      }
+
+      let parsed = raw;
+      const isLocalStorageDump = Object.keys(raw).some(k => k.startsWith('financial_tracker_'));
+      if (isLocalStorageDump) {
+        parsed = {};
+        for (const [k, v] of Object.entries(raw)) {
+          const cleanKey = k.replace('financial_tracker_', '');
+          try { parsed[cleanKey] = typeof v === 'string' ? JSON.parse(v) : v; }
+          catch(e) { parsed[cleanKey] = v; }
+        }
+      }
+      if (parsed.data) parsed = parsed.data;
+
+      const merged = App.mergeWithDefaults(parsed);
+      if (App.data.conversations.length) merged.conversations = App.data.conversations;
+      if (App.data.creditScores.length)  merged.creditScores  = App.data.creditScores;
+
+      const counts = {
+        transactions: merged.transactions.length,
+        paychecks: merged.paychecks.length,
+        expenses: merged.fixedExpenses.length,
+        groceryMonths: Object.keys(merged.groceries).length
+      };
+
+      App.data = merged;
+      App.renderCurrentView();
+      App.scheduleSave();
+      App.showToast(`Imported: ${counts.transactions} transactions, ${counts.paychecks} paychecks, ${counts.expenses} expenses, ${counts.groceryMonths} grocery months`, 'success');
+    } catch(e) {
+      console.error('Import error:', e);
+      App.showToast(`Import failed: ${e.message}`, 'error');
+    }
+  },
+
+  async loadFileFromInput(file) {
+    try {
+      const text = await file.text();
+      App.data = App.mergeWithDefaults(JSON.parse(text));
+      document.getElementById('file-name-display').textContent = file.name;
+      App.renderCurrentView();
+      App.showToast('Data loaded', 'success');
+    } catch(e) {
+      App.showToast('Failed to load file', 'error');
+    }
+  },
+
+  mergeWithDefaults(loaded) {
+    const d = JSON.parse(JSON.stringify(DEFAULT_DATA));
+
+    // ── NEW APP FORMAT ──
+    if (loaded.accounts && !Array.isArray(loaded.accounts)) {
+      // Plain object — just merge it
+      d.accounts = { ...d.accounts, ...loaded.accounts };
+    }
+    // ── OLD APP FORMAT: accounts stored as array of {id, name, type, balance} ──
+    if (Array.isArray(loaded.accounts)) {
+      loaded.accounts.forEach(a => {
+        const id = a.id;
+        if (id && d.accounts.hasOwnProperty(id)) {
+          d.accounts[id] = typeof a.balance === 'number' ? a.balance : 0;
+        }
+      });
+    }
+
+    if (loaded.fundsSubAccounts) {
+      // old app stored laptopFund too — just ignore it
+      d.fundsSubAccounts.carFund = loaded.fundsSubAccounts.carFund || 0;
+      d.fundsSubAccounts.savingsFund = loaded.fundsSubAccounts.savingsFund || 0;
+    }
+
+    // Transactions — both formats use same shape
+    if (loaded.transactions) d.transactions = loaded.transactions;
+
+    // Paychecks — both formats use same shape
+    if (loaded.paychecks) d.paychecks = loaded.paychecks;
+
+    // Fixed expenses — old app stored as array under 'fixedExpenses' in settings or top-level
+    if (loaded.fixedExpenses) d.fixedExpenses = loaded.fixedExpenses;
+    // Old app sometimes stored under settings._fixedExpenses
+    if (!loaded.fixedExpenses && loaded.settings && loaded.settings._fixedExpenses) {
+      d.fixedExpenses = loaded.settings._fixedExpenses;
+    }
+
+    // Groceries — old app stored under 'grocery_totals' key
+    if (loaded.groceries) d.groceries = loaded.groceries;
+    if (!loaded.groceries && loaded.grocery_totals) d.groceries = loaded.grocery_totals;
+
+    if (loaded.creditScores) d.creditScores = loaded.creditScores;
+
+    // Settings — merge carefully so old app keys map correctly
+    if (loaded.settings) {
+      const s = loaded.settings;
+      d.settings = { ...d.settings, ...s };
+      // Old app used paycheckParams sub-object
+      if (s.paycheckParams) {
+        d.settings.regularRate = s.paycheckParams.regularRate || d.settings.regularRate;
+        d.settings.overtimeMultiplier = s.paycheckParams.overtimeMultiplier || d.settings.overtimeMultiplier;
+        d.settings.nightshiftMultiplier = s.paycheckParams.nightshiftMultiplier || d.settings.nightshiftMultiplier;
+        d.settings.benefitsDeduction = s.paycheckParams.benefitsDeduction || d.settings.benefitsDeduction;
+        d.settings.otherDeductions = s.paycheckParams.otherDeductions || d.settings.otherDeductions;
+        d.settings.retirementPercent = s.paycheckParams.retirementPercent || d.settings.retirementPercent;
+      }
+      if (s.savingsGoals) {
+        d.settings.carFundTarget = s.savingsGoals.carFundTarget || d.settings.carFundTarget;
+        d.settings.carFundMinimum = s.savingsGoals.carFundMinimum || d.settings.carFundMinimum;
+      }
+      if (s.creditCard) {
+        d.settings.ccLimit = s.creditCard.limit || d.settings.ccLimit;
+        d.settings.ccPaymentDueDay = s.creditCard.paymentDueDay || d.settings.ccPaymentDueDay;
+        d.settings.ccStatementDay = s.creditCard.statementDay || d.settings.ccStatementDay;
+      }
+      if (s.carLoan) {
+        d.settings.carLoanInitial = s.carLoan.initialBalance || d.settings.carLoanInitial;
+      }
+      if (s.flexFloor !== undefined) d.settings.flexFloor = s.flexFloor;
+      if (s.workSchedule && s.workSchedule.alternatingSundayStart) {
+        d.settings.alternatingSundayStart = s.workSchedule.alternatingSundayStart;
+      }
+    }
+
+    // ── ALWAYS rebuild account balances from latest transaction per account ──
+    // Transactions are the source of truth. accounts{} may be stale or zeroed.
+    const accountIds = ['vault','flex','funds','cc','cc2','car_loan','brex'];
+    accountIds.forEach(id => {
+      const acctTxns = d.transactions
+        .filter(t => t.accountId === id && t.balance !== undefined && t.balance !== null)
+        .sort((a,b) => new Date(a.date) - new Date(b.date) || 0);
+      if (acctTxns.length > 0) {
+        d.accounts[id] = acctTxns[acctTxns.length - 1].balance;
+      }
+    });
+
+    // ── Rebuild fundsSubAccounts from FUNDS balance ──
+    const fundsBalance = d.accounts.funds;
+    if (fundsBalance > 0) {
+      // Use loaded subaccounts if they sum correctly, otherwise recalculate
+      const loadedCar = d.fundsSubAccounts.carFund;
+      const loadedSav = d.fundsSubAccounts.savingsFund;
+      const sum = loadedCar + loadedSav;
+      if (Math.abs(sum - fundsBalance) < 1) {
+        // Already consistent, keep them
+      } else {
+        // Recalculate split
+        const carFund = Math.floor(fundsBalance / 2 / 500) * 500;
+        d.fundsSubAccounts = { carFund, savingsFund: fundsBalance - carFund };
+      }
+    }
+
+    return d;
+  },
+
+  scheduleSave() {
+    const ind = document.getElementById('save-indicator');
+    ind.textContent = 'Saving…'; ind.className = 'saving';
+    clearTimeout(App.saveTimeout);
+    App.saveTimeout = setTimeout(App.saveFile, 800);
+  },
+
+  async saveFile() {
+    const ind = document.getElementById('save-indicator');
+    const json = JSON.stringify(App.data, null, 2);
+    try {
+      if (window.electronAPI) {
+        // Electron: save directly to file via main process
+        const result = await window.electronAPI.saveData(json);
+        if (result.ok) {
+          ind.textContent = 'Saved ✓'; ind.className = 'saved';
+        } else {
+          ind.textContent = 'Save failed'; ind.className = '';
+          App.showToast('Save failed: ' + result.error, 'error');
+        }
+      } else if (App.fileHandle) {
+        const writable = await App.fileHandle.createWritable();
+        await writable.write(json); await writable.close();
+        ind.textContent = 'Saved ✓'; ind.className = 'saved';
+      } else {
+        const blob = new Blob([json], {type:'application/json'});
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = 'financial-tracker-data.json';
+        a.click(); URL.revokeObjectURL(a.href);
+        ind.textContent = 'Downloaded ✓'; ind.className = 'saved';
+      }
+    } catch(e) {
+      ind.textContent = 'Save failed'; ind.className = '';
+    }
+    setTimeout(() => { ind.textContent = '—'; ind.className = ''; }, 3000);
+  },
+
+  // ── UTILS ──
+  uid() { return '_' + Math.random().toString(36).substr(2,9) + Date.now().toString(36); },
+  fmt(n) { return new Intl.NumberFormat('en-US',{style:'currency',currency:'USD'}).format(n||0); },
+  fmtDate(d) {
+    const dt = d instanceof Date ? d : new Date(d);
+    return dt.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});
+  },
+  fmtDateInput(d) {
+    const dt = d instanceof Date ? d : new Date(d);
+    return dt.toISOString().split('T')[0];
+  },
+  showToast(msg, type='') {
+    const t = document.getElementById('toast');
+    t.textContent = msg; t.className = type ? `show ${type}` : 'show';
+    setTimeout(() => t.className = '', 3000);
+  },
+  destroyChart(id) {
+    if (App.charts[id]) { App.charts[id].destroy(); delete App.charts[id]; }
+  },
+  openModal(html) {
+    document.getElementById('modal-content').innerHTML = html;
+    document.getElementById('modal-overlay').classList.add('open');
+  },
+  closeModal() { document.getElementById('modal-overlay').classList.remove('open'); },
+
+  // ── NAVIGATION ──
+  navigate(view) {
+    App.currentView = view;
+    document.querySelectorAll('.nav-item').forEach(el => {
+      el.classList.toggle('active', el.dataset.view === view);
+    });
+    const titles = {
+      dashboard:'Dashboard', inputs:'Inputs', paychecks:'Paychecks',
+      ledgers:'Ledgers', forecast:'Forecast', groceries:'Groceries',
+      credit:'Credit Score', settings:'Settings'
+    };
+    document.getElementById('topbar-title').textContent = titles[view] || view;
+    App.renderCurrentView();
+  },
+
+  renderCurrentView() {
+    Object.keys(App.charts).forEach(k => App.destroyChart(k));
+    App.charts = {};
+    const vc = document.getElementById('view-container');
+    const views = {
+      dashboard: Views.dashboard,
+      inputs: Views.inputs,
+      paychecks: Views.paychecks,
+      ledgers: Views.ledgers,
+      forecast: Views.forecast,
+      groceries: Views.groceries,
+      credit: Views.credit,
+      settings: Views.settings
+    };
+    const fn = views[App.currentView];
+    if (fn) { vc.innerHTML = fn.render(); fn.init && fn.init(); }
+  },
+
+  // ── FINANCIAL CALCULATIONS ──
+  calc: {
+    weeklyFixedExpenses() {
+      const now = new Date();
+      return App.data.fixedExpenses.reduce((t, e) => {
+        if (e.endDate && new Date(e.endDate) < now) return t;
+        if (e.startDate && new Date(e.startDate) > now) return t;
+        if (e.frequency === 'monthly') return t + e.amount / 4.33;
+        if (e.frequency === 'biweekly') return t + e.amount / 2;
+        if (e.frequency === 'weekly') return t + e.amount;
+        return t;
+      }, 0);
+    },
+    monthlyExpenses() {
+      const avgGroceries = App.calc.avgGroceries();
+      return App.data.fixedExpenses.reduce((t, e) => {
+        if (e.frequency === 'monthly') return t + e.amount;
+        if (e.frequency === 'biweekly') return t + e.amount * (26/12);
+        if (e.frequency === 'weekly') return t + e.amount * 4.33;
+        return t;
+      }, 0) + avgGroceries;
+    },
+    avgGroceries() {
+      const vals = Object.values(App.data.groceries);
+      return vals.length ? vals.reduce((a,b)=>a+b,0)/vals.length : 0;
+    },
+    vaultBufferTarget() {
+      const m = App.calc.monthlyExpenses();
+      return m * (App.data.settings.vaultBufferMonths + 1) + 1500;
+    },
+    vaultBufferStatus() {
+      const vault = App.data.accounts.vault;
+      const m = App.calc.monthlyExpenses();
+      if (vault < m*2) return {status:'Critical', color:'red'};
+      if (vault < m*6) return {status:'Low', color:'yellow'};
+      if (vault < App.calc.vaultBufferTarget()) return {status:'In Progress', color:'blue'};
+      return {status:'Safe', color:'green'};
+    },
+    flexAllowance() {
+      const weeklyGroceries = App.calc.avgGroceries() / 4.33;
+      const fuel = App.data.fixedExpenses.find(e => e.name === 'Fuel');
+      const fun = App.data.fixedExpenses.find(e => e.name === 'Fun');
+      const weeklyFuel = fuel ? fuel.amount : 0;
+      const weeklyFun = fun ? fun.amount : 0;
+      const cc = Math.max(0, App.data.accounts.cc);
+      const cc2 = Math.max(0, App.data.accounts.cc2);
+      const base = weeklyGroceries + weeklyFuel + weeklyFun + cc + cc2;
+      return Math.ceil(base / 10) * 10;
+    },
+    predictNetPay(hours) {
+      const s = App.data.settings;
+      const gross = (hours.regular||0)*s.regularRate
+        + (hours.overtime||0)*s.regularRate*s.overtimeMultiplier
+        + (hours.holiday||0)*s.regularRate
+        + (hours.pto||0)*s.regularRate
+        + (hours.nightshift||0)*s.regularRate*s.nightshiftMultiplier
+        + (hours.bonus||0);
+      // avg tax rates from approved paychecks
+      const approved = App.data.paychecks.filter(p=>p.approved);
+      let rates = {federal:0.12, socialSecurity:0.062, medicare:0.0145, indiana:0.0323, stJoseph:0.0175};
+      if (approved.length > 0) {
+        const totG = approved.reduce((a,p)=>a+(p.grossPay||0),0);
+        if (totG > 0) {
+          rates.federal = approved.reduce((a,p)=>a+(p.taxes?.federal||0),0)/totG;
+          rates.socialSecurity = approved.reduce((a,p)=>a+(p.taxes?.socialSecurity||0),0)/totG;
+          rates.medicare = approved.reduce((a,p)=>a+(p.taxes?.medicare||0),0)/totG;
+          rates.indiana = approved.reduce((a,p)=>a+(p.taxes?.indiana||0),0)/totG;
+          rates.stJoseph = approved.reduce((a,p)=>a+(p.taxes?.stJoseph||0),0)/totG;
+        }
+      }
+      const taxes = gross * (rates.federal+rates.socialSecurity+rates.medicare+rates.indiana+rates.stJoseph);
+      const retirement = gross * (s.retirementPercent/100);
+      const net = gross - taxes - retirement - s.benefitsDeduction - s.otherDeductions;
+      return { gross, taxes, retirement, net, rates };
+    },
+    isAlternatingSunday(mondayDate) {
+      const startStr = App.data.settings.alternatingSundayStart;
+      const start = new Date(startStr);
+      const startDay = start.getDay();
+      const daysToMon = startDay === 1 ? 0 : startDay === 0 ? 1 : startDay-1;
+      const firstMon = new Date(start);
+      firstMon.setDate(start.getDate()-daysToMon);
+      if (mondayDate < firstMon) return false;
+      const ms = 7*24*60*60*1000;
+      const weeks = Math.floor((mondayDate-firstMon)/ms);
+      return weeks % 4 < 2;
+    },
+    nextFriday(from) {
+      const d = new Date(from); const day = d.getDay();
+      const diff = day <= 5 ? 5-day : 7-day+5;
+      d.setDate(d.getDate()+diff); return d;
+    },
+    upcoming30DayBills() {
+      const now = new Date(); const end = new Date(); end.setDate(now.getDate()+30);
+      const bills = [];
+      for (const e of App.data.fixedExpenses) {
+        if (e.endDate && new Date(e.endDate) < now) continue;
+        if (e.frequency === 'monthly') {
+          const due = new Date(now.getFullYear(), now.getMonth(), e.dueDay||1);
+          if (due < now) due.setMonth(due.getMonth()+1);
+          if (due <= end) bills.push({name:e.name, amount:e.amount, date:due, freq:e.frequency});
+        } else if (e.frequency === 'biweekly' && e.startDate) {
+          let d = new Date(e.startDate);
+          while (d < now) d.setDate(d.getDate()+14);
+          while (d <= end) { bills.push({name:e.name, amount:e.amount, date:new Date(d), freq:e.frequency}); d.setDate(d.getDate()+14); }
+        } else if (e.frequency === 'weekly') {
+          let d = new Date(now); d.setDate(d.getDate()+1);
+          while (d <= end) { bills.push({name:e.name, amount:e.amount, date:new Date(d), freq:e.frequency}); d.setDate(d.getDate()+7); }
+        }
+      }
+      return bills.sort((a,b)=>a.date-b.date);
+    },
+    nextPaycheckDate() {
+      const approved = App.data.paychecks.filter(p=>p.approved).sort((a,b)=>new Date(b.date)-new Date(a.date));
+      if (!approved.length) return App.calc.nextFriday(new Date());
+      const last = new Date(approved[0].date);
+      const next = new Date(last); next.setDate(last.getDate()+7);
+      const today = new Date();
+      while (next <= today) next.setDate(next.getDate()+7);
+      return App.calc.nextFriday(next);
+    },
+    fundsReallocation(balance) {
+      const carFund = Math.floor(balance/2/500)*500;
+      return { carFund, savingsFund: balance-carFund };
+    },
+    creditRating(score) {
+      if (score >= 800) return {label:'Exceptional', color:'green'};
+      if (score >= 740) return {label:'Very Good', color:'green'};
+      if (score >= 670) return {label:'Good', color:'accent'};
+      if (score >= 580) return {label:'Fair', color:'yellow'};
+      return {label:'Poor', color:'red'};
+    },
+
+    paycheckRecommendation(paycheck) {
+      if (!paycheck) return null;
+      const net = paycheck.netPay || 0;
+      const flex = App.calc.flexAllowance();
+
+      // What's left after FLEX takes its allowance
+      let remaining = net - flex;
+      if (remaining < 0) remaining = 0;
+
+      // Current state
+      const currentFunds = App.data.accounts.funds;
+      const currentVault = App.data.accounts.vault;
+      const vaultTarget = App.calc.vaultBufferTarget();
+
+      // Last FUNDS transaction savings balance
+      const fundsTxns = App.data.transactions
+        .filter(t => t.accountId === 'funds' && t.balance !== undefined)
+        .sort((a, b) => new Date(a.date) - new Date(b.date));
+      const lastFundsTxn = fundsTxns.length ? fundsTxns[fundsTxns.length - 1] : null;
+      const lastFundsBalance = lastFundsTxn ? lastFundsTxn.balance : currentFunds;
+      const lastSavings = Math.floor(lastFundsBalance / 2 / 500) % 1 === 0
+        ? lastFundsBalance - Math.floor(lastFundsBalance / 2 / 500) * 500
+        : 0;
+      const lastCarFund = Math.floor(lastFundsBalance / 2 / 500) * 500;
+
+      // Calculate current car fund and savings fund
+      const currentCarFund = Math.floor(currentFunds / 2 / 500) * 500;
+      const currentSavings = currentFunds - currentCarFund;
+
+      // Priority 1 — Car fund needs to be at $1,500
+      const carFundTarget = App.data.settings.carFundTarget || 1500;
+      let toFunds = 0;
+      let carFundNote = '';
+      let savingsNote = '';
+      let vaultNote = '';
+
+      // How much FUNDS total balance is needed for car fund to hit $1,500?
+      // carFund = floor(FUNDS/2/500)*500 >= 1500 means FUNDS >= 3000
+      const fundsNeededForCarTarget = 3000;
+
+      if (currentFunds < fundsNeededForCarTarget) {
+        // Car fund below target — top it up first
+        const neededForCar = fundsNeededForCarTarget - currentFunds;
+        toFunds = Math.min(remaining, neededForCar);
+        carFundNote = `Car Fund top-up: ${App.fmt(toFunds)}`;
+        remaining -= toFunds;
+      } else {
+        carFundNote = `Car Fund: at target ✓`;
+      }
+
+      // Priority 2 — Savings fund needs to be $100 more than last FUNDS transaction savings
+      const savingsTarget = lastSavings + 100;
+      const savingsShortfall = savingsTarget - currentSavings;
+      let toSavings = 0;
+
+      if (savingsShortfall > 0 && remaining > 0) {
+        // Need to add enough to FUNDS so savings fund reaches target
+        // Since savings = FUNDS - carFund, and carFund stays the same if we add small amounts,
+        // we need to add savingsShortfall to FUNDS
+        toSavings = Math.min(remaining, savingsShortfall);
+        toFunds += toSavings;
+        savingsNote = `Savings Fund +${App.fmt(toSavings)}`;
+        remaining -= toSavings;
+      } else {
+        savingsNote = currentSavings >= savingsTarget ? `Savings Fund: on track ✓` : `Savings Fund: no funds left`;
+      }
+
+      // Priority 3 — Rest goes to VAULT
+      const toVault = remaining;
+      if (currentVault >= vaultTarget) {
+        vaultNote = `VAULT: at target ✓ — extra ${App.fmt(toVault)} to FUNDS`;
+        toFunds += toVault;
+      } else {
+        vaultNote = `VAULT buffer: ${App.fmt(toVault)}`;
+      }
+
+      return {
+        netPay: paycheck.netPay,
+        date: paycheck.date,
+        approved: paycheck.approved,
+        flex,
+        toFunds,
+        toVault: currentVault >= vaultTarget ? 0 : toVault,
+        carFundNote,
+        savingsNote,
+        vaultNote
+      };
+    }
+  },
+
+  // ── INIT ──
+  init() {
+    // Nav
+    document.querySelectorAll('.nav-item').forEach(el => {
+      el.addEventListener('click', () => App.navigate(el.dataset.view));
+    });
+    // File
+    document.getElementById('load-file-btn').addEventListener('click', App.loadFile);
+    document.getElementById('file-input').addEventListener('change', e => {
+      if (e.target.files[0]) App.loadFileFromInput(e.target.files[0]);
+    });
+    document.getElementById('import-old-btn').addEventListener('click', () => {
+      if (window.electronAPI) {
+        App.importOldData(null); // Electron handles file dialog internally
+      } else {
+        document.getElementById('import-old-input').click();
+      }
+    });
+    document.getElementById('import-old-input').addEventListener('change', e => {
+      if (e.target.files[0]) App.importOldData(e.target.files[0]);
+    });
+    
+    // Modal close
+    document.getElementById('modal-overlay').addEventListener('click', e => {
+      if (e.target === document.getElementById('modal-overlay')) App.closeModal();
+    });
+    
+    // Auto-open file picker (browser only — Electron handles this via IPC)
+    if (!window.electronAPI) {
+      setTimeout(async () => {
+        if (window.showOpenFilePicker) {
+          try { await App.loadFile(); } catch(e) { /* user cancelled */ }
+        }
+      }, 500);
+    }
+
+    // Electron: receive initial data pushed from main process
+    if (window.electronAPI) {
+      window.electronAPI.onInitialData(({ path, data }) => {
+        try {
+          App.data = App.mergeWithDefaults(JSON.parse(data));
+          const name = path.split('\\').pop().split('/').pop();
+          document.getElementById('file-name-display').textContent = name;
+          App.renderCurrentView();
+        } catch(e) { console.error('Failed to load initial data:', e); }
+      });
+      // Get app info for API key status
+      
+    }
+    // Render
+    App.renderCurrentView();
+  }
+};
+
+// ============================================================
+// VIEWS
+// ============================================================
+const Views = {};
+
+// ── DASHBOARD ──
+Views.dashboard = {
+  render() {
+    const accts = App.data.accounts;
+    const funds = App.data.fundsSubAccounts;
+    const bufferStatus = App.calc.vaultBufferStatus();
+    const flexAllowance = App.calc.flexAllowance();
+    const nextPay = App.calc.nextPaycheckDate();
+    const bills = App.calc.upcoming30DayBills();
+    const latestScore = App.data.creditScores.length ? App.data.creditScores[App.data.creditScores.length-1] : null;
+    const alerts = Views.dashboard.buildAlerts(accts, bills, nextPay);
+
+    const bufferPct = Math.min(100, (accts.vault / App.calc.vaultBufferTarget())*100);
+    const carLoanPct = App.data.settings.carLoanInitial > 0 ? Math.min(100,(1-accts.car_loan/App.data.settings.carLoanInitial)*100) : 0;
+    const carFundPct = Math.min(100,(funds.carFund/App.data.settings.carFundTarget)*100);
+
+    return `
+    <div class="section-header">
+      <div class="section-title">Dashboard</div>
+      <div class="section-date">${new Date().toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric',year:'numeric'})}</div>
+    </div>
+
+    ${Object.values(accts).every(v=>v===0) ? `
+    <div style="background:rgba(212,168,75,0.08);border:1px solid rgba(212,168,75,0.3);border-radius:var(--radius);padding:14px 18px;margin-bottom:20px;display:flex;align-items:center;gap:10px">
+      <span style="font-size:1.1rem">💾</span>
+      <div>
+        <div style="font-size:0.85rem;color:var(--yellow);font-weight:500">No data loaded</div>
+        <div style="font-size:0.75rem;color:var(--text3);margin-top:2px">All balances show $0.00. Click <strong style="color:var(--text2)">↑ Load / Change File</strong> in the sidebar to load your data, or <strong style="color:var(--text2)">⇄ Import from Old App</strong> to import history.</div>
+      </div>
+    </div>` : ''}
+
+    ${alerts.length ? `<div id="alerts-bar">${alerts.map(a=>`<div class="alert-chip ${a.type}">${a.icon} ${a.msg}</div>`).join('')}</div>` : ''}
+
+    <!-- Account Balances -->
+    <div class="card">
+      <div class="card-title">Account Balances</div>
+      <div class="card-subtitle">Live balances — update via Inputs tab</div>
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:12px">
+        <div class="balance-card">
+          <div class="label">VAULT</div>
+          <div class="amount ${accts.vault>=0?'pos':'neg'}">${App.fmt(accts.vault)}</div>
+          <div class="sub-label">Main checking</div>
+          <div class="badge badge-${bufferStatus.color}" style="margin-top:6px">${bufferStatus.status}</div>
+          <div class="progress-bar"><div class="progress-fill ${bufferStatus.color}" style="width:${bufferPct.toFixed(1)}%"></div></div>
+          <div style="font-size:0.65rem;color:var(--text3);font-family:var(--font-mono);margin-top:4px">${bufferPct.toFixed(0)}% of ${App.fmt(App.calc.vaultBufferTarget())} target</div>
+          <div style="font-size:0.65rem;color:var(--text3);font-family:var(--font-mono);margin-top:2px">${App.calc.monthlyExpenses()>0?(accts.vault/App.calc.monthlyExpenses()).toFixed(1):0} months of expenses funded</div>
+        </div>
+        <div class="balance-card">
+          <div class="label">FLEX</div>
+          <div class="amount ${accts.flex>=0?'pos':'neg'}">${App.fmt(accts.flex)}</div>
+          <div class="sub-label">Spending account</div>
+          <div class="badge badge-${accts.flex>=App.data.settings.flexFloor?'green':'red'}" style="margin-top:6px">${accts.flex>=App.data.settings.flexFloor?'Above floor':'Below floor'}</div>
+          <div style="font-size:0.65rem;color:var(--text3);font-family:var(--font-mono);margin-top:4px">Floor: ${App.fmt(App.data.settings.flexFloor)}</div>
+        </div>
+        <div class="balance-card">
+          <div class="label">FREEDOM <span style="font-size:0.65rem;color:var(--text3)">(Chase)</span></div>
+          <div class="amount ${accts.cc>0?'neg':'pos'}">${App.fmt(accts.cc)}</div>
+          <div class="sub-label">Limit: ${App.fmt(App.data.settings.ccLimit)}</div>
+          <div class="badge badge-${accts.cc===0?'green':'yellow'}" style="margin-top:6px">${accts.cc===0?'Paid off':'Balance owing'}</div>
+          <div style="font-size:0.65rem;color:var(--text3);font-family:var(--font-mono);margin-top:4px">Goal: $0 balance</div>
+        </div>
+        <div class="balance-card">
+          <div class="label">SAVOR <span style="font-size:0.65rem;color:var(--text3)">(Capital One)</span></div>
+          <div class="amount ${accts.cc2>0?'neg':'pos'}">${App.fmt(accts.cc2)}</div>
+          <div class="sub-label">Limit: ${App.fmt(App.data.settings.cc2Limit)}</div>
+          <div class="badge badge-${accts.cc2===0?'green':'yellow'}" style="margin-top:6px">${accts.cc2===0?'Paid off':'Balance owing'}</div>
+          <div style="font-size:0.65rem;color:var(--text3);font-family:var(--font-mono);margin-top:4px">Goal: $0 balance</div>
+        </div>
+      </div>
+
+      <!-- FUNDS expanded -->
+      <div style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);padding:14px;margin-bottom:12px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+          <div>
+            <div class="label">FUNDS (Savings)</div>
+            <div style="font-family:var(--font-mono);font-size:1.3rem;color:var(--text);margin-top:4px">${App.fmt(accts.funds)}</div>
+          </div>
+          <div class="badge badge-accent">Savings Pool</div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+          <div style="background:var(--surface3);border-radius:8px;padding:12px">
+            <div style="font-size:0.65rem;color:var(--text3);font-family:var(--font-mono);text-transform:uppercase;letter-spacing:0.07em">Car Fund</div>
+            <div style="font-family:var(--font-mono);font-size:1.15rem;color:var(--accent);margin-top:4px">${App.fmt(funds.carFund)}</div>
+            <div class="progress-bar" style="margin-top:6px"><div class="progress-fill accent" style="width:${carFundPct.toFixed(1)}%"></div></div>
+            <div style="font-size:0.65rem;color:var(--text3);font-family:var(--font-mono);margin-top:4px">${carFundPct.toFixed(0)}% of ${App.fmt(App.data.settings.carFundTarget)} target</div>
+          </div>
+          <div style="background:var(--surface3);border-radius:8px;padding:12px">
+            <div style="font-size:0.65rem;color:var(--text3);font-family:var(--font-mono);text-transform:uppercase;letter-spacing:0.07em">Savings Fund</div>
+            <div style="font-family:var(--font-mono);font-size:1.15rem;color:var(--green);margin-top:4px">${App.fmt(funds.savingsFund)}</div>
+            <div style="font-size:0.65rem;color:var(--text3);font-family:var(--font-mono);margin-top:8px">${accts.funds>0?((funds.savingsFund/accts.funds)*100).toFixed(0)+'% of FUNDS':'—'}</div>
+          </div>
+        </div>
+      </div>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+        <div class="balance-card" style="border-left:3px solid #a78bfa">
+          <div class="label" style="color:#a78bfa">BREX <span style="font-size:0.65rem;color:var(--text3)">Loan to friend</span></div>
+          <div class="amount" style="color:#a78bfa">${App.fmt(accts.brex)}</div>
+          <div class="sub-label">Outstanding balance</div>
+          ${(()=>{
+            const start = App.data.settings.brexStartingBalance || 0;
+            const pct = start > 0 ? Math.min(100, ((start - accts.brex) / start) * 100) : 0;
+            return start > 0 ? `
+              <div class="progress-bar" style="margin-top:8px"><div class="progress-fill" style="width:${pct.toFixed(1)}%;background:#a78bfa"></div></div>
+              <div style="font-size:0.65rem;color:var(--text3);font-family:var(--font-mono);margin-top:4px">${pct.toFixed(0)}% paid back · Started at ${App.fmt(start)}</div>
+            ` : `<div style="font-size:0.65rem;color:var(--text3);font-family:var(--font-mono);margin-top:6px">Set starting balance in Settings</div>`;
+          })()}
+        </div>
+        <div class="balance-card">
+          <div class="label">Car Loan</div>
+          <div class="amount neg">${App.fmt(accts.car_loan)}</div>
+          <div class="sub-label">Remaining balance</div>
+          <div class="progress-bar" style="margin-top:8px"><div class="progress-fill green" style="width:${carLoanPct.toFixed(1)}%"></div></div>
+          <div style="font-size:0.65rem;color:var(--text3);font-family:var(--font-mono);margin-top:4px">${carLoanPct.toFixed(0)}% paid off · Target: ${App.fmt(App.data.settings.carLoanMonthlyTarget)}/mo</div>
+        </div>
+        <div class="balance-card" style="grid-column:span 2">
+          <div class="label">Credit Scores</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:8px">
+            <div>
+              <div style="font-size:0.65rem;color:var(--text3);font-family:var(--font-mono);text-transform:uppercase;letter-spacing:0.07em">VantageScore</div>
+              ${(()=>{const s=App.data.creditScores.filter(x=>x.type==='vantage').sort((a,b)=>new Date(a.date)-new Date(b.date));const latest=s.length?s[s.length-1]:null;return latest?`<div style="font-family:var(--font-mono);font-size:1.4rem;color:var(--accent);margin-top:4px">${latest.score}</div><div style="font-size:0.65rem;color:var(--text3);margin-top:2px">${App.fmtDate(latest.date)}</div><div class="badge badge-${App.calc.creditRating(latest.score).color}" style="margin-top:4px">${App.calc.creditRating(latest.score).label}</div>`:`<div style="font-family:var(--font-mono);font-size:1.4rem;color:var(--text3);margin-top:4px">—</div><div style="font-size:0.65rem;color:var(--text3);margin-top:2px">Not tracked yet</div>`;})()}
+            </div>
+            <div>
+              <div style="font-size:0.65rem;color:var(--text3);font-family:var(--font-mono);text-transform:uppercase;letter-spacing:0.07em">FICO</div>
+              ${(()=>{const s=App.data.creditScores.filter(x=>x.type==='fico').sort((a,b)=>new Date(a.date)-new Date(b.date));const latest=s.length?s[s.length-1]:null;return latest?`<div style="font-family:var(--font-mono);font-size:1.4rem;color:var(--blue);margin-top:4px">${latest.score}</div><div style="font-size:0.65rem;color:var(--text3);margin-top:2px">${App.fmtDate(latest.date)}</div><div class="badge badge-${App.calc.creditRating(latest.score).color}" style="margin-top:4px">${App.calc.creditRating(latest.score).label}</div>`:`<div style="font-family:var(--font-mono);font-size:1.4rem;color:var(--text3);margin-top:4px">—</div><div style="font-size:0.65rem;color:var(--text3);margin-top:2px">Not tracked yet</div>`;})()}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Recommendations -->
+    ${(()=>{
+      const approvedPaychecks = App.data.paychecks.filter(p=>p.approved).sort((a,b)=>new Date(b.date)-new Date(a.date));
+      const predictedPaychecks = App.data.paychecks.filter(p=>!p.approved).sort((a,b)=>new Date(a.date)-new Date(b.date));
+      const latestApproved = approvedPaychecks.length ? approvedPaychecks[0] : null;
+      const oldestPredicted = predictedPaychecks.length ? predictedPaychecks[0] : null;
+      const recApproved = App.calc.paycheckRecommendation(latestApproved);
+      const recPredicted = App.calc.paycheckRecommendation(oldestPredicted);
+
+      const renderCard = (rec, label, color) => {
+        if (!rec) return `<div class="card" style="margin-bottom:0">
+          <div class="card-title">Paycheck Recommendation</div>
+          <div class="card-subtitle">${label}</div>
+          <div class="empty-state"><p>No ${label.toLowerCase()} paycheck found.</p></div>
+        </div>`;
+
+        return `<div class="card" style="margin-bottom:0">
+          <div class="card-title">Paycheck Recommendation</div>
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+            <div style="font-size:0.72rem;color:var(--text3);font-family:var(--font-mono)">${App.fmtDate(rec.date)}</div>
+            <div class="badge badge-${color}">${label}</div>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:8px">
+            <div style="display:flex;justify-content:space-between;align-items:center;padding:10px;background:var(--surface2);border-radius:var(--radius-sm)">
+              <div>
+                <div style="font-size:0.65rem;color:var(--text3);font-family:var(--font-mono);text-transform:uppercase;letter-spacing:0.06em">Net Pay</div>
+                <div style="font-family:var(--font-mono);font-size:1rem;color:var(--text);margin-top:2px">${App.fmt(rec.netPay)}</div>
+              </div>
+            </div>
+            <div style="padding:10px;background:rgba(200,169,110,0.08);border:1px solid rgba(200,169,110,0.2);border-radius:var(--radius-sm)">
+              <div style="font-size:0.65rem;color:var(--accent);font-family:var(--font-mono);text-transform:uppercase;letter-spacing:0.06em">→ Transfer to FLEX</div>
+              <div style="font-family:var(--font-mono);font-size:1.1rem;color:var(--accent);margin-top:2px">${App.fmt(rec.flex)}</div>
+              <div style="font-size:0.68rem;color:var(--text3);margin-top:3px">Groceries + Fuel + Fun + CC balances</div>
+            </div>
+            <div style="padding:10px;background:rgba(109,184,145,0.08);border:1px solid rgba(109,184,145,0.2);border-radius:var(--radius-sm)">
+              <div style="font-size:0.65rem;color:var(--green);font-family:var(--font-mono);text-transform:uppercase;letter-spacing:0.06em">→ Transfer to FUNDS</div>
+              <div style="font-family:var(--font-mono);font-size:1.1rem;color:var(--green);margin-top:2px">${App.fmt(rec.toFunds)}</div>
+              <div style="font-size:0.68rem;color:var(--text3);margin-top:3px">${rec.carFundNote}</div>
+              <div style="font-size:0.68rem;color:var(--text3);margin-top:1px">${rec.savingsNote}</div>
+            </div>
+            <div style="padding:10px;background:rgba(126,184,212,0.08);border:1px solid rgba(126,184,212,0.2);border-radius:var(--radius-sm)">
+              <div style="font-size:0.65rem;color:var(--blue);font-family:var(--font-mono);text-transform:uppercase;letter-spacing:0.06em">→ Keep in VAULT</div>
+              <div style="font-family:var(--font-mono);font-size:1.1rem;color:var(--blue);margin-top:2px">${App.fmt(rec.toVault)}</div>
+              <div style="font-size:0.68rem;color:var(--text3);margin-top:3px">${rec.vaultNote}</div>
+            </div>
+          </div>
+        </div>`;
+      };
+
+      return `<div class="grid-2" style="margin-bottom:20px">
+        ${renderCard(recApproved, 'Approved', 'green')}
+        ${renderCard(recPredicted, 'Predicted', 'yellow')}
+      </div>`;
+    })()}
+    <div class="grid-2">
+
+      <div class="card">
+        <div class="card-title">Upcoming Bills</div>
+        <div class="card-subtitle">Next 30 days</div>
+        ${bills.length ? `
+          <div style="display:flex;flex-direction:column;gap:6px">
+            ${bills.slice(0,6).map(b=>`
+              <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 10px;background:var(--surface2);border-radius:var(--radius-sm)">
+                <div>
+                  <div style="font-size:0.82rem;color:var(--text)">${b.name}</div>
+                  <div style="font-size:0.68rem;font-family:var(--font-mono);color:var(--text3)">${App.fmtDate(b.date)}</div>
+                </div>
+                <div style="font-family:var(--font-mono);font-size:0.85rem;color:var(--red)">${App.fmt(b.amount)}</div>
+              </div>
+            `).join('')}
+            ${bills.length>6?`<div style="font-size:0.72rem;color:var(--text3);text-align:center;padding:4px">+${bills.length-6} more</div>`:''}
+          </div>
+        ` : '<div class="empty-state"><p>No bills in the next 30 days</p></div>'}
+      </div>
+    </div>
+
+    <!-- Manual Balance Override -->
+    <div class="card">
+      <div class="card-title">Manual Balance Correction</div>
+      <div class="card-subtitle">Set any account balance directly — use this if dashboard shows wrong numbers</div>
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:10px">
+        ${['vault','flex','funds','cc','cc2','car_loan','brex'].map(id => {
+          const labels = {vault:'VAULT',flex:'FLEX',funds:'FUNDS',cc:'FREEDOM',cc2:'SAVOR',car_loan:'Car Loan',brex:'BREX'};
+          return `<div class="form-group">
+            <label>${labels[id]}</label>
+            <input type="number" step="0.01" id="bal-${id}" value="${(App.data.accounts[id]||0).toFixed(2)}" style="font-family:var(--font-mono)">
+          </div>`;
+        }).join('')}
+      </div>
+      <button class="btn btn-primary btn-sm" onclick="Views.dashboard.saveBalances()">Update Balances</button>
+    </div>
+
+    <!-- Charts -->
+    <div class="grid-2">
+      <div class="card">
+        <div class="card-title">Account Trends</div>
+        <div class="card-subtitle">Last 90 days</div>
+        <div class="chart-container"><canvas id="trend-chart"></canvas></div>
+      </div>
+      <div class="card">
+        <div class="card-title">Monthly Spending</div>
+        <div class="card-subtitle">Last 6 months</div>
+        <div class="chart-container"><canvas id="spending-chart"></canvas></div>
+      </div>
+    </div>`;
+  },
+  buildAlerts(accts, bills, nextPay) {
+    const alerts = [];
+    if (accts.flex < App.data.settings.flexFloor)
+      alerts.push({type:'crit', icon:'⚠', msg:`FLEX below floor — ${App.fmt(accts.flex)} (floor: ${App.fmt(App.data.settings.flexFloor)})`});
+    if (accts.cc > 0)
+      alerts.push({type:'warn', icon:'◎', msg:`FREEDOM has a balance — ${App.fmt(accts.cc)}`});
+    if (accts.cc2 > 0)
+      alerts.push({type:'warn', icon:'◎', msg:`SAVOR has a balance — ${App.fmt(accts.cc2)}`});
+    const daysToPaycheck = Math.ceil((nextPay-new Date())/(1000*60*60*24));
+    alerts.push({type:'info', icon:'◎', msg:`Next paycheck in ${daysToPaycheck} day${daysToPaycheck!==1?'s':''} — ${App.fmtDate(nextPay)}`});
+    const soonBills = bills.filter(b=>{const d=Math.ceil((b.date-new Date())/(1000*60*60*24));return d<=5;});
+    if (soonBills.length) alerts.push({type:'warn', icon:'◷', msg:`${soonBills.length} bill${soonBills.length>1?'s':''} due within 5 days`});
+    return alerts;
+  },
+  saveBalances() {
+    const today = App.fmtDateInput(new Date());
+    ['vault','flex','funds','cc','cc2','car_loan','brex'].forEach(id => {
+      const el = document.getElementById('bal-'+id);
+      if (el) {
+        const val = parseFloat(el.value);
+        if (!isNaN(val) && val !== App.data.accounts[id]) {
+          // Create a correction transaction so it persists on reload
+          const txn = {
+            id: App.uid(),
+            accountId: id,
+            date: today,
+            description: 'Manual Balance Correction',
+            amount: val - App.data.accounts[id],
+            balance: val,
+            type: 'correction',
+            createdAt: new Date().toISOString()
+          };
+          App.data.transactions.push(txn);
+          App.data.accounts[id] = val;
+        }
+      }
+    });
+    const f = App.data.accounts.funds;
+    if (f >= 0) {
+      const carFund = Math.floor(f / 2 / 500) * 500;
+      App.data.fundsSubAccounts = { carFund, savingsFund: f - carFund };
+    }
+    App.scheduleSave();
+    App.renderCurrentView();
+    App.showToast('Balances updated', 'success');
+  },
+  init() {
+    // Trend chart
+    const txns = App.data.transactions;
+    if (txns.length && typeof Chart !== 'undefined') {
+      const now = new Date(); const days = [];
+      for (let i=89;i>=0;i--) { const d=new Date(now); d.setDate(d.getDate()-i); days.push(d); }
+      const getBalOn = (acctId, date) => {
+        const relevant = txns.filter(t=>t.accountId===acctId&&new Date(t.date)<=date);
+        return relevant.length ? relevant[relevant.length-1].balance : 0;
+      };
+      App.charts['trend-chart'] = new Chart(document.getElementById('trend-chart'), {
+        type:'line',
+        data:{
+          labels: days.map(d=>d.toLocaleDateString('en-US',{month:'short',day:'numeric'})).filter((_,i)=>i%15===0||i===89),
+          datasets:[
+            {label:'VAULT',data:days.filter((_,i)=>i%15===0||i===89).map(d=>getBalOn('vault',d)),borderColor:'#6db891',backgroundColor:'rgba(109,184,145,0.08)',tension:0.3,pointRadius:2},
+            {label:'FLEX',data:days.filter((_,i)=>i%15===0||i===89).map(d=>getBalOn('flex',d)),borderColor:'#c8a96e',backgroundColor:'rgba(200,169,110,0.08)',tension:0.3,pointRadius:2},
+          ]
+        },
+        options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{labels:{color:'#a09890',font:{size:11}}}},scales:{x:{ticks:{color:'#6a6460',font:{size:10}},grid:{color:'rgba(46,46,56,0.6)'}},y:{ticks:{color:'#6a6460',callback:v=>'$'+v.toLocaleString(),font:{size:10}},grid:{color:'rgba(46,46,56,0.6)'}}}}
+      });
+      // Spending chart
+      const months=[]; const labels=[];
+      for(let i=5;i>=0;i--){const d=new Date(now.getFullYear(),now.getMonth()-i,1);months.push(d);labels.push(d.toLocaleDateString('en-US',{month:'short'}));}
+      const income=months.map(m=>{const end=new Date(m.getFullYear(),m.getMonth()+1,0);return txns.filter(t=>t.amount>0&&new Date(t.date)>=m&&new Date(t.date)<=end).reduce((a,t)=>a+t.amount,0);});
+      const expenses=months.map(m=>{const end=new Date(m.getFullYear(),m.getMonth()+1,0);return Math.abs(txns.filter(t=>t.amount<0&&new Date(t.date)>=m&&new Date(t.date)<=end).reduce((a,t)=>a+t.amount,0));});
+      App.charts['spending-chart'] = new Chart(document.getElementById('spending-chart'), {
+        type:'bar',
+        data:{labels,datasets:[{label:'Income',data:income,backgroundColor:'rgba(109,184,145,0.6)',borderColor:'#6db891',borderWidth:1},{label:'Expenses',data:expenses,backgroundColor:'rgba(224,123,123,0.6)',borderColor:'#e07b7b',borderWidth:1}]},
+        options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{labels:{color:'#a09890',font:{size:11}}}},scales:{x:{ticks:{color:'#6a6460',font:{size:10}},grid:{color:'rgba(46,46,56,0.6)'}},y:{ticks:{color:'#6a6460',callback:v=>'$'+v.toLocaleString(),font:{size:10}},grid:{color:'rgba(46,46,56,0.6)'}}}}
+      });
+    }
+  }
+};
+
+// ── INPUTS ──
+Views.inputs = {
+  render() {
+    const rec = App.calc.paycheckRecommendation(
+      App.data.paychecks.filter(p=>p.approved).sort((a,b)=>new Date(b.date)-new Date(a.date))[0] || null
+    );
+    const flexAmt = App.calc.flexAllowance();
+    const fundsAmt = rec ? rec.toFunds : 0;
+
+    return `
+    <div class="section-header"><div class="section-title">Add Transaction</div></div>
+    <div class="card">
+      <div class="card-title">New Transaction</div>
+      <div class="card-subtitle">Record a transaction to any account</div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Date</label>
+          <input type="date" id="txn-date" value="${App.fmtDateInput(new Date())}">
+        </div>
+        <div class="form-group">
+          <label>Account</label>
+          <select id="txn-account">
+            <option value="vault">VAULT</option>
+            <option value="flex">FLEX</option>
+            <option value="funds">FUNDS</option>
+            <option value="cc">FREEDOM (Chase)</option>
+            <option value="cc2">SAVOR (Capital One)</option>
+            <option value="car_loan">Car Loan</option>
+            <option value="brex">BREX</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group" style="flex:2;position:relative">
+          <label>Description</label>
+          <input type="text" id="txn-desc" placeholder="e.g. Grocery run, Transfer to FLEX..." autocomplete="off"
+            oninput="Views.inputs.filterDropdown(this.value)"
+            onfocus="Views.inputs.showDropdown()"
+            onblur="setTimeout(()=>Views.inputs.hideDropdown(),150)">
+          <div id="desc-dropdown" style="display:none;position:absolute;top:100%;left:0;right:0;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);z-index:100;max-height:220px;overflow-y:auto;box-shadow:var(--shadow)"></div>
+        </div>
+        <div class="form-group">
+          <label>Amount (+ income / − expense)</label>
+          <input type="number" id="txn-amount" placeholder="-45.00" step="0.01">
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>New Balance After Transaction</label>
+          <input type="number" id="txn-balance" placeholder="Auto-calculated or enter manually" step="0.01">
+        </div>
+        <div class="form-group">
+          <label>Type</label>
+          <select id="txn-type">
+            <option value="transaction">Transaction</option>
+            <option value="transfer">Transfer</option>
+          </select>
+        </div>
+      </div>
+      <div style="margin-top:8px">
+        <button class="btn btn-primary" onclick="Views.inputs.addTransaction()">Add Transaction</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Quick Transfer</div>
+      <div class="card-subtitle">Move money between accounts</div>
+
+      <!-- Preset buttons -->
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px">
+        <button class="btn btn-secondary btn-sm" onclick="Views.inputs.applyPreset('flex')">
+          Weekly FLEX — ${App.fmt(flexAmt)}
+        </button>
+        <button class="btn btn-secondary btn-sm" onclick="Views.inputs.applyPreset('funds')">
+          Weekly FUNDS — ${App.fmt(fundsAmt)}
+        </button>
+      </div>
+
+      <div class="form-row">
+        <div class="form-group"><label>From</label>
+          <select id="tf-from"><option value="vault">VAULT</option><option value="flex">FLEX</option><option value="funds">FUNDS</option></select>
+        </div>
+        <div class="form-group"><label>To</label>
+          <select id="tf-to"><option value="flex">FLEX</option><option value="vault">VAULT</option><option value="funds">FUNDS</option><option value="cc">FREEDOM (Chase)</option><option value="cc2">SAVOR (Capital One)</option><option value="car_loan">Car Loan</option><option value="brex">BREX</option></select>
+        </div>
+        <div class="form-group"><label>Amount</label>
+          <input type="number" id="tf-amount" placeholder="200.00" step="0.01" min="0">
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>Date</label>
+          <input type="date" id="tf-date" value="${App.fmtDateInput(new Date())}">
+        </div>
+        <div class="form-group" style="flex:2"><label>Description</label>
+          <input type="text" id="tf-desc" placeholder="e.g. Weekly FLEX allowance">
+        </div>
+      </div>
+      <button class="btn btn-primary" onclick="Views.inputs.addTransfer()">Transfer</button>
+    </div>`;
+  },
+
+  getDescriptions() {
+    // Get hidden list from settings
+    const hidden = App.data.settings.hiddenDescriptions || [];
+
+    // Fixed expenses as suggestions
+    const fixedDescs = App.data.fixedExpenses.map(e => ({
+      label: e.name,
+      amount: -e.amount,
+      accountId: e.account || null,
+      source: 'fixed'
+    }));
+
+    // Past transaction descriptions sorted by frequency
+    const freqMap = {};
+    App.data.transactions.forEach(t => {
+      if (!t.description) return;
+      freqMap[t.description] = (freqMap[t.description] || 0) + 1;
+    });
+    const pastDescs = Object.entries(freqMap)
+      .sort((a, b) => b[1] - a[1])
+      .map(([desc]) => ({ label: desc, amount: null, accountId: null, source: 'past' }));
+
+    // Merge — fixed first if not already in past, then past
+    const allLabels = new Set();
+    const merged = [];
+    [...fixedDescs, ...pastDescs].forEach(item => {
+      if (!allLabels.has(item.label) && !hidden.includes(item.label)) {
+        allLabels.add(item.label);
+        merged.push(item);
+      }
+    });
+    return merged;
+  },
+
+  showDropdown() {
+    Views.inputs.filterDropdown(document.getElementById('txn-desc').value);
+  },
+
+  hideDropdown() {
+    const dd = document.getElementById('desc-dropdown');
+    if (dd) dd.style.display = 'none';
+  },
+
+  filterDropdown(query) {
+    const dd = document.getElementById('desc-dropdown');
+    if (!dd) return;
+    const all = Views.inputs.getDescriptions();
+    const filtered = query
+      ? all.filter(d => d.label.toLowerCase().includes(query.toLowerCase()))
+      : all;
+
+    if (!filtered.length) { dd.style.display = 'none'; return; }
+
+    dd.innerHTML = filtered.map(item => `
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 12px;cursor:pointer;border-bottom:1px solid var(--border);font-size:0.82rem"
+        onmousedown="Views.inputs.selectDescription('${item.label.replace(/'/g,"\\'")}', ${item.amount}, '${item.accountId||''}')">
+        <span style="color:var(--text)">${item.label}${item.amount!==null?`<span style="color:var(--text3);font-family:var(--font-mono);font-size:0.72rem;margin-left:8px">${App.fmt(item.amount)}</span>`:''}</span>
+        <span style="color:var(--red);font-size:0.8rem;padding:2px 6px;border-radius:4px;margin-left:8px"
+          onmousedown="event.stopPropagation();Views.inputs.hideDescription('${item.label.replace(/'/g,"\\'")}')">×</span>
+      </div>
+    `).join('');
+    dd.style.display = 'block';
+  },
+
+  selectDescription(label, amount, accountId) {
+    document.getElementById('txn-desc').value = label;
+    Views.inputs.hideDropdown();
+
+    // Unhide if it was hidden before
+    const hidden = App.data.settings.hiddenDescriptions || [];
+    if (hidden.includes(label)) {
+      App.data.settings.hiddenDescriptions = hidden.filter(h => h !== label);
+      App.scheduleSave();
+    }
+
+    // Auto-fill account
+    if (accountId) {
+      const acctEl = document.getElementById('txn-account');
+      if (acctEl) acctEl.value = accountId;
+    }
+
+    // Auto-fill amount
+    if (amount !== null) {
+      document.getElementById('txn-amount').value = amount.toFixed(2);
+      // Recalculate balance
+      const acct = document.getElementById('txn-account').value;
+      const current = App.data.accounts[acct] || 0;
+      document.getElementById('txn-balance').value = (current + amount).toFixed(2);
+    }
+  },
+
+  hideDescription(label) {
+    if (!App.data.settings.hiddenDescriptions) App.data.settings.hiddenDescriptions = [];
+    if (!App.data.settings.hiddenDescriptions.includes(label)) {
+      App.data.settings.hiddenDescriptions.push(label);
+      App.scheduleSave();
+    }
+    Views.inputs.filterDropdown(document.getElementById('txn-desc').value);
+  },
+
+  applyPreset(type) {
+    const rec = App.calc.paycheckRecommendation(
+      App.data.paychecks.filter(p=>p.approved).sort((a,b)=>new Date(b.date)-new Date(a.date))[0] || null
+    );
+    if (type === 'flex') {
+      document.getElementById('tf-from').value = 'vault';
+      document.getElementById('tf-to').value = 'flex';
+      document.getElementById('tf-amount').value = App.calc.flexAllowance().toFixed(2);
+      document.getElementById('tf-desc').value = 'Weekly FLEX Allowance';
+    } else if (type === 'funds') {
+      document.getElementById('tf-from').value = 'vault';
+      document.getElementById('tf-to').value = 'funds';
+      document.getElementById('tf-amount').value = rec ? rec.toFunds.toFixed(2) : '0.00';
+      document.getElementById('tf-desc').value = 'Weekly FUNDS Transfer';
+    }
+  },
+
+  init() {
+    // Auto-calculate balance when amount or account changes
+    document.getElementById('txn-amount').addEventListener('input', () => {
+      const acct = document.getElementById('txn-account').value;
+      const amt = parseFloat(document.getElementById('txn-amount').value) || 0;
+      const current = App.data.accounts[acct] || 0;
+      document.getElementById('txn-balance').value = (current + amt).toFixed(2);
+    });
+    document.getElementById('txn-account').addEventListener('change', () => {
+      const acct = document.getElementById('txn-account').value;
+      const amt = parseFloat(document.getElementById('txn-amount').value) || 0;
+      const current = App.data.accounts[acct] || 0;
+      document.getElementById('txn-balance').value = (current + amt).toFixed(2);
+    });
+    // When description is manually typed and matches a hidden item, unhide it on transaction save
+  },
+
+  addTransaction() {
+    const date = document.getElementById('txn-date').value;
+    const accountId = document.getElementById('txn-account').value;
+    const description = document.getElementById('txn-desc').value.trim();
+    const amount = parseFloat(document.getElementById('txn-amount').value);
+    const balance = parseFloat(document.getElementById('txn-balance').value);
+    const type = document.getElementById('txn-type').value;
+
+    if (!date || !description || isNaN(amount) || isNaN(balance)) {
+      App.showToast('Please fill all fields', 'error'); return;
+    }
+
+    // If description was hidden, unhide it now
+    const hidden = App.data.settings.hiddenDescriptions || [];
+    if (hidden.includes(description)) {
+      App.data.settings.hiddenDescriptions = hidden.filter(h => h !== description);
+    }
+
+    const txn = { id: App.uid(), accountId, date, description, amount, balance, type, createdAt: new Date().toISOString() };
+    App.data.transactions.push(txn);
+    App.data.accounts[accountId] = balance;
+    if (accountId === 'funds') {
+      const r = App.calc.fundsReallocation(balance);
+      App.data.fundsSubAccounts = r;
+    }
+    App.scheduleSave();
+    App.showToast('Transaction added', 'success');
+    document.getElementById('txn-desc').value = '';
+    document.getElementById('txn-amount').value = '';
+    document.getElementById('txn-balance').value = '';
+  },
+
+  addTransfer() {
+    const from = document.getElementById('tf-from').value;
+    const to = document.getElementById('tf-to').value;
+    const amount = parseFloat(document.getElementById('tf-amount').value);
+    const date = document.getElementById('tf-date').value || App.fmtDateInput(new Date());
+    const desc = document.getElementById('tf-desc').value.trim() || `Transfer to ${to.toUpperCase()}`;
+
+    if (isNaN(amount) || amount <= 0) { App.showToast('Enter a valid amount', 'error'); return; }
+    if (from === to) { App.showToast('From and To must be different', 'error'); return; }
+
+    const creditAccounts = ['cc', 'cc2', 'brex'];
+    const fromBal = (App.data.accounts[from] || 0) - amount;
+    const toBal = creditAccounts.includes(to)
+      ? (App.data.accounts[to] || 0) - amount
+      : (App.data.accounts[to] || 0) + amount;
+
+    const id1 = App.uid(), id2 = App.uid();
+    App.data.transactions.push({ id: id1, accountId: from, date, description: desc, amount: -amount, balance: fromBal, type: 'transfer', linkedId: id2 });
+    App.data.transactions.push({ id: id2, accountId: to, date, description: desc, amount: amount, balance: toBal, type: 'transfer', linkedId: id1 });
+    App.data.accounts[from] = fromBal;
+    App.data.accounts[to] = toBal;
+    if (from === 'funds' || to === 'funds') {
+      const r = App.calc.fundsReallocation(App.data.accounts.funds);
+      App.data.fundsSubAccounts = r;
+    }
+    App.scheduleSave();
+    App.showToast('Transfer recorded', 'success');
+    document.getElementById('tf-amount').value = '';
+    document.getElementById('tf-desc').value = '';
+  }
+};
+
+// ── PAYCHECKS ──
+Views.paychecks = {
+  render() {
+    const paychecks = App.data.paychecks.slice().sort((a,b)=>new Date(b.date)-new Date(a.date));
+    return `
+    <div class="section-header">
+      <div class="section-title">Paychecks</div>
+      <button class="btn btn-primary btn-sm" onclick="Views.paychecks.openAddModal()">+ Add Paycheck</button>
+    </div>
+    <div class="grid-2" style="margin-bottom:20px">
+      <div class="card" style="margin-bottom:0">
+        <div class="card-title">Paycheck Predictor</div>
+        <div class="card-subtitle">Estimate next paycheck</div>
+        <div class="form-row">
+          <div class="form-group"><label>Regular hrs</label><input type="number" id="pred-reg" value="36" step="0.5" min="0"></div>
+          <div class="form-group"><label>Overtime hrs</label><input type="number" id="pred-ot" value="0" step="0.5" min="0"></div>
+          <div class="form-group"><label>Nightshift hrs</label><input type="number" id="pred-ns" value="0" step="0.5" min="0"></div>
+        </div>
+        <div class="form-row">
+          <div class="form-group"><label>Holiday hrs</label><input type="number" id="pred-hol" value="0" step="0.5" min="0"></div>
+          <div class="form-group"><label>PTO hrs</label><input type="number" id="pred-pto" value="0" step="0.5" min="0"></div>
+          <div class="form-group"><label>Bonus $</label><input type="number" id="pred-bonus" value="0" step="0.01" min="0"></div>
+        </div>
+        <div style="font-size:0.7rem;color:var(--text3);font-family:var(--font-mono);text-transform:uppercase;letter-spacing:0.06em;margin:10px 0 6px">Deductions (editable)</div>
+        <div class="form-row">
+          <div class="form-group"><label>Benefits ($)</label><input type="number" id="pred-benefits" value="${App.data.settings.benefitsDeduction}" step="0.01" min="0"></div>
+          <div class="form-group"><label>Retirement (%)</label><input type="number" id="pred-ret-pct" value="${App.data.settings.retirementPercent}" step="0.1" min="0" max="100"></div>
+          <div class="form-group"><label>Other Deductions ($)</label><input type="number" id="pred-other" value="${App.data.settings.otherDeductions}" step="0.01" min="0"></div>
+        </div>
+        <button class="btn btn-secondary btn-sm" onclick="Views.paychecks.predict()">Calculate</button>
+        <div id="pred-result" style="margin-top:12px"></div>
+      </div>
+      <div class="card" style="margin-bottom:0">
+        <div class="card-title">Income Trend</div>
+        <div class="card-subtitle">Net pay history</div>
+        <div class="chart-container"><canvas id="pay-chart"></canvas></div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-title">Paycheck History</div>
+      <div class="card-subtitle">${paychecks.length} records</div>
+      ${paychecks.length ? paychecks.map(p=>Views.paychecks.renderCard(p)).join('') : '<div class="empty-state"><div class="icon">◎</div><p>No paychecks recorded yet.</p></div>'}
+    </div>`;
+  },
+  renderCard(p) {
+    return `<div class="paycheck-card ${p.approved?'approved':'predicted'}">
+      <div class="paycheck-header">
+        <div>
+          <div style="font-size:0.85rem;color:var(--text);font-weight:500">${App.fmtDate(p.date)}</div>
+          <div class="paycheck-date">Work week ended: ${App.fmtDate(p.workWeekEnd)}</div>
+        </div>
+        <div>
+          <div class="paycheck-net">${App.fmt(p.netPay)}</div>
+          <div class="badge ${p.approved?'badge-green':'badge-yellow'}" style="float:right">${p.approved?'Approved':'Predicted'}</div>
+        </div>
+      </div>
+      <div class="paycheck-grid">
+        <div class="paycheck-field"><div class="pf-label">Gross Pay</div><div class="pf-val">${App.fmt(p.grossPay)}</div></div>
+        <div class="paycheck-field"><div class="pf-label">Reg hrs</div><div class="pf-val">${p.hours?.regular||0}</div></div>
+        <div class="paycheck-field"><div class="pf-label">OT hrs</div><div class="pf-val">${p.hours?.overtime||0}</div></div>
+        <div class="paycheck-field"><div class="pf-label">Federal Tax</div><div class="pf-val">${App.fmt(p.taxes?.federal)}</div></div>
+        <div class="paycheck-field"><div class="pf-label">State/Local</div><div class="pf-val">${App.fmt((p.taxes?.indiana||0)+(p.taxes?.stJoseph||0))}</div></div>
+        <div class="paycheck-field"><div class="pf-label">Retirement</div><div class="pf-val">${App.fmt(p.deductions?.retirement)}</div></div>
+      </div>
+      <div class="paycheck-actions">
+        ${!p.approved?`<button class="btn btn-secondary btn-sm" onclick="Views.paychecks.approve('${p.id}')">✓ Approve</button>`:''}
+        <button class="btn btn-secondary btn-sm" onclick="Views.paychecks.editModal('${p.id}')">Edit</button>
+        <button class="btn btn-danger btn-sm" onclick="Views.paychecks.delete('${p.id}')">Delete</button>
+      </div>
+    </div>`;
+  },
+  predict() {
+    const hours = {
+      regular: parseFloat(document.getElementById('pred-reg').value)||0,
+      overtime: parseFloat(document.getElementById('pred-ot').value)||0,
+      nightshift: parseFloat(document.getElementById('pred-ns').value)||0,
+      holiday: parseFloat(document.getElementById('pred-hol').value)||0,
+      pto: parseFloat(document.getElementById('pred-pto').value)||0,
+      bonus: parseFloat(document.getElementById('pred-bonus').value)||0
+    };
+    const customBenefits = parseFloat(document.getElementById('pred-benefits').value);
+    const customRetPct   = parseFloat(document.getElementById('pred-ret-pct').value);
+    const customOther    = parseFloat(document.getElementById('pred-other').value);
+
+    // Temporarily override settings for this prediction
+    const origBenefits = App.data.settings.benefitsDeduction;
+    const origRetPct   = App.data.settings.retirementPercent;
+    const origOther    = App.data.settings.otherDeductions;
+    if (!isNaN(customBenefits)) App.data.settings.benefitsDeduction = customBenefits;
+    if (!isNaN(customRetPct))   App.data.settings.retirementPercent = customRetPct;
+    if (!isNaN(customOther))    App.data.settings.otherDeductions   = customOther;
+
+    const r = App.calc.predictNetPay(hours);
+
+    // Restore
+    App.data.settings.benefitsDeduction = origBenefits;
+    App.data.settings.retirementPercent = origRetPct;
+    App.data.settings.otherDeductions   = origOther;
+
+    const retirementAmt = r.gross * ((isNaN(customRetPct)?App.data.settings.retirementPercent:customRetPct)/100);
+    const benefitsAmt   = isNaN(customBenefits) ? App.data.settings.benefitsDeduction : customBenefits;
+    const otherAmt      = isNaN(customOther)    ? App.data.settings.otherDeductions    : customOther;
+
+    document.getElementById('pred-result').innerHTML = `
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+        <div class="balance-card"><div class="label">Gross Pay</div><div class="amount neutral" style="font-size:1.1rem">${App.fmt(r.gross)}</div></div>
+        <div class="balance-card"><div class="label">Net Pay</div><div class="amount pos" style="font-size:1.1rem">${App.fmt(r.net)}</div></div>
+        <div class="balance-card"><div class="label">Total Taxes</div><div class="amount neg" style="font-size:1rem">${App.fmt(r.taxes)}</div></div>
+        <div class="balance-card"><div class="label">Retirement (${isNaN(customRetPct)?App.data.settings.retirementPercent:customRetPct}%)</div><div class="amount neutral" style="font-size:1rem">${App.fmt(retirementAmt)}</div></div>
+        <div class="balance-card"><div class="label">Benefits</div><div class="amount neutral" style="font-size:1rem">${App.fmt(benefitsAmt)}</div></div>
+        <div class="balance-card"><div class="label">Other Deductions</div><div class="amount neutral" style="font-size:1rem">${App.fmt(otherAmt)}</div></div>
+      </div>`;
+  },
+  openAddModal() {
+    const nextPay = App.calc.nextPaycheckDate();
+    const workEnd = new Date(nextPay); workEnd.setDate(nextPay.getDate()-7);
+    const s = App.data.settings;
+
+    // ── Calculate average tax rates from approved paychecks in current year ──
+    const currentYear = new Date().getFullYear();
+    const approved = App.data.paychecks.filter(p => p.approved && new Date(p.date).getFullYear() === currentYear);
+    const allApproved = App.data.paychecks.filter(p => p.approved);
+    const pool = approved.length ? approved : allApproved;
+    let rates = { federal: 0.12, socialSecurity: 0.062, medicare: 0.0145, indiana: 0.0323, stJoseph: 0.0175 };
+    if (pool.length > 0) {
+      const totG = pool.reduce((a, p) => a + (p.grossPay || 0), 0);
+      if (totG > 0) {
+        rates.federal = pool.reduce((a, p) => a + (p.taxes?.federal || 0), 0) / totG;
+        rates.socialSecurity = pool.reduce((a, p) => a + (p.taxes?.socialSecurity || 0), 0) / totG;
+        rates.medicare = pool.reduce((a, p) => a + (p.taxes?.medicare || 0), 0) / totG;
+        rates.indiana = pool.reduce((a, p) => a + (p.taxes?.indiana || 0), 0) / totG;
+        rates.stJoseph = pool.reduce((a, p) => a + (p.taxes?.stJoseph || 0), 0) / totG;
+      }
+    }
+
+    // ── Calculate initial estimate based on default 36 regular hours ──
+    const initEstimate = App.calc.predictNetPay({ regular: 36, overtime: 0, nightshift: 0, holiday: 0, pto: 0, bonus: 0 });
+
+    App.openModal(`
+      <div class="modal-title">Add Paycheck</div>
+      <div class="form-row">
+        <div class="form-group"><label>Paycheck Date</label><input type="date" id="m-pay-date" value="${App.fmtDateInput(nextPay)}"></div>
+        <div class="form-group"><label>Work Week End</label><input type="date" id="m-wwe" value="${App.fmtDateInput(workEnd)}"></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>Regular hrs</label><input type="number" id="m-reg" value="36" step="0.5" min="0" oninput="Views.paychecks.recalcModal()"></div>
+        <div class="form-group"><label>Overtime hrs</label><input type="number" id="m-ot" value="0" step="0.5" min="0" oninput="Views.paychecks.recalcModal()"></div>
+        <div class="form-group"><label>Nightshift hrs</label><input type="number" id="m-ns" value="0" step="0.5" min="0" oninput="Views.paychecks.recalcModal()"></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>Holiday hrs</label><input type="number" id="m-hol" value="0" step="0.5" min="0" oninput="Views.paychecks.recalcModal()"></div>
+        <div class="form-group"><label>PTO hrs</label><input type="number" id="m-pto" value="0" step="0.5" min="0" oninput="Views.paychecks.recalcModal()"></div>
+        <div class="form-group"><label>Bonus $</label><input type="number" id="m-bonus" value="0" step="0.01" oninput="Views.paychecks.recalcModal()"></div>
+      </div>
+      <div style="font-size:0.7rem;color:var(--accent);font-family:var(--font-mono);text-transform:uppercase;letter-spacing:0.07em;margin:14px 0 8px;padding-top:10px;border-top:1px solid var(--border)">Deductions</div>
+      <div class="form-row">
+        <div class="form-group"><label>Benefits ($)</label><input type="number" id="m-benefits" value="${s.benefitsDeduction}" step="0.01" min="0" oninput="Views.paychecks.recalcModal()"></div>
+        <div class="form-group"><label>Retirement (%)</label><input type="number" id="m-ret-pct" value="${s.retirementPercent}" step="0.1" min="0" max="100" oninput="Views.paychecks.recalcModal()"></div>
+        <div class="form-group"><label>Other Deductions ($)</label><input type="number" id="m-other" value="${s.otherDeductions}" step="0.01" min="0" oninput="Views.paychecks.recalcModal()"></div>
+      </div>
+      <div style="font-size:0.7rem;color:var(--accent);font-family:var(--font-mono);text-transform:uppercase;letter-spacing:0.07em;margin:14px 0 8px;padding-top:10px;border-top:1px solid var(--border)">
+        Taxes — estimated from your average rates · edit if you have actual amounts
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>Federal Tax</label><input type="number" id="m-fed" value="${(initEstimate.gross * rates.federal).toFixed(2)}" step="0.01"></div>
+        <div class="form-group"><label>SS Tax</label><input type="number" id="m-ss" value="${(initEstimate.gross * rates.socialSecurity).toFixed(2)}" step="0.01"></div>
+        <div class="form-group"><label>Medicare</label><input type="number" id="m-med" value="${(initEstimate.gross * rates.medicare).toFixed(2)}" step="0.01"></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>Indiana Tax</label><input type="number" id="m-ind" value="${(initEstimate.gross * rates.indiana).toFixed(2)}" step="0.01"></div>
+        <div class="form-group"><label>St. Joseph Tax</label><input type="number" id="m-stj" value="${(initEstimate.gross * rates.stJoseph).toFixed(2)}" step="0.01"></div>
+        <div class="form-group"><label>Net Pay (override)</label><input type="number" id="m-net" value="0" step="0.01" placeholder="Leave 0 to auto-calculate"></div>
+      </div>
+      <div style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:12px 16px;margin-top:8px;display:flex;gap:24px;flex-wrap:wrap">
+        <div><div style="font-size:0.65rem;color:var(--text3);font-family:var(--font-mono);text-transform:uppercase;letter-spacing:0.07em">Gross Pay</div><div id="m-summary-gross" style="font-family:var(--font-mono);font-size:1rem;color:var(--text);margin-top:3px">${App.fmt(initEstimate.gross)}</div></div>
+        <div><div style="font-size:0.65rem;color:var(--text3);font-family:var(--font-mono);text-transform:uppercase;letter-spacing:0.07em">Total Taxes</div><div id="m-summary-taxes" style="font-family:var(--font-mono);font-size:1rem;color:var(--red);margin-top:3px">${App.fmt(initEstimate.gross * (rates.federal + rates.socialSecurity + rates.medicare + rates.indiana + rates.stJoseph))}</div></div>
+        <div><div style="font-size:0.65rem;color:var(--text3);font-family:var(--font-mono);text-transform:uppercase;letter-spacing:0.07em">Est. Net Pay</div><div id="m-summary-net" style="font-family:var(--font-mono);font-size:1rem;color:var(--green);margin-top:3px">${App.fmt(initEstimate.net)}</div></div>
+      </div>
+      <div class="form-row" style="margin-top:12px">
+        <div class="form-group"><label>Status</label>
+          <select id="m-approved"><option value="false">Predicted</option><option value="true">Approved</option></select>
+        </div>
+      </div>
+      <div class="modal-actions">
+        <button class="btn btn-secondary" onclick="App.closeModal()">Cancel</button>
+        <button class="btn btn-primary" onclick="Views.paychecks.saveFromModal()">Save Paycheck</button>
+      </div>
+    `);
+
+    // Store rates on the window so recalcModal can access them
+    window._paycheckRates = rates;
+  },
+
+  recalcModal() {
+    const s = App.data.settings;
+    const rates = window._paycheckRates;
+    if (!rates) return;
+
+    const hours = {
+      regular: parseFloat(document.getElementById('m-reg').value) || 0,
+      overtime: parseFloat(document.getElementById('m-ot').value) || 0,
+      nightshift: parseFloat(document.getElementById('m-ns').value) || 0,
+      holiday: parseFloat(document.getElementById('m-hol').value) || 0,
+      pto: parseFloat(document.getElementById('m-pto').value) || 0,
+      bonus: parseFloat(document.getElementById('m-bonus').value) || 0
+    };
+
+    const gross = hours.regular * s.regularRate
+      + hours.overtime * s.regularRate * s.overtimeMultiplier
+      + hours.nightshift * s.regularRate * s.nightshiftMultiplier
+      + hours.holiday * s.regularRate
+      + hours.pto * s.regularRate
+      + hours.bonus;
+
+    const benefits = parseFloat(document.getElementById('m-benefits').value) || 0;
+    const retPct = parseFloat(document.getElementById('m-ret-pct').value) || 0;
+    const other = parseFloat(document.getElementById('m-other').value) || 0;
+    const retirement = gross * (retPct / 100);
+
+    const fed = gross * rates.federal;
+    const ss = gross * rates.socialSecurity;
+    const med = gross * rates.medicare;
+    const ind = gross * rates.indiana;
+    const stj = gross * rates.stJoseph;
+    const totalTax = fed + ss + med + ind + stj;
+    const net = gross - totalTax - retirement - benefits - other;
+
+    document.getElementById('m-fed').value = fed.toFixed(2);
+    document.getElementById('m-ss').value = ss.toFixed(2);
+    document.getElementById('m-med').value = med.toFixed(2);
+    document.getElementById('m-ind').value = ind.toFixed(2);
+    document.getElementById('m-stj').value = stj.toFixed(2);
+
+    const grossEl = document.getElementById('m-summary-gross');
+    const taxEl = document.getElementById('m-summary-taxes');
+    const netEl = document.getElementById('m-summary-net');
+    if (grossEl) grossEl.textContent = App.fmt(gross);
+    if (taxEl) taxEl.textContent = App.fmt(totalTax);
+    if (netEl) netEl.textContent = App.fmt(net);
+  },
+  saveFromModal(id) {
+    const hours = {
+      regular: parseFloat(document.getElementById('m-reg').value)||0,
+      overtime: parseFloat(document.getElementById('m-ot').value)||0,
+      nightshift: parseFloat(document.getElementById('m-ns').value)||0,
+      holiday: parseFloat(document.getElementById('m-hol').value)||0,
+      pto: parseFloat(document.getElementById('m-pto').value)||0,
+    };
+    const bonus = parseFloat(document.getElementById('m-bonus').value)||0;
+    const approved = document.getElementById('m-approved').value==='true';
+    const taxes = {
+      federal: parseFloat(document.getElementById('m-fed').value)||0,
+      socialSecurity: parseFloat(document.getElementById('m-ss').value)||0,
+      medicare: parseFloat(document.getElementById('m-med').value)||0,
+      indiana: parseFloat(document.getElementById('m-ind').value)||0,
+      stJoseph: parseFloat(document.getElementById('m-stj').value)||0
+    };
+    let netPay = parseFloat(document.getElementById('m-net').value)||0;
+    const date = document.getElementById('m-pay-date').value;
+    const workWeekEnd = document.getElementById('m-wwe').value;
+
+    // Read editable deductions from modal (fall back to settings if fields missing)
+    const benefitsVal  = document.getElementById('m-benefits')  ? parseFloat(document.getElementById('m-benefits').value)  : App.data.settings.benefitsDeduction;
+    const retPctVal    = document.getElementById('m-ret-pct')   ? parseFloat(document.getElementById('m-ret-pct').value)   : App.data.settings.retirementPercent;
+    const otherVal     = document.getElementById('m-other')     ? parseFloat(document.getElementById('m-other').value)     : App.data.settings.otherDeductions;
+
+    // Temporarily use modal values for prediction
+    const origBenefits = App.data.settings.benefitsDeduction;
+    const origRetPct   = App.data.settings.retirementPercent;
+    const origOther    = App.data.settings.otherDeductions;
+    App.data.settings.benefitsDeduction = isNaN(benefitsVal) ? origBenefits : benefitsVal;
+    App.data.settings.retirementPercent = isNaN(retPctVal)   ? origRetPct   : retPctVal;
+    App.data.settings.otherDeductions   = isNaN(otherVal)    ? origOther    : otherVal;
+
+    const pred = App.calc.predictNetPay({...hours, bonus});
+    const grossPay = pred.gross;
+    if (!netPay) netPay = pred.net;
+
+    const deductions = {
+      benefits:   App.data.settings.benefitsDeduction,
+      retirement: grossPay * (App.data.settings.retirementPercent / 100),
+      other:      App.data.settings.otherDeductions
+    };
+
+    // Restore settings
+    App.data.settings.benefitsDeduction = origBenefits;
+    App.data.settings.retirementPercent = origRetPct;
+    App.data.settings.otherDeductions   = origOther;
+
+    if (id) {
+      const idx = App.data.paychecks.findIndex(p=>p.id===id);
+      if (idx>=0) App.data.paychecks[idx] = {...App.data.paychecks[idx], date, workWeekEnd, hours, bonus, grossPay, taxes, deductions, netPay, approved};
+    } else {
+      App.data.paychecks.push({id:App.uid(), date, workWeekEnd, hours, bonus, grossPay, taxes, deductions, netPay, approved});
+    }
+    App.scheduleSave(); App.closeModal(); App.renderCurrentView();
+    App.showToast('Paycheck saved','success');
+  },
+  editModal(id) {
+    const p = App.data.paychecks.find(x=>x.id===id);
+    if(!p) return;
+    const s = App.data.settings;
+    App.openModal(`
+      <div class="modal-title">Edit Paycheck</div>
+      <div class="form-row">
+        <div class="form-group"><label>Paycheck Date</label><input type="date" id="m-pay-date" value="${App.fmtDateInput(p.date)}"></div>
+        <div class="form-group"><label>Work Week End</label><input type="date" id="m-wwe" value="${App.fmtDateInput(p.workWeekEnd)}"></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>Regular hrs</label><input type="number" id="m-reg" value="${p.hours?.regular||0}" step="0.5"></div>
+        <div class="form-group"><label>Overtime hrs</label><input type="number" id="m-ot" value="${p.hours?.overtime||0}" step="0.5"></div>
+        <div class="form-group"><label>Nightshift hrs</label><input type="number" id="m-ns" value="${p.hours?.nightshift||0}" step="0.5"></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>Holiday hrs</label><input type="number" id="m-hol" value="${p.hours?.holiday||0}" step="0.5"></div>
+        <div class="form-group"><label>PTO hrs</label><input type="number" id="m-pto" value="${p.hours?.pto||0}" step="0.5"></div>
+        <div class="form-group"><label>Bonus $</label><input type="number" id="m-bonus" value="${p.bonus||0}" step="0.01"></div>
+      </div>
+      <div style="font-size:0.7rem;color:var(--accent);font-family:var(--font-mono);text-transform:uppercase;letter-spacing:0.07em;margin:14px 0 8px;padding-top:10px;border-top:1px solid var(--border)">Deductions</div>
+      <div class="form-row">
+        <div class="form-group"><label>Benefits ($)</label><input type="number" id="m-benefits" value="${p.deductions?.benefits??s.benefitsDeduction}" step="0.01" min="0"></div>
+        <div class="form-group"><label>Retirement (%)</label><input type="number" id="m-ret-pct" value="${s.retirementPercent}" step="0.1" min="0" max="100"></div>
+        <div class="form-group"><label>Other Deductions ($)</label><input type="number" id="m-other" value="${p.deductions?.other??s.otherDeductions}" step="0.01" min="0"></div>
+      </div>
+      <div style="font-size:0.7rem;color:var(--accent);font-family:var(--font-mono);text-transform:uppercase;letter-spacing:0.07em;margin:14px 0 8px;padding-top:10px;border-top:1px solid var(--border)">Taxes</div>
+      <div class="form-row">
+        <div class="form-group"><label>Federal Tax</label><input type="number" id="m-fed" value="${p.taxes?.federal||0}" step="0.01"></div>
+        <div class="form-group"><label>SS Tax</label><input type="number" id="m-ss" value="${p.taxes?.socialSecurity||0}" step="0.01"></div>
+        <div class="form-group"><label>Medicare</label><input type="number" id="m-med" value="${p.taxes?.medicare||0}" step="0.01"></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>Indiana Tax</label><input type="number" id="m-ind" value="${p.taxes?.indiana||0}" step="0.01"></div>
+        <div class="form-group"><label>St. Joseph Tax</label><input type="number" id="m-stj" value="${p.taxes?.stJoseph||0}" step="0.01"></div>
+        <div class="form-group"><label>Net Pay (override)</label><input type="number" id="m-net" value="${p.netPay||0}" step="0.01"></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>Status</label>
+          <select id="m-approved"><option value="false" ${!p.approved?'selected':''}>Predicted</option><option value="true" ${p.approved?'selected':''}>Approved</option></select>
+        </div>
+      </div>
+      <div class="modal-actions">
+        <button class="btn btn-secondary" onclick="App.closeModal()">Cancel</button>
+        <button class="btn btn-primary" onclick="Views.paychecks.saveFromModal('${id}')">Save</button>
+      </div>
+    `);
+  },
+  approve(id) {
+    const p = App.data.paychecks.find(x=>x.id===id);
+    if(p) { p.approved=true; App.scheduleSave(); App.renderCurrentView(); App.showToast('Paycheck approved','success'); }
+  },
+  delete(id) {
+    if(!confirm('Delete this paycheck?')) return;
+    App.data.paychecks = App.data.paychecks.filter(p=>p.id!==id);
+    App.scheduleSave(); App.renderCurrentView();
+  },
+  init() {
+    const approved = App.data.paychecks.filter(p=>p.approved).sort((a,b)=>new Date(a.date)-new Date(b.date)).slice(-12);
+    if (approved.length && typeof Chart !== 'undefined') {
+      App.charts['pay-chart'] = new Chart(document.getElementById('pay-chart'), {
+        type:'line',
+        data:{labels:approved.map(p=>App.fmtDate(p.date)),datasets:[{label:'Net Pay',data:approved.map(p=>p.netPay),borderColor:'#6db891',backgroundColor:'rgba(109,184,145,0.1)',tension:0.3,pointRadius:3,fill:true}]},
+        options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{ticks:{color:'#6a6460',font:{size:9}},grid:{color:'rgba(46,46,56,0.6)'}},y:{ticks:{color:'#6a6460',callback:v=>'$'+v.toLocaleString(),font:{size:10}},grid:{color:'rgba(46,46,56,0.6)'}}}}
+      });
+    }
+  }
+};
+
+// ── LEDGERS ──
+Views.ledgers = {
+  currentAccount: 'vault',
+  render() {
+    const acct = Views.ledgers.currentAccount;
+    const txns = App.data.transactions.filter(t=>t.accountId===acct).sort((a,b)=>new Date(b.date)-new Date(a.date));
+    const accountNames = {vault:'VAULT',flex:'FLEX',funds:'FUNDS',cc:'FREEDOM',cc2:'SAVOR',car_loan:'Car Loan',brex:'BREX'};
+    return `
+    <div class="section-header"><div class="section-title">Ledgers</div></div>
+    <div class="ledger-tabs">
+      ${Object.entries(accountNames).map(([id,name])=>`
+        <div class="ledger-tab ${id===acct?'active':''}" onclick="Views.ledgers.switchAccount('${id}')">${name}</div>
+      `).join('')}
+    </div>
+    <div class="card">
+      <div class="section-header" style="margin-bottom:12px">
+        <div>
+          <div class="card-title">${accountNames[acct]}</div>
+          <div class="card-subtitle">${txns.length} transactions · Current: ${App.fmt(App.data.accounts[acct])}</div>
+        </div>
+        <button class="btn btn-danger btn-sm" onclick="Views.ledgers.deleteSelected()" id="del-selected-btn" style="display:none">Delete Selected</button>
+        <div id="del-confirm-bar" style="display:none;align-items:center;gap:10px;background:rgba(224,123,123,0.1);border:1px solid rgba(224,123,123,0.3);border-radius:var(--radius-sm);padding:8px 12px">
+          <span id="del-confirm-count" style="font-size:0.82rem;color:var(--red)"></span>
+          <button id="del-confirm-yes" class="btn btn-danger btn-sm">Yes, delete</button>
+          <button id="del-confirm-no" class="btn btn-secondary btn-sm">Cancel</button>
+        </div>
+      </div>
+      ${txns.length ? `
+        <table class="data-table">
+          <thead><tr>
+            <th><input type="checkbox" id="select-all" onchange="Views.ledgers.selectAll(this.checked)"></th>
+            <th>Date</th><th>Description</th><th>Amount</th><th>Balance</th><th>Type</th>
+          </tr></thead>
+          <tbody>
+            ${txns.map(t=>`
+              <tr>
+                <td><input type="checkbox" class="txn-check" data-id="${t.id}" onchange="Views.ledgers.onCheck()"></td>
+                <td>${App.fmtDate(t.date)}</td>
+                <td class="desc">${t.description}</td>
+                <td class="${t.amount>=0?'pos':'neg'}">${t.amount>=0?'+':''}${App.fmt(t.amount)}</td>
+                <td>${App.fmt(t.balance)}</td>
+                <td><span class="badge ${t.type==='transfer'?'badge-blue':'badge-accent'}">${t.type}</span></td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      ` : '<div class="empty-state"><div class="icon">≡</div><p>No transactions for this account.</p></div>'}
+    </div>`;
+  },
+  switchAccount(id) { Views.ledgers.currentAccount=id; App.renderCurrentView(); },
+  selectAll(checked) {
+    document.querySelectorAll('.txn-check').forEach(c=>c.checked=checked);
+    Views.ledgers.onCheck();
+  },
+  onCheck() {
+    const any = document.querySelectorAll('.txn-check:checked').length > 0;
+    const btn = document.getElementById('del-selected-btn');
+    if(btn) btn.style.display = any?'':'none';
+  },
+  deleteSelected() {
+    const ids = [...document.querySelectorAll('.txn-check:checked')].map(c=>c.dataset.id);
+    if (!ids.length) return;
+    const bar = document.getElementById('del-confirm-bar');
+    if (bar) {
+      bar.style.display = 'flex';
+      document.getElementById('del-confirm-count').textContent = `Delete ${ids.length} transaction(s)?`;
+      document.getElementById('del-confirm-yes').onclick = () => {
+        App.data.transactions = App.data.transactions.filter(t=>!ids.includes(t.id));
+        App.scheduleSave(); App.renderCurrentView();
+        App.showToast(`${ids.length} transaction(s) deleted`);
+      };
+      document.getElementById('del-confirm-no').onclick = () => {
+        bar.style.display = 'none';
+      };
+    }
+  },
+  init() {}
+};
+
+// ── FORECAST ──
+Views.forecast = {
+  render() {
+    const rows = Views.forecast.generate();
+    const bills = App.calc.upcoming30DayBills();
+    return `
+    <div class="section-header"><div class="section-title">52-Week Forecast</div></div>
+    <div class="card">
+      <div class="card-title">Upcoming Bills</div>
+      <div class="card-subtitle">Next 30 days</div>
+      ${bills.length ? `
+        <table class="data-table">
+          <thead><tr><th>Due Date</th><th>Expense</th><th>Amount</th><th>Frequency</th></tr></thead>
+          <tbody>${bills.map(b=>`<tr><td>${App.fmtDate(b.date)}</td><td class="desc">${b.name}</td><td class="neg">${App.fmt(b.amount)}</td><td>${b.freq}</td></tr>`).join('')}</tbody>
+        </table>
+      ` : '<div class="empty-state"><p>No bills in the next 30 days.</p></div>'}
+    </div>
+    <div class="card">
+      <div class="card-title">52-Week Projection</div>
+      <div class="card-subtitle">Weekly paycheck and balance forecast</div>
+      <div style="overflow-x:auto">
+        <div class="forecast-row header">
+          <div>Wk</div><div>Pay Date</div><div>Hrs</div><div>Net Pay</div><div>VAULT Est.</div><div>Car Loan Est.</div>
+        </div>
+        ${rows.map(r=>`
+          <div class="forecast-row">
+            <div style="color:var(--text3)">${r.week}</div>
+            <div>${App.fmtDate(r.payDate)}</div>
+            <div style="color:var(--text2)">${r.hours}</div>
+            <div style="color:var(--green)">${App.fmt(r.netPay)}</div>
+            <div style="color:${r.vault<0?'var(--red)':'var(--text2)'}">${App.fmt(r.vault)}</div>
+            <div style="color:var(--text2)">${App.fmt(Math.max(0,r.carLoan))}</div>
+          </div>
+        `).join('')}
+      </div>
+    </div>`;
+  },
+  generate() {
+    const rows = [];
+    let vault = App.data.accounts.vault;
+    let carLoan = App.data.accounts.car_loan;
+    const monthlyTarget = App.data.settings.carLoanMonthlyTarget;
+    const weeklyCarPayment = monthlyTarget / 4.33;
+    const weeklyFixed = App.calc.weeklyFixedExpenses();
+    const weeklyGroceries = App.calc.avgGroceries() / 4;
+
+    // Start from next paycheck date
+    let payDate = App.calc.nextPaycheckDate();
+
+    for (let w=1; w<=52; w++) {
+      // Work week Monday = payDate - 7 days (work week ends previous Friday)
+      const workWeekMon = new Date(payDate); workWeekMon.setDate(payDate.getDate()-7);
+      const hasSunday = App.calc.isAlternatingSunday(workWeekMon);
+      const hours = hasSunday ? 48 : 36;
+      const pred = App.calc.predictNetPay({regular:hours, overtime:0, holiday:0, pto:0, nightshift:0, bonus:0});
+      vault += pred.net - weeklyFixed - weeklyGroceries;
+      carLoan = Math.max(0, carLoan - weeklyCarPayment);
+      rows.push({ week:w, payDate:new Date(payDate), hours, netPay:pred.net, vault, carLoan });
+      payDate = new Date(payDate); payDate.setDate(payDate.getDate()+7);
+    }
+    return rows;
+  },
+  init() {}
+};
+
+// ── GROCERIES ──
+Views.groceries = {
+  render() {
+    const months = Views.groceries.getMonths();
+    const avg = App.calc.avgGroceries();
+    return `
+    <div class="section-header"><div class="section-title">Groceries</div></div>
+    <div class="card" style="margin-bottom:20px">
+      <div class="card-title">Average Monthly Groceries</div>
+      <div style="font-family:var(--font-mono);font-size:2rem;color:var(--accent);margin:8px 0">${App.fmt(avg)}</div>
+      <div style="font-size:0.75rem;color:var(--text3)">Used in FLEX allowance and buffer calculations</div>
+    </div>
+    <div class="card">
+      <div class="card-title">Monthly Totals</div>
+      <div class="card-subtitle">Since September 2024</div>
+      <div class="chart-container" style="margin-bottom:20px"><canvas id="grocery-chart"></canvas></div>
+      <table class="data-table">
+        <thead><tr><th>Month</th><th>Total</th><th>vs Average</th><th></th></tr></thead>
+        <tbody>
+          ${months.map(m=>{
+            const key=`${m.year}-${String(m.month).padStart(2,'0')}`;
+            const val=App.data.groceries[key]||0;
+            const diff=avg>0?((val/avg)-1)*100:0;
+            return `<tr>
+              <td class="desc">${new Date(m.year,m.month-1,1).toLocaleDateString('en-US',{month:'long',year:'numeric'})}</td>
+              <td><input type="number" class="form-group input" style="background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:5px 8px;font-size:0.8rem;width:110px;font-family:var(--font-mono)" data-key="${key}" value="${val||''}" placeholder="0.00" step="0.01" min="0" onchange="Views.groceries.save('${key}', this.value)"></td>
+              <td>${avg>0&&val?`<span class="badge badge-${val>avg*1.1?'red':val<avg*0.9?'green':'accent'}">${diff>0?'+':''}${diff.toFixed(0)}%</span>`:'—'}</td>
+              <td></td>
+            </tr>`;
+          }).join('')}
+        </tbody>
+      </table>
+    </div>`;
+  },
+  getMonths() {
+    const s = App.data.settings;
+    const months=[]; let y=s.groceryStartYear, m=s.groceryStartMonth;
+    const now=new Date();
+    while(y<now.getFullYear()||(y===now.getFullYear()&&m<=now.getMonth()+1)) {
+      months.push({year:y,month:m});
+      m++; if(m>12){m=1;y++;}
+    }
+    return months;
+  },
+  save(key, val) {
+    const n = parseFloat(val);
+    if(!isNaN(n)&&n>=0) { App.data.groceries[key]=n; App.scheduleSave(); App.showToast('Grocery total saved','success'); }
+  },
+  init() {
+    const months = Views.groceries.getMonths();
+    const labels = months.map(m=>new Date(m.year,m.month-1,1).toLocaleDateString('en-US',{month:'short',year:'2-digit'}));
+    const vals = months.map(m=>{const k=`${m.year}-${String(m.month).padStart(2,'0')}`;return App.data.groceries[k]||0;});
+    if (typeof Chart!=='undefined') {
+      App.charts['grocery-chart']=new Chart(document.getElementById('grocery-chart'),{
+        type:'bar',
+        data:{labels,datasets:[{label:'Groceries',data:vals,backgroundColor:'rgba(200,169,110,0.5)',borderColor:'#c8a96e',borderWidth:1}]},
+        options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{ticks:{color:'#6a6460',font:{size:9}},grid:{color:'rgba(46,46,56,0.4)'}},y:{ticks:{color:'#6a6460',callback:v=>'$'+v,font:{size:10}},grid:{color:'rgba(46,46,56,0.4)'}}}}
+      });
+    }
+  }
+};
+
+// ── CREDIT SCORE ──
+Views.credit = {
+  render() {
+    const vantageScores = App.data.creditScores.filter(s=>s.type==='vantage').sort((a,b)=>new Date(a.date)-new Date(b.date));
+    const ficoScores = App.data.creditScores.filter(s=>s.type==='fico').sort((a,b)=>new Date(a.date)-new Date(b.date));
+    const latestVantage = vantageScores.length ? vantageScores[vantageScores.length-1] : null;
+    const latestFico = ficoScores.length ? ficoScores[ficoScores.length-1] : null;
+    const allScores = App.data.creditScores.slice().sort((a,b)=>new Date(b.date)-new Date(a.date));
+
+    const scoreCard = (label, latest, color) => {
+      if (!latest) return `<div class="card" style="margin-bottom:0;text-align:center">
+        <div class="card-subtitle">${label}</div>
+        <div style="font-family:var(--font-mono);font-size:3rem;color:var(--text3);margin:16px 0">—</div>
+        <div style="font-size:0.75rem;color:var(--text3)">Not tracked yet</div>
+      </div>`;
+      const r = App.calc.creditRating(latest.score);
+      return `<div class="card" style="margin-bottom:0;text-align:center">
+        <div class="card-subtitle">${label}</div>
+        <div style="font-family:var(--font-mono);font-size:3rem;color:var(--${color});margin:16px 0">${latest.score}</div>
+        <div class="badge badge-${r.color}" style="margin-bottom:8px">${r.label}</div>
+        <div style="font-size:0.72rem;color:var(--text3);font-family:var(--font-mono)">${latest.source} · ${App.fmtDate(latest.date)}</div>
+        <div style="margin-top:16px;display:flex;justify-content:center;gap:6px;flex-wrap:wrap">
+          <div style="text-align:center;padding:6px 10px;background:var(--surface2);border-radius:8px"><div style="font-size:0.6rem;color:var(--text3);font-family:var(--font-mono);text-transform:uppercase">Poor</div><div style="font-size:0.7rem;color:var(--text3)">300</div></div>
+          <div style="text-align:center;padding:6px 10px;background:rgba(212,168,75,0.1);border-radius:8px"><div style="font-size:0.6rem;color:var(--yellow);font-family:var(--font-mono);text-transform:uppercase">Fair</div><div style="font-size:0.7rem;color:var(--yellow)">580</div></div>
+          <div style="text-align:center;padding:6px 10px;background:rgba(200,169,110,0.1);border-radius:8px"><div style="font-size:0.6rem;color:var(--accent);font-family:var(--font-mono);text-transform:uppercase">Good</div><div style="font-size:0.7rem;color:var(--accent)">670</div></div>
+          <div style="text-align:center;padding:6px 10px;background:rgba(109,184,145,0.1);border-radius:8px"><div style="font-size:0.6rem;color:var(--green);font-family:var(--font-mono);text-transform:uppercase">Very Good</div><div style="font-size:0.7rem;color:var(--green)">740</div></div>
+          <div style="text-align:center;padding:6px 10px;background:rgba(109,184,145,0.15);border-radius:8px;border:1px solid rgba(109,184,145,0.3)"><div style="font-size:0.6rem;color:var(--green);font-family:var(--font-mono);text-transform:uppercase">Exceptional</div><div style="font-size:0.7rem;color:var(--green)">800+</div></div>
+        </div>
+      </div>`;
+    };
+
+    return `
+    <div class="section-header">
+      <div class="section-title">Credit Score</div>
+      <button class="btn btn-primary btn-sm" onclick="Views.credit.openAddModal()">+ Log Score</button>
+    </div>
+
+    <div class="grid-2" style="margin-bottom:20px">
+      ${scoreCard('VantageScore (Chase Credit Journey)', latestVantage, 'accent')}
+      ${scoreCard('FICO (CreditWise)', latestFico, 'blue')}
+    </div>
+
+    <div class="grid-2" style="margin-bottom:20px">
+      <div class="card" style="margin-bottom:0">
+        <div class="card-title">VantageScore History</div>
+        <div class="chart-container"><canvas id="vantage-chart"></canvas></div>
+      </div>
+      <div class="card" style="margin-bottom:0">
+        <div class="card-title">FICO History</div>
+        <div class="chart-container"><canvas id="fico-chart"></canvas></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Score Log</div>
+      <div class="card-subtitle">${allScores.length} entries</div>
+      ${allScores.length ? `
+        <table class="data-table">
+          <thead><tr><th>Date</th><th>Type</th><th>Score</th><th>Source</th><th>Rating</th><th>Notes</th><th></th></tr></thead>
+          <tbody>
+            ${allScores.map(s=>{
+              const r = App.calc.creditRating(s.score);
+              const typeLabel = s.type==='fico' ? 'FICO' : 'VantageScore';
+              const typeColor = s.type==='fico' ? 'var(--blue)' : 'var(--accent)';
+              return `<tr>
+                <td>${App.fmtDate(s.date)}</td>
+                <td><span style="font-size:0.75rem;font-family:var(--font-mono);color:${typeColor}">${typeLabel}</span></td>
+                <td style="font-family:var(--font-mono);font-size:0.9rem;color:var(--text)">${s.score}</td>
+                <td>${s.source||'—'}</td>
+                <td><span class="badge badge-${r.color}">${r.label}</span></td>
+                <td class="desc" style="font-size:0.78rem">${s.notes||'—'}</td>
+                <td><button class="btn btn-danger btn-sm" onclick="Views.credit.delete('${s.id}')">×</button></td>
+              </tr>`;
+            }).join('')}
+          </tbody>
+        </table>
+      ` : '<div class="empty-state"><div class="icon">◇</div><p>No credit scores logged yet.<br>Log your first score to start tracking.</p></div>'}
+    </div>`;
+  },
+
+  openAddModal() {
+    App.openModal(`
+      <div class="modal-title">Log Credit Score</div>
+      <div class="form-row">
+        <div class="form-group"><label>Score Type</label>
+          <select id="cs-type">
+            <option value="vantage">VantageScore (Chase Credit Journey)</option>
+            <option value="fico">FICO (CreditWise)</option>
+          </select>
+        </div>
+        <div class="form-group"><label>Date</label><input type="date" id="cs-date" value="${App.fmtDateInput(new Date())}"></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>Score (300–850)</label><input type="number" id="cs-score" min="300" max="850" placeholder="750"></div>
+        <div class="form-group"><label>Source</label>
+          <select id="cs-source">
+            <option value="Chase Credit Journey">Chase Credit Journey</option>
+            <option value="CreditWise">CreditWise</option>
+            <option value="Other">Other</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-group" style="margin-top:8px"><label>Notes (optional)</label>
+        <input type="text" id="cs-notes" placeholder="e.g. Paid down CC, opened new card...">
+      </div>
+      <div class="modal-actions">
+        <button class="btn btn-secondary" onclick="App.closeModal()">Cancel</button>
+        <button class="btn btn-primary" onclick="Views.credit.saveScore()">Save Score</button>
+      </div>
+    `);
+  },
+
+  saveScore() {
+    const type = document.getElementById('cs-type').value;
+    const date = document.getElementById('cs-date').value;
+    const score = parseInt(document.getElementById('cs-score').value);
+    const source = document.getElementById('cs-source').value;
+    const notes = document.getElementById('cs-notes').value.trim();
+    if (!date||isNaN(score)||score<300||score>850) { App.showToast('Enter a valid score (300–850)','error'); return; }
+    App.data.creditScores.push({id:App.uid(), type, date, score, source, notes});
+    App.scheduleSave(); App.closeModal(); App.renderCurrentView();
+    App.showToast('Score logged','success');
+  },
+
+  delete(id) {
+    App.data.creditScores = App.data.creditScores.filter(s=>s.id!==id);
+    App.scheduleSave(); App.renderCurrentView();
+  },
+
+  init() {
+    const vantageScores = App.data.creditScores.filter(s=>s.type==='vantage').sort((a,b)=>new Date(a.date)-new Date(b.date));
+    const ficoScores = App.data.creditScores.filter(s=>s.type==='fico').sort((a,b)=>new Date(a.date)-new Date(b.date));
+
+    if (typeof Chart === 'undefined') return;
+
+    if (vantageScores.length && document.getElementById('vantage-chart')) {
+      App.charts['vantage-chart'] = new Chart(document.getElementById('vantage-chart'), {
+        type:'line',
+        data:{labels:vantageScores.map(s=>App.fmtDate(s.date)),datasets:[{label:'VantageScore',data:vantageScores.map(s=>s.score),borderColor:'#c8a96e',backgroundColor:'rgba(200,169,110,0.1)',tension:0.3,pointRadius:4,fill:true}]},
+        options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{ticks:{color:'#6a6460',font:{size:9}},grid:{color:'rgba(46,46,56,0.4)'}},y:{min:580,max:850,ticks:{color:'#6a6460',font:{size:10}},grid:{color:'rgba(46,46,56,0.4)'}}}}
+      });
+    }
+
+    if (ficoScores.length && document.getElementById('fico-chart')) {
+      App.charts['fico-chart'] = new Chart(document.getElementById('fico-chart'), {
+        type:'line',
+        data:{labels:ficoScores.map(s=>App.fmtDate(s.date)),datasets:[{label:'FICO',data:ficoScores.map(s=>s.score),borderColor:'#6b9fd4',backgroundColor:'rgba(107,159,212,0.1)',tension:0.3,pointRadius:4,fill:true}]},
+        options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{ticks:{color:'#6a6460',font:{size:9}},grid:{color:'rgba(46,46,56,0.4)'}},y:{min:580,max:850,ticks:{color:'#6a6460',font:{size:10}},grid:{color:'rgba(46,46,56,0.4)'}}}}
+      });
+    }
+  }
+};
+
+// ── SETTINGS ──
+Views.settings = {
+  render() {
+    const s = App.data.settings;
+    const expenses = App.data.fixedExpenses;
+    return `
+    <div class="section-header"><div class="section-title">Settings</div></div>
+
+    <div class="card">
+      <div class="setting-group-title">Paycheck Parameters</div>
+      <div class="form-row">
+        <div class="form-group"><label>Hourly Rate ($)</label><input type="number" id="s-rate" value="${s.regularRate}" step="0.01"></div>
+        <div class="form-group"><label>OT Multiplier</label><input type="number" id="s-ot" value="${s.overtimeMultiplier}" step="0.01"></div>
+        <div class="form-group"><label>Nightshift Multiplier</label><input type="number" id="s-ns" value="${s.nightshiftMultiplier}" step="0.01"></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>Benefits Deduction ($)</label><input type="number" id="s-benefits" value="${s.benefitsDeduction}" step="0.01"></div>
+        <div class="form-group"><label>Other Deductions ($)</label><input type="number" id="s-other" value="${s.otherDeductions}" step="0.01"></div>
+        <div class="form-group"><label>Retirement (%)</label><input type="number" id="s-ret" value="${s.retirementPercent}" step="0.1"></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="setting-group-title">Account Targets</div>
+      <div class="form-row">
+        <div class="form-group"><label>FLEX Floor ($)</label><input type="number" id="s-flexfloor" value="${s.flexFloor}" step="10"></div>
+        <div class="form-group"><label>VAULT Buffer Months</label><input type="number" id="s-vaultmonths" value="${s.vaultBufferMonths}" step="1" min="1"></div>
+        <div class="form-group"><label>Car Loan Monthly Target ($)</label><input type="number" id="s-carloan" value="${s.carLoanMonthlyTarget}" step="50"></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>Car Fund Minimum ($)</label><input type="number" id="s-carmin" value="${s.carFundMinimum}" step="50"></div>
+        <div class="form-group"><label>Car Fund Target ($)</label><input type="number" id="s-cartarget" value="${s.carFundTarget}" step="50"></div>
+        <div class="form-group"><label>Car Loan Initial Balance ($)</label><input type="number" id="s-carloaninitial" value="${s.carLoanInitial}" step="100"></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="setting-group-title">FREEDOM (Chase Freedom Unlimited)</div>
+      <div class="form-row">
+        <div class="form-group"><label>Credit Limit ($)</label><input type="number" id="s-cclimit" value="${s.ccLimit}" step="100"></div>
+        <div class="form-group"><label>Payment Due Day</label><input type="number" id="s-ccdue" value="${s.ccPaymentDueDay}" min="1" max="31"></div>
+        <div class="form-group"><label>Statement Day</label><input type="number" id="s-ccstmt" value="${s.ccStatementDay}" min="1" max="31"></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="setting-group-title">SAVOR (Capital One Savor)</div>
+      <div class="form-row">
+        <div class="form-group"><label>Credit Limit ($)</label><input type="number" id="s-cc2limit" value="${s.cc2Limit||7000}" step="100"></div>
+        <div class="form-group"><label>Payment Due Day</label><input type="number" id="s-cc2due" value="${s.cc2PaymentDueDay||21}" min="1" max="31"></div>
+        <div class="form-group"><label>Statement Day</label><input type="number" id="s-cc2stmt" value="${s.cc2StatementDay||24}" min="1" max="31"></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="setting-group-title">BREX (Loan to Friend)</div>
+      <div class="form-row">
+        <div class="form-group"><label>Starting Balance ($)</label><input type="number" id="s-brexstart" value="${s.brexStartingBalance||0}" step="0.01" min="0" placeholder="e.g. 500.00"></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="setting-group-title">Work Schedule</div>
+      <div class="form-row">
+        <div class="form-group"><label>Alternating Sunday Start Date</label><input type="date" id="s-sundaystart" value="${s.alternatingSundayStart}"></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <button class="btn btn-primary" onclick="Views.settings.save()">Save All Settings</button>
+    </div>
+
+    <div class="card">
+      <div class="section-header" style="margin-bottom:16px">
+        <div class="setting-group-title" style="margin-bottom:0">Fixed Expenses</div>
+        <button class="btn btn-primary btn-sm" onclick="Views.settings.openExpenseModal()">+ Add Expense</button>
+      </div>
+      ${expenses.length ? expenses.map(e=>`
+        <div class="expense-item">
+          <div>
+            <div class="expense-name">${e.name}</div>
+            <div class="expense-meta">${e.frequency} · ${e.dueDay?'Due day '+e.dueDay:e.startDate||''}</div>
+          </div>
+          <div style="display:flex;align-items:center;gap:10px">
+            <div class="expense-amount">${App.fmt(e.amount)}</div>
+            <button class="btn btn-danger btn-sm" onclick="Views.settings.deleteExpense('${e.id}')">×</button>
+          </div>
+        </div>
+      `).join('') : '<div class="empty-state" style="padding:24px"><p>No fixed expenses yet.</p></div>'}
+    </div>
+
+    
+    <div class="card">
+      <div class="setting-group-title">Data Management</div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap">
+        <button class="btn btn-secondary" onclick="App.saveFile()">↓ Save / Export Data</button>
+        <button class="btn btn-secondary" onclick="App.loadFile()">↑ Load File</button>
+        <button class="btn btn-danger" onclick="Views.settings.resetData()">⚠ Reset All Data</button>
+      </div>
+    </div>`;
+  },
+  save() {
+    const s = App.data.settings;
+    s.regularRate = parseFloat(document.getElementById('s-rate').value)||s.regularRate;
+    s.overtimeMultiplier = parseFloat(document.getElementById('s-ot').value)||s.overtimeMultiplier;
+    s.nightshiftMultiplier = parseFloat(document.getElementById('s-ns').value)||s.nightshiftMultiplier;
+    s.benefitsDeduction = parseFloat(document.getElementById('s-benefits').value)||s.benefitsDeduction;
+    s.otherDeductions = parseFloat(document.getElementById('s-other').value)||s.otherDeductions;
+    s.retirementPercent = parseFloat(document.getElementById('s-ret').value)||s.retirementPercent;
+    s.flexFloor = parseFloat(document.getElementById('s-flexfloor').value)||s.flexFloor;
+    s.vaultBufferMonths = parseInt(document.getElementById('s-vaultmonths').value)||s.vaultBufferMonths;
+    s.carLoanMonthlyTarget = parseFloat(document.getElementById('s-carloan').value)||s.carLoanMonthlyTarget;
+    s.carFundMinimum = parseFloat(document.getElementById('s-carmin').value)||s.carFundMinimum;
+    s.carFundTarget = parseFloat(document.getElementById('s-cartarget').value)||s.carFundTarget;
+    s.carLoanInitial = parseFloat(document.getElementById('s-carloaninitial').value)||s.carLoanInitial;
+    s.ccLimit = parseFloat(document.getElementById('s-cclimit').value)||s.ccLimit;
+    s.ccPaymentDueDay = parseInt(document.getElementById('s-ccdue').value)||s.ccPaymentDueDay;
+    s.ccStatementDay = parseInt(document.getElementById('s-ccstmt').value)||s.ccStatementDay;
+    s.cc2Limit = parseFloat(document.getElementById('s-cc2limit').value)||s.cc2Limit;
+    s.cc2PaymentDueDay = parseInt(document.getElementById('s-cc2due').value)||s.cc2PaymentDueDay;
+    s.cc2StatementDay = parseInt(document.getElementById('s-cc2stmt').value)||s.cc2StatementDay;
+    s.alternatingSundayStart = document.getElementById('s-sundaystart').value||s.alternatingSundayStart;
+    s.brexStartingBalance = parseFloat(document.getElementById('s-brexstart').value)||0;
+    App.scheduleSave();
+    App.showToast('Settings saved','success');
+  },
+  openExpenseModal(id) {
+    const e = id ? App.data.fixedExpenses.find(x=>x.id===id) : null;
+    App.openModal(`
+      <div class="modal-title">${e?'Edit':'Add'} Fixed Expense</div>
+      <div class="form-row">
+        <div class="form-group" style="flex:2"><label>Name</label><input type="text" id="ex-name" value="${e?.name||''}" placeholder="e.g. Rent, Car Insurance..."></div>
+        <div class="form-group"><label>Amount ($)</label><input type="number" id="ex-amount" value="${e?.amount||''}" step="0.01" min="0"></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>Frequency</label>
+          <select id="ex-freq">
+            <option value="monthly" ${e?.frequency==='monthly'?'selected':''}>Monthly</option>
+            <option value="biweekly" ${e?.frequency==='biweekly'?'selected':''}>Biweekly</option>
+            <option value="weekly" ${e?.frequency==='weekly'?'selected':''}>Weekly</option>
+          </select>
+        </div>
+        <div class="form-group"><label>Due Day (monthly)</label><input type="number" id="ex-dueday" value="${e?.dueDay||''}" min="1" max="31" placeholder="e.g. 15"></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>Start Date</label><input type="date" id="ex-start" value="${e?.startDate||''}"></div>
+        <div class="form-group"><label>End Date (optional)</label><input type="date" id="ex-end" value="${e?.endDate||''}"></div>
+      </div>
+      <div class="modal-actions">
+        <button class="btn btn-secondary" onclick="App.closeModal()">Cancel</button>
+        <button class="btn btn-primary" onclick="Views.settings.saveExpense('${id||''}')">Save</button>
+      </div>
+    `);
+  },
+  saveExpense(id) {
+    const name = document.getElementById('ex-name').value.trim();
+    const amount = parseFloat(document.getElementById('ex-amount').value);
+    const frequency = document.getElementById('ex-freq').value;
+    const dueDay = parseInt(document.getElementById('ex-dueday').value)||null;
+    const startDate = document.getElementById('ex-start').value||null;
+    const endDate = document.getElementById('ex-end').value||null;
+    if (!name||isNaN(amount)||amount<=0) { App.showToast('Fill name and amount','error'); return; }
+    if (id) {
+      const idx = App.data.fixedExpenses.findIndex(e=>e.id===id);
+      if(idx>=0) App.data.fixedExpenses[idx]={...App.data.fixedExpenses[idx],name,amount,frequency,dueDay,startDate,endDate};
+    } else {
+      App.data.fixedExpenses.push({id:App.uid(),name,amount,frequency,dueDay,startDate,endDate});
+    }
+    App.scheduleSave(); App.closeModal(); App.renderCurrentView();
+    App.showToast('Expense saved','success');
+  },
+  deleteExpense(id) {
+    App.data.fixedExpenses = App.data.fixedExpenses.filter(e=>e.id!==id);
+    App.scheduleSave(); App.renderCurrentView();
+  },
+  
+  resetData() {
+    if(!confirm('This will permanently delete ALL your data. Are you sure?')) return;
+    if(!confirm('Last chance — this cannot be undone.')) return;
+    App.data = JSON.parse(JSON.stringify(DEFAULT_DATA));
+    App.scheduleSave(); App.renderCurrentView();
+    App.showToast('All data reset');
+  },
+  init() {}
+};
+
+// ── START ──
+document.addEventListener('DOMContentLoaded', () => App.init());
+</script>
+</body>
+</html>

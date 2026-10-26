@@ -1280,3 +1280,86 @@ Real-model (L3) files read this session: `agents.atlas.test_note_reader_l3` (49/
 1. Read this record and the three project files. Clone the repo into the sandbox (`git clone`, install packages from the Session 15 record plus `chromadb`), confirm the baseline passes there (commit fa694f3).
 2. Build 3d increment 1 (the facts-gatherer, pure Python, no model) in the sandbox with tests; hand him FIND/REPLACE blocks or new files with exact PowerShell steps, and wait for his green run before moving on.
 3. Keep every walkthrough step explicit, and remind him to commit and push after each green increment.
+
+# FORGE — Completion Record, Session 17
+*(ATLAS plan builder 3d-1 and 3d-2, ease-in, doctor's rules, the rules system 1.1 and 1.2 with four real-model rounds. Last commit pushed: 3685b1d on main. Paste this into the Completion Record file.)*
+
+## 0. Where things stand
+- ATLAS can now build a validated workout plan (`python -m agents.atlas.plan_builder`), takes its safety rules from a rules file you control, and lets you create rules by talking to ATLAS.
+- DONE and pushed: 3d-1 (facts), 3d-2 (plan builder), ease-in, wider Full body A labels, rules store (1.1), rule writer (1.2, closed after 4 real-model rounds).
+- BUILT ONLY IN CLAUDE'S SANDBOX, NOT ON JOEY'S MACHINE: item 1.3a (see section 5).
+- NOT YET BUILT: `next workout` command, plan summary and "FORGE WORKOUT PLAN v1" block, `draft missing` (items 1.4); ladder moves after workouts and normal-chat guard (1.3b); phone page (Phase 2); history analysis (Phase 3).
+- Joey has NOT pasted a whole-suite regression since commit fcdda2d (agreed: once at the end of each phase; the end of Phase 1 is when it is due).
+
+## 1. Build plan tracker (shown in every reply, his request)
+Phase 1 finish the plan feature (3d): 1.0 facts + builder + ease-in + exclusions DONE | 1.1 rules store DONE | 1.2 rule writer DONE | 1.3a plans use the rules BUILT, NOT DELIVERED | 1.3b ladder moves + chat guard + `my program` on rules | 1.4 plan summary + plan block + `next workout` + `draft missing` | 1.5 real-model read, whole suite, close 3d.
+Phase 2 phone page (single offline HTML file; plan pasted in, filled log copied back). Phase 3 history analysis (built after about 2 weeks of his real logs). Phase 4 optional polish (ATLAS memory, smarter setup answers, injury severity default, settings by chat).
+
+## 2. Standing rules (new or reconfirmed this session)
+- Claude never edits his project files; code arrives as FIND/REPLACE blocks or whole new files, with exact PowerShell steps. Claude tests in its own sandbox clone first (mocked tests only; real-model L3 runs happen on his machine and he pastes the output).
+- Every reply states where we are in the build plan.
+- He wants rules he sets up WITH ATLAS, not hardcoded rules ("I really don't want hardcoded rules").
+- A model never enforces a safety rule: Python does. A real model that ignores a rule gets a Python guard.
+- Numbers are never repaired silently (see section 4).
+- Questions come in one numbered list. Walkthroughs are explicit. Whole-suite runs once per phase.
+- Replies must stay small: one step per reply, no full-file dumps unless asked, no long silent chains. (He complained about slowness and size; see section 7.)
+
+## 3. What was built (commits are his, counts from his real runs)
+- 23ad07c, fcdda2d  plan_facts.py (agents/atlas): pure-Python facts for `next workout`: day, session shape, goal numbers, approved warmups/cooldowns/core, last session of the same day, main lifts kept and about 60% of accessories kept, suggested weights from progression.py, library candidates. test_plan_facts 37/37. Leg and hamstring curls allowed.
+- f5f2303, 20e800c  plan_builder.py: the model picks exercise NAMES only; Python sets every number (main lifts: top of the sets range, low reps, longest rest; accessories: the opposite), validates names, two model tries, fallback to the last session of that day or a plain error, drops tips containing numbers, promises, medical words or the injured joint. test_plan_builder 49/49. Real Gemini and local plans read and correct.
+- 66300f4  Ease-in: the first 3 tagged workouts get one fewer set and effort capped at RPE 6. Full body A muscle list now quads, hamstrings, glutes, chest, back, shoulders. 40/40, 51/51.
+- 8388467  Lateral raises were never planned while the shoulder limitation was on file (temporary, replaced by the rules). 41/41, 52/52.
+- bc85832  1.1 training_rules.py: locked data/training_rules.json, five rule kinds (never plan names with these words; note; effort cap; ladder; leave a muscle out), whole-word matching, ladder logic (45 down to 0 in steps of 5, pain steps back, a comfortable workout at the end finishes it). 33/33.
+- c88df5c, 9532fe7, a28118b, 3685b1d  1.2 rule writer (atlas_rules.py, exercise_vocab.py, three approval types in atlas_actions.py): `rules`, `add rule <words>`, `remove rule <id>`, `set angle <id> <n>`, `rules setup`. The LOCAL model drafts, Python guards, he approves every rule. Final counts: test_training_rules 38, test_atlas_rules 40, test_exercise_vocab 10, test_atlas_setup 27.
+- Profile commands that were too long (over 300 characters, or with line breaks) are now answered plainly instead of falling into normal chat.
+
+## 4. Real bugs and lessons (all found by his real runs)
+- His 348-character `add limitation` fell silently into normal chat (limit 300). The earlier `clear limitations` had already gone through, leaving no limitations and the temporary shoulder protections off until he re-added three shorter lines. Lesson: test the exact line before handing it over.
+- Real model, run 1: "no explosive moves" became a rule on the single word "explosive" (blocks nothing); plurals and -ing forms were not matched; a ladder with swapped start/end was refused.
+- Run 2: the model invented examples containing the same word ("explosive jump") so the example self-check passed; my "repair" of the ladder step sign turned a swapped start/end into a consistent rule that started at 0, the straight-out position. Lesson: repairing safety numbers silently is wrong; refuse and state the numbers.
+- Run 3: it also made a note rule on the word "exercise" from "I want to be careful".
+- Final defences: a reference list of real exercise-name words (every word and example must be made of them, plus words from his own library), examples must be blocked by the drafted words, every number must be in his sentence (only a ladder END of 0 may be missing), singular/plural/-ing matching, one retry with the reason, and a model that is down or says "unclear" is never retried.
+- Other fixes: tips may not mention the body part his limitation text names (words come from his own text); a malformed rule entry no longer crashes matching (it is ignored); a model reply typed `None` was once treated as "no reply" in a test fake.
+- Test lesson: several assertions Claude wrote could never fail ("or True", "if False"); they were found and removed. Claude's own whole-word test caught a substring bug ("burpees" contains "rpe").
+
+## 5. Item 1.3a (built in the sandbox only; the sandbox is not saved anywhere else)
+- plan_facts and plan_builder read his rules file; EVERY hardcoded safety list was removed from them (explosive words, curl words, lateral-raise block, shoulder flags, PT note). Exclusions, notes, effort caps, muscles left out and ladders all come from his rules.
+- With no active rules ATLAS refuses to plan: "you have no training rules yet ... type 'rules setup'".
+- A ladder rule puts "Arm angle from the wall: 45 degrees (back to a wall, arms up at that angle from the wall)." at the start of the tip, and the plan lists its ladders.
+- Effort caps from his rules apply to unknown-muscle exercises too (safe side); his RPE 5 rule is "only during the ease-in".
+- Sandbox counts: test_training_rules 39, test_plan_facts 44, test_plan_builder 55, test_atlas_rules 40; sandbox regression green except the known no-Ollama quirk (shared.test_model_client_l4_l5, 2 tests need a real Ollama).
+- Delivery attempt: a small patch tool (apply_patch.py: all-or-nothing, keeps Windows line endings, checksum-verified blocks) and a 46 KB patch of 52 edits across 8 files. Verified on a clean copy of his commit, on a Windows-line-ending copy, and a mismatched copy changed nothing. One leftover: the patched test_atlas_rules.py ends with one extra blank line compared with the tested file.
+- `programs.limit_flags` still exists and is still used by the `my program` view (it reads the limitation text), so `my program` and the plans disagree until 1.3b.
+
+## 6. Decisions log (Joey's, health items in his own words)
+- Doctor (2026-10-19): can train, slowly and with light weight first; absolutely no explosive moves (doctor's orders); everything else is fair game except lateral shoulder raises, done as: back to a wall, arms up at an angle from the wall, starting 45 degrees, 5 degrees closer to the wall each workout, going back to the previous angle on pain; at 0 it is a normal lateral raise. Curls and chin-ups stay blocked for caution (his words: "still I'd be cautious"); the earlier belief that biceps use worsens the tear "turned out to be untrue". No "check with your PT" note.
+- RPE 5 for anything upper body with arms moving, ONLY during the 3-workout ease-in. Weights and no history: "pick a weight that feels like RPE 6" (a one-word change to 5 remains his call).
+- Angle moves after a workout: ATLAS proposes the next angle 5 lower; pain in the note (read by the local note reader) proposes the previous angle; a skipped exercise moves nothing; he approves. The angle is shown at the start of the exercise tip.
+- Plans refuse to build while there are no rules (Claude's decision, he said he did not know).
+- The local model only ever drafts SIMPLE rules; anything it refuses he retypes simply; the doctor's rules come from `rules setup`, which does not use the model.
+- Units lbs for now; core finisher 2 sets, 45 s rest, RPE 6 (plank 30 s, side plank 20 s, others 10 reps); warmups 1x10 (bike 5 min); cooldown stretches 30 s. (Defaults Claude chose; he did not object.)
+- Phase 3 is built after about 2 weeks of his real logs, so thresholds are calibrated on real numbers.
+
+## 7. Process findings (why replies became slow and huge)
+Every reply carries the whole project record plus a very long chat; Claude pasted full files and 50 to 70 KB answers, ran the whole regression (about 200 seconds) many times, chained many steps silently after "Continue", and 1.2 took four rounds. Item 1.3a grew into 8 files and a patch tool (scope creep). Fixes: one step per reply, short replies, run only the suites a change touches, ask before any refactor of more than one file.
+
+## 8. His real data and rules right now
+- Profile: three limitations saved (labrum tear and cautious about biceps; no explosive moves; lateral raises only with the angle progression). Goal power, 60 minutes, 3 days, full body program.
+- Rules file (4 rules): no explosive moves; lateral raise ladder at 45 degrees; RPE 5 upper body during the ease-in; no curls or chin-ups except leg and hamstring curls. NOT approved: "leave biceps out of the workouts" (id bb167142, still waiting in the queue).
+- Until 1.3a reaches his machine, plans still use the temporary hardcoded behaviour, which depends on the limitation text.
+
+## 9. Open items
+- Decide: pause 1.3a, finish it in small steps, or finish the patch route (offered, not yet answered).
+- Biceps-left-out rule: approve or deny the pending proposal.
+- First-time weight wording RPE 6 vs 5.
+- 1.3b, 1.4, 1.5; Phases 2 to 4 (see section 1).
+- Whole-suite regression due at the end of Phase 1.
+- Not ATLAS itself: photo scan and macros, Training tracker fixes, chat edit/delete of a wrong log entry, dashboard approvals, scheduler/sub-agents/skills, voice, mobile, Autonomous Build System.
+
+## 10. Regression baseline at commit 3685b1d (his runs)
+test_exercise_vocab 10, test_atlas_rules 40, test_training_rules 38, test_atlas_setup 27, test_atlas 15, test_atlas_actions 26, test_atlas_chat_library 18, test_atlas_chat_workout 32, test_plan_facts 41, test_plan_builder 52, test_programs 20. Other ATLAS, shared, CIPHER, NEXUS, ASSET and DRIVE suites unchanged from Session 16.
+
+## 11. How the next chat should start
+1. Read this record and the project files. Clone the repo (HEAD should be 3685b1d), install the packages from the Session 15 record.
+2. Ask Joey ONE question: which of the three options for 1.3a (pause, small steps, patch route). Then do exactly that, in small replies.
+3. Keep every reply short, with the build tracker on top, and ask before any change touching more than one file.

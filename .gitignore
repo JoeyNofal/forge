@@ -29,3 +29,7 @@ data/
 # OS junk
 .DS_Store
 Thumbs.db
+
+# Real financial data - never upload
+financial-tracker-data.json
+reference/**/*data*.json

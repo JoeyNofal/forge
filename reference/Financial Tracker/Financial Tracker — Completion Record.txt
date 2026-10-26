@@ -1,0 +1,410 @@
+Vault Financial Tracker — Complete Project Record
+What We Started With
+A web-based HTML financial tracker built with Kiro AI. It was a multi-file project (index.html + separate JS modules + CSS) that ran in the browser using localStorage for data storage. It had 7 views: Dashboard, Forecast, Inputs, Settings, Paychecks, Ledgers, and Groceries.
+Original capabilities:
+
+Account tracking: VAULT, FLEX, FUNDS (with Car Fund and Savings Fund sub-accounts), CC, Car Loan
+VAULT buffer calculator targeting 7 months of expenses + $1,500
+FLEX allowance calculator (weekly fixed expenses + groceries + CC balance, rounded to nearest $10)
+FUNDS reallocation engine (50/50 split, Car Fund rounded down to nearest $500)
+Priority-based allocation recommender (P1: VAULT buffer, P2: Car Fund to $1,500, P3: Savings +$100)
+Paycheck predictor using average tax rates from approved paychecks
+52-week forecast
+Fixed expense tracking
+Grocery tracking from September 2024
+Transaction ledgers with undo support
+Work schedule calculator (Mon/Tue/Wed 12hrs each, alternating Sundays)
+Credit score tracking (single source)
+Excel export
+Description autocomplete
+
+Original limitations:
+
+Browser-only, localStorage meant data was lost if browser was cleared
+No AI chatbot
+CORS blocked any direct API calls
+All data stored in localStorage, not portable
+Single credit card (CC), no naming
+Single credit score source
+No real-time tax calculation in paycheck modal
+Forecast was broken/unreliable
+
+
+The Journey
+Phase 1 — Understanding the Codebase
+We uploaded all the original files and did a full audit:
+
+11 calculator JS files
+14 manager/model/utility JS files
+7 view JS files
+app.js, app-bundle.js, build scripts, config
+
+We confirmed your exact financial setup:
+
+Hourly rate: $35.21, OT: 1.5x, nightshift: 1.13x
+Benefits: $30.92, other deductions: $54.49, retirement: 4%
+Indiana state + St. Joseph county taxes
+Weekly paychecks every Friday, 1-week lag
+Mon/Tue/Wed (36hrs) + alternating Sundays (48hrs) on 2-on/2-off 4-week cycle starting 2026-03-13
+VAULT (main checking), FLEX (spending), FUNDS (savings), CC, Car Loan
+FUNDS splits: Car Fund (nearest $500 from 50%), Savings Fund (remainder)
+Car loan: $18,500 initial, 0% interest, $1,500/month target
+CC limit: $1,800, target $50–$100 balance
+FLEX floor: $500
+Grocery tracking from September 2024
+
+Phase 2 — Building the New HTML Version
+We rebuilt the entire app as a single self-contained HTML file with:
+
+Dark theme design (color palette: bg #0f0f11, accent gold #c8a96e, green #6db891)
+DM Sans/DM Serif Display/DM Mono fonts
+Fixed sidebar navigation (8 views)
+Floating chat panel
+JSON file-based data storage (auto-save on every change)
+All calculations rebuilt inline
+
+New views added: Credit Score (8th view)
+Design decisions made through Q&A:
+
+Data stored in JSON file on laptop (not cloud, not localStorage)
+Auto-save with every change
+File picker on startup, remembers file for session
+Conversation history stored in same JSON, kept forever
+English only
+Desktop-first, mobile later via GitHub Pages
+Two chatbots: Financial Advisor + Programmer, shared history
+Dashboard alerts: low FLEX, upcoming bills, next paycheck date
+Weekly paycheck forecast with correct 1-week lag
+Credit score tracker with chart, Chase as primary source
+
+Phase 3 — Electron Desktop App
+We converted the HTML file into a full Electron desktop application because:
+
+Browser CORS blocks direct Anthropic API calls
+localStorage is fragile
+File system access needs native APIs
+
+Files created:
+
+main.js — Electron main process, handles file I/O, Claude API calls via native HTTPS
+preload.js — secure bridge exposing window.electronAPI to renderer
+package.json — app config with "main": "main.js" (critical — npm init creates wrong default)
+index.html — the full app
+SETUP.bat — runs npm install
+START.bat — launches app
+README.txt — setup and API key instructions
+
+Setup process:
+
+Install Node.js v24.15.0
+Create folder C:\Users\youss\Documents\FinancialTracker
+Run npm install in Command Prompt (not PowerShell — execution policy blocks it)
+Run npx electron . to launch
+
+Data file location: C:\Users\youss\OneDrive\Documents\FinancialTracker\financial-tracker-data.json
+Phase 4 — Debugging the Chatbot (Long Journey)
+This was the most complex debugging session. Issues encountered and resolved:
+
+Chat panel taking up space when closed — fixed by changing from CSS transform to position: fixed overlay
+API not responding — multiple root causes found:
+
+package.json had wrong "main": "index.js" from npm init, so main.js never ran, preload.js never loaded, window.electronAPI was never defined
+The app was silently falling through to browser copy-paste mode
+
+
+renderConvList() resetting currentConvId to null — found by tracing the call chain: send() → newConversation() → openConversation() → switchBot() → renderConvList() → sets currentConvId = null. Fixed by rewriting send() to not rely on newConversation().
+innerHTML += destroying DOM — every time a message was appended using innerHTML +=, it destroyed and recreated all existing DOM elements including the thinking indicator, causing stale references. Fixed by switching to appendChild.
+Old send() function persisting — Notepad edits weren't taking effect because the renamed function (send_PLACEHOLDER) had to be restored to send().
+Anthropic API key — went through environment variables approach, then switched to storing key directly in App.data.settings.anthropicApiKey and passing it to main process via IPC. The main process checks env var first, then falls back to settings key.
+Billing issue — original Anthropic account had wrong phone number (organization account). Resolved by creating new personal account at console.anthropic.com and adding $5 credits.
+
+Final working chat architecture:
+
+User types message → App.chat.send() runs
+Checks window.electronAPI exists and API key is set
+Builds full system prompt with all financial data
+Calls window.electronAPI.claudeAPI({systemPrompt, messages, apiKey})
+preload.js forwards to ipcRenderer.invoke('claude-api', ...)
+main.js makes native HTTPS request to api.anthropic.com
+Response returns through IPC chain back to renderer
+Message appended to chat panel via appendChild
+
+Phase 5 — Dashboard Fixes
+
+Zeroed balances — fixed by rebuilding account balances from last transaction per account after file load (transactions are source of truth)
+FUNDS subaccounts — added expanded display with Car Fund and Savings Fund as separate cards with progress bars
+Manual Balance Correction card — added to dashboard as safety net for edge cases
+No-data warning banner — shows when all balances are $0
+
+Phase 6 — Capital One Savor + Dual Credit Scores
+Credit cards:
+
+Renamed original CC to FREEDOM (Chase), $1,800 limit
+Added SAVOR (Capital One), $7,000 limit
+Both cards: goal is $0 balance (pay to zero)
+Both have progress bars showing payoff progress
+Both appear in: Dashboard, Inputs, Quick Transfer, Ledgers, Settings
+FLEX allowance now includes both CC balances
+Alerts fire when either card is above $0
+Quick Transfer subtracts from source and adds to destination correctly
+
+Credit scores:
+
+Two separate sources: Chase Credit Journey (VantageScore) + CreditWise (FICO)
+Dashboard shows both scores side by side with color coding (gold for VantageScore, blue for FICO)
+Credit Score view has two separate charts with target lines at 800
+Disclaimer shown that VantageScore and FICO are different models, not directly comparable
+Score log table shows all entries with source labeled
+Settings has separate target fields for each score (both default 800)
+Source dropdown: "Chase Credit Journey (VantageScore)" and "CreditWise (FICO)"
+
+Settings additions:
+
+FREEDOM section: limit, target min/max (fixed bug where 0 was being overridden), due day, statement day
+SAVOR section: same fields, $7,000 limit
+Credit Score Targets section: VantageScore target, FICO target
+
+Phase 7 — Dashboard Intelligence Upgrades
+Savings Fund tracking:
+
+Shows current balance, 30-days-ago balance, and change (+ or -)
+Progress bar colored green/yellow/red based on whether +$100 target is met
+30-days-ago calculated from last FUNDS transaction on or before that date, then recalculates Car Fund split to derive Savings Fund
+
+VAULT Balance History chart:
+
+3-bar chart: Current / 30 Days Ago / All Time High
+Current bar: green if above 30-days-ago, red if below
+30-days-ago bar: grey
+All-time-high bar: gold
+Sits below existing VAULT buffer progress bar
+
+FUNDS Allocation Recommendation cards:
+
+Two cards side by side: Latest Approved Paycheck + Oldest Unapproved Paycheck
+Each shows: net pay, approved/predicted badge, active priority rule
+Three allocation boxes: To VAULT / To FLEX / To FUNDS
+Shows resulting Car Fund and Savings Fund after allocation with change amounts
+Priority system: P1 VAULT above 30-days-ago → P2 Car Fund ≥ $1,500 → P3 Savings +$100 vs 30 days ago
+Fallback if P1 takes too much: minimum $100 to FUNDS, minimum FLEX = weekly fixed expenses
+
+VAULT buffer display:
+
+Added months funded display: total months + buffer months (total - 1)
+
+Phase 8 — Smart Paycheck Modal
+Auto-calculating taxes:
+
+Opening Add or Edit Paycheck modal auto-fills all tax fields based on average rates
+Rates calculated from approved paychecks in the same calendar year
+Falls back to all-time average if no same-year approved paychecks exist
+Falls back to hardcoded defaults if no approved paychecks at all
+Tax fields update live as you change hours, bonus, or paycheck date
+Fields remain manually editable (for entering actual amounts when approving)
+Deduction fields (Benefits, Retirement %, Other) pre-fill from settings but are editable
+Gross/Tax/Net summary bar shows at bottom of modal, updates live
+
+
+Current State of the App
+Data Structure
+json{
+  accounts: { vault, flex, funds, cc, cc2, car_loan },
+  fundsSubAccounts: { carFund, savingsFund },
+  transactions: [...],
+  paychecks: [...],
+  fixedExpenses: [...],
+  groceries: { "YYYY-MM": amount },
+  creditScores: [...],
+  conversations: [...],
+  settings: {
+    regularRate, overtimeMultiplier, nightshiftMultiplier,
+    benefitsDeduction, otherDeductions, retirementPercent,
+    flexFloor, ccTargetMin, ccTargetMax, ccLimit,
+    ccPaymentDueDay, ccStatementDay,
+    cc2TargetMin, cc2TargetMax, cc2Limit,
+    cc2PaymentDueDay, cc2StatementDay,
+    carLoanInitial, carLoanMonthlyTarget,
+    carFundTarget, carFundMinimum,
+    vaultBufferMonths, alternatingSundayStart,
+    groceryStartYear, groceryStartMonth,
+    creditScoreTarget, creditScoreTarget2,
+    anthropicApiKey
+  }
+}
+Views
+
+Dashboard — all balances, FUNDS subaccounts, alerts, savings fund history, VAULT bar chart, allocation recommendations, credit scores
+Inputs — add transaction, quick transfer (with date)
+Paychecks — paycheck history, predictor with editable deductions, auto-calculating tax modal
+Ledgers — per-account transaction history with bulk delete
+Forecast — 52-week projection, 30-day bills
+Groceries — monthly totals from Sep 2024, average calculation
+Credit Score — dual VantageScore/FICO charts with 800 target lines, combined log
+Settings — all configurable fields, API key input with Test Connection button, import/export
+
+AI Chatbot
+
+Two modes: Financial Advisor + Programmer
+Shared conversation history across both modes
+Full financial context injected into every message (all balances, settings, recent paychecks, upcoming bills, credit scores)
+Conversations stored in JSON data file permanently
+API key stored in settings, passed securely via Electron IPC
+Works via native HTTPS call in main process (no CORS issues)
+
+Known Working
+
+App launches with npx electron . from Command Prompt in FinancialTracker folder
+Data auto-saves to financial-tracker-data.json in OneDrive/Documents/FinancialTracker
+File loads automatically on startup
+Import from old app via "⇄ Import from Old App" button
+All 8 views functional
+Chatbot working with Anthropic API (requires credits on account)
+
+Pending / Not Yet Built
+
+GitHub Pages mobile version
+Excel export (code exists from old app but not integrated)
+Car loan payment tracking from Car Fund
+Notification system for upcoming bills
+Dark/light mode toggle
+Installable .exe (electron-builder configured but not run)
+
+
+Key Technical Notes for Next Session
+
+Always use Command Prompt, never PowerShell — PowerShell blocks npm/npx due to execution policy
+Launch command: cd C:\Users\youss\Documents\FinancialTracker && npx electron .
+Edit files with Notepad (Ctrl+H for find/replace, Ctrl+G for go to line)
+After every Notepad edit: Ctrl+S to save, then restart app
+DevTools: enabled in main.js — a separate DevTools window opens with the app for debugging
+API key: stored in App.data.settings.anthropicApiKey, set via Settings → AI Chatbot section
+Arrow functions in Chart.js options cause syntax errors in this context — always use function(v){return ...} format instead of v=>... for callbacks inside chart config objects
+innerHTML += destroys DOM — always use appendChild for adding chat messages
+package.json must have "main": "main.js" — npm init creates "main": "index.js" by default which breaks everything
+FUNDS split formula: Car Fund = Math.floor(fundsBalance / 2 / 500) * 500, Savings = remainder
+Tax rate calculation: average rates from same-year approved paychecks → all-time approved → hardcoded defaults
+
+SESSION — June 7, 2026
+CHANGES MADE:
+Auto-load on startup
+
+main.js updated — app now automatically loads D:\Projects\Financial Tracker\FinancialTracker\financial-tracker-data.json on startup with no file picker needed
+Added HARDCODED_DATA_PATH constant and tryAutoLoad() function in main.js
+Falls back to Documents folder default if the hardcoded path is not found
+Hidden file input elements given display:none to remove ghost "Choose File" button from top right corner
+
+FREEDOM & SAVOR credit cards added
+
+DEFAULT_DATA updated — cc2 added to accounts object
+cc2Limit, cc2PaymentDueDay, cc2StatementDay added to default settings
+mergeWithDefaults() updated — cc2 included in account balance rebuild from transactions
+flexAllowance() updated — includes both cc and cc2 balances
+Dashboard updated — single Credit Card balance card replaced with two separate cards: FREEDOM (Chase) and SAVOR (Capital One), grid changed from 3 to 4 columns
+buildAlerts() updated — separate alerts for FREEDOM and SAVOR balances
+saveBalances() updated — includes cc2 field in manual balance correction
+Inputs view updated — FREEDOM and SAVOR added to transaction account dropdown and Quick Transfer "To" dropdown
+Ledgers view updated — FREEDOM and SAVOR tabs added
+Settings view updated — single Credit Card section replaced with separate FREEDOM and SAVOR sections, each with limit, payment due day, and statement day fields
+Quick Transfer fixed — paying a credit card (cc or cc2) now correctly subtracts from the card balance instead of adding to it
+
+Dual credit scores (VantageScore & FICO)
+
+creditScores entries now have a type field: 'vantage' or 'fico'
+Credit Score view fully rebuilt — two separate score cards, two separate charts (VantageScore in gold, FICO in blue), combined log table with type column
+Dashboard credit score card replaced with dual VantageScore/FICO display
+"Log Score" modal updated — score type selector added (VantageScore or FICO), source options updated to Chase Credit Journey and CreditWise
+Note: existing credit score entries in the JSON without a type field will appear in the log table but not in the charts — re-log them using the new modal to fix
+
+Chatbot removed
+
+Entire // CHAT SYSTEM JavaScript block deleted
+Chat panel HTML deleted
+All chat-related CSS deleted (#chat-panel, #chat-header, .bot-btn, .msg, .thinking-dots, etc.)
+--chat-width CSS variable deleted
+#chat-toggle-btn CSS deleted
+App.chat.init() call deleted from App.init()
+Chat toggle and input event listeners deleted from App.init()
+AI Chatbot API key section removed from Settings view
+Note: saveApiKey() and testApiKey() functions still exist in Settings JavaScript — harmless but can be cleaned up in a future session
+conversations array removed from DEFAULT_DATA and mergeWithDefaults()
+Financial Tracker window opened from NEXUS now loads data correctly
+Problem: When opening the Financial Tracker from the NEXUS dashboard button, the app showed blank balances. This happened because NEXUS was loading index.html directly, bypassing main.js entirely — meaning no preload.js was attached and window.electronAPI was undefined.
+Fix applied in D:\Projects\NEXUS SYSTEM\dashboard\electron_main.js:
+
+Added preload path pointing to the Financial Tracker's preload.js in the webPreferences of the tracker window
+Added did-finish-load handler that reads financial-tracker-data.json directly using fs.readFileSync and sends it to the tracker window via initial-data IPC event
+The Financial Tracker's existing onInitialData listener in index.html picks it up automatically — no changes needed to the Financial Tracker files
+
+Result: Opening the Financial Tracker from NEXUS now loads all real data correctly on every launch.
+Financial Tracker save fixed when opened from NEXUS
+Problem: When the Financial Tracker was opened from the NEXUS dashboard button, every save was silently failing with "Save failed". This happened because the Financial Tracker's save-data IPC handler lives in its own main.js, but when opened from NEXUS it runs under NEXUS's electron_main.js which had no save-data handler registered.
+Fix applied in D:\Projects\NEXUS SYSTEM\dashboard\electron_main.js:
+
+Added ipcMain.handle('save-data') handler that writes directly to D:\Projects\Financial Tracker\FinancialTracker\financial-tracker-data.json
+Returns { ok: true } on success or { ok: false, error } on failure
+The Financial Tracker's existing save logic picks up the response automatically — no changes needed to Financial Tracker files
+
+Result: "Saved ✓" now appears correctly after every change when using the Financial Tracker from NEXUS.
+
+Ledger delete confirmation fixed
+Problem: Using the browser confirm() dialog when deleting ledger transactions caused Electron to steal window focus, freezing all input fields until DevTools was opened.
+Fix applied in index.html:
+
+Replaced confirm() dialog with inline Yes/No confirmation bar that appears directly in the UI
+No focus is stolen — inputs remain fully usable after confirming or cancelling a delete
+SESSION — June 7, 2026 (continued)
+CHANGES MADE:
+FLEX allowance calculation fixed
+
+Removed weekly fixed expenses from the calculation — was inflating the number massively by including rent, insurance, electricity etc.
+New formula: weekly groceries (avg ÷ 4) + Fuel + Fun + FREEDOM balance + SAVOR balance, rounded up to nearest $10
+Result: dropped from ~$520 to correct ~$180
+
+VAULT months of buffer display
+
+Added a line below the VAULT progress bar showing exact months of expenses currently funded
+Format: "X.X months of expenses funded"
+
+Paycheck recommendation cards
+
+Replaced the old "This Paycheck" card with two side-by-side recommendation cards
+Left card: based on latest approved paycheck
+Right card: based on oldest predicted paycheck
+Each card shows: net pay, transfer to FLEX, transfer to FUNDS (with car fund and savings breakdown), keep in VAULT
+Priority system: P1 car fund to $1,500, P2 savings fund +$100 above last FUNDS transaction, P3 rest to VAULT
+
+Description dropdown with auto-fill
+
+Replaced the basic datalist with a custom dropdown
+Shows fixed expenses and past transaction descriptions sorted by frequency
+Selecting a fixed expense auto-fills the amount (negative) and account
+× button on each item hides it permanently
+Hidden items come back when typed manually or selected again
+Hidden list stored in App.data.settings.hiddenDescriptions
+
+Quick Transfer presets
+
+Two preset buttons added above the Quick Transfer form
+"Weekly FLEX" — fills From: VAULT, To: FLEX, amount from flexAllowance()
+"Weekly FUNDS" — fills From: VAULT, To: FUNDS, amount from paycheckRecommendation()
+
+Manual Balance Correction now persistent
+
+Previously saving a balance correction would revert on reload because mergeWithDefaults rebuilt balances from transactions
+Fix: saveBalances() now creates a real transaction entry for each changed account with description "Manual Balance Correction"
+Balances now persist correctly across restarts
+
+Ledger delete confirmation fixed
+
+Replaced browser confirm() dialog with inline Yes/No bar
+Prevents Electron focus steal that was locking all input fields
+
+Financial Tracker save fixed when opened from NEXUS
+
+Added ipcMain.handle('save-data') to dashboard\electron_main.js
+Financial Tracker now saves correctly when opened from the NEXUS button
+
+Financial Tracker data loads correctly from NEXUS
+
+Added preload path and did-finish-load handler to the tracker window in electron_main.js
+Real data loads automatically every time the tracker is opened from NEXUS

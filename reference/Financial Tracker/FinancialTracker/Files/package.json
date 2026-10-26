@@ -1,0 +1,22 @@
+{
+  "name": "financial-tracker",
+  "version": "1.0.0",
+  "description": "Vault — Personal Financial Tracker",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "build": "electron-builder --win --x64"
+  },
+  "build": {
+    "appId": "com.youss.financialtracker",
+    "productName": "Vault Financial Tracker",
+    "win": {
+      "target": ["portable"],
+      "icon": "icon.png"
+    },
+    "files": ["main.js", "preload.js", "index.html"]
+  },
+  "devDependencies": {
+    "electron": "^36.0.0"
+  }
+}
