@@ -31,5 +31,8 @@ data/
 Thumbs.db
 
 # Real financial data - never upload
-financial-tracker-data.json
+financial-tracker-data*.json
+*.tmp
+*.unreadable-*
+backups/
 reference/**/*data*.json
