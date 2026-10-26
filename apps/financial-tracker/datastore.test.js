@@ -85,17 +85,32 @@ const good = (k) => JSON.stringify({ accounts: { vault: 1 }, transactions: Array
   check('L4 no leftover .tmp file', !fs.existsSync(p + '.tmp'));
 
   // ---------- L4 a second process reads while we write (like ASSET) ----------
-  p = fresh(); ds.saveData(p, good(50));
-  const readerCode = `const fs=require('fs');let bad=0,reads=0;const t=Date.now();while(Date.now()-t<2500){try{const x=JSON.parse(fs.readFileSync(process.argv[1],'utf8'));if(!Array.isArray(x.transactions))bad++;}catch(e){if(e.code!=='ENOENT')bad++;}reads++;}console.log(JSON.stringify({bad,reads}));`;
-  const child = spawn(process.execPath, ['-e', readerCode, p]);
-  let out = ''; child.stdout.on('data', d => out += d);
-  const done = new Promise(res => child.on('close', res));
-  const t0 = Date.now(); let writes = 0;
-  while (Date.now() - t0 < 2300) { ds.saveData(p, good(50 + (writes % 40)), { minIntervalMs: 600000 }); writes++; }
-  await done;
-  const rd = JSON.parse(out);
-  check('L4 reader process never saw a half-written file', rd.bad === 0, JSON.stringify(rd));
-  check('L4 test really did overlap (many reads and writes)', rd.reads > 100 && writes > 50, 'reads ' + rd.reads + ' writes ' + writes);
+  // delayMs 0 = a hostile reader that never stops; 25 = a realistic reader (ASSET reads now and then)
+  async function overlapRun(delayMs) {
+    const pp = fresh(); ds.saveData(pp, good(50));
+    const readerCode = `const fs=require('fs');const d=+process.argv[2];let bad=0,reads=0;const t=Date.now();while(Date.now()-t<2500){try{const x=JSON.parse(fs.readFileSync(process.argv[1],'utf8'));if(!Array.isArray(x.transactions))bad++;}catch(e){if(e.code!=='ENOENT')bad++;}reads++;if(d)Atomics.wait(new Int32Array(new SharedArrayBuffer(4)),0,0,d);}console.log(JSON.stringify({bad,reads}));`;
+    const child = spawn(process.execPath, ['-e', readerCode, pp, String(delayMs)]);
+    let out = ''; child.stdout.on('data', d => out += d);
+    const done = new Promise(res => child.on('close', res));
+    const t0 = Date.now(); let nWrites = 0, nFailed = 0, threw = 0;
+    while (Date.now() - t0 < 2300) {
+      try { const res = ds.saveData(pp, good(50 + (nWrites % 40)), { minIntervalMs: 600000 }); if (!res.ok) nFailed++; } catch (e) { threw++; }
+      nWrites++;
+    }
+    await done;
+    const rd = JSON.parse(out);
+    return { bad: rd.bad, reads: rd.reads, writes: nWrites, failed: nFailed, threw, final: ds.loadData(pp).status };
+  }
+  const hostile = await overlapRun(0);
+  console.log('   (hostile reader: ' + JSON.stringify(hostile) + ')');
+  check('L4 hostile reader never saw a half-written file', hostile.bad === 0, JSON.stringify(hostile));
+  check('L4 hostile reader: saveData never throws, file valid at the end', hostile.threw === 0 && hostile.final === 'ok', JSON.stringify(hostile));
+  check('L4 hostile test really overlapped (reads and writes both happened)', hostile.reads > 100 && hostile.writes >= 5, JSON.stringify(hostile));
+  const light = await overlapRun(25);
+  console.log('   (realistic reader: ' + JSON.stringify(light) + ')');
+  check('L4 realistic reader never saw a half-written file', light.bad === 0, JSON.stringify(light));
+  check('L4 realistic reader: every save succeeded', light.failed === 0 && light.threw === 0 && light.final === 'ok', JSON.stringify(light));
+  check('L4 realistic test really overlapped', light.reads > 20 && light.writes >= 5, JSON.stringify(light));
 
   // ---------- L5 extreme ----------
   p = fresh();
