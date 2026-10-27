@@ -56,6 +56,14 @@ function listBackups(backupDir, baseName) {
   } catch (e) { return []; }
 }
 
+// When was this backup made? Read it from its NAME, not from the file's modified time:
+// on Windows a copied file keeps the OLD modified time of the original.
+function backupTime(fileName, baseName) {
+  const m = fileName.slice(baseName.length + 1).match(/^(\d{4})-(\d{2})-(\d{2})_(\d{2})(\d{2})(\d{2})(\d{3})\.json$/);
+  if (!m) return 0; // unreadable name: treat as very old
+  return new Date(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +m[6], +m[7]).getTime();
+}
+
 // Copy the current file into backups/ unless a recent backup already exists.
 function maybeBackup(filePath, opts) {
   const backupDir = opts.backupDir || path.join(path.dirname(filePath), 'backups');
@@ -66,8 +74,8 @@ function maybeBackup(filePath, opts) {
   fs.mkdirSync(backupDir, { recursive: true });
   const existing = listBackups(backupDir, base);
   if (existing.length && minGap > 0) {
-    const newest = fs.statSync(path.join(backupDir, existing[existing.length - 1]));
-    if (Date.now() - newest.mtimeMs < minGap) return null;
+    const newestTime = backupTime(existing[existing.length - 1], base);
+    if (Date.now() - newestTime < minGap) return null;
   }
   const dest = path.join(backupDir, base + '.' + stamp(new Date()) + '.json');
   fs.copyFileSync(filePath, dest);

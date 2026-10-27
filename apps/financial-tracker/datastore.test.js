@@ -69,6 +69,27 @@ const good = (k) => JSON.stringify({ accounts: { vault: 1 }, transactions: Array
   const r2 = ds.saveData(p, good(4), { minIntervalMs: 600000 });
   check('L2 no second backup inside the time gap', r2.ok && r2.backup === null);
 
+  // ---------- L2 backup timing must not depend on file modified times (Windows keeps the OLD one) ----------
+  p = fresh(); ds.saveData(p, good(2));
+  const bdir2 = path.join(path.dirname(p), 'backups');
+  const oldDate = new Date('2026-10-24T09:54:40');
+  fs.utimesSync(p, oldDate, oldDate);
+  const first = ds.maybeBackup(p, {});
+  check('L2 startup backup is made', !!first && fs.existsSync(first));
+  fs.utimesSync(first, oldDate, oldDate); // what Windows does: the copy keeps the old time of the source
+  check('L2 a second backup seconds later is NOT made, even though the backup file looks old', ds.maybeBackup(p, {}) === null);
+  r = ds.saveData(p, good(3));
+  check('L2 a normal save right after is also not backed up again', r.ok && r.backup === null && ds.listBackups(bdir2, 'financial-tracker-data').length === 1);
+  const elevenMinAgo = new Date(Date.now() - 11 * 60 * 1000);
+  const pad = (n, w) => String(n).padStart(w || 2, '0');
+  const oldName = 'financial-tracker-data.' + elevenMinAgo.getFullYear() + '-' + pad(elevenMinAgo.getMonth() + 1) + '-' + pad(elevenMinAgo.getDate()) + '_' + pad(elevenMinAgo.getHours()) + pad(elevenMinAgo.getMinutes()) + pad(elevenMinAgo.getSeconds()) + pad(elevenMinAgo.getMilliseconds(), 3) + '.json';
+  fs.renameSync(first, path.join(bdir2, oldName));
+  check('L2 once the newest backup is more than 10 minutes old (by its name), a new one IS made', !!ds.maybeBackup(p, {}));
+  p = fresh(); ds.saveData(p, good(2));
+  const bdir3 = path.join(path.dirname(p), 'backups'); fs.mkdirSync(bdir3, { recursive: true });
+  fs.writeFileSync(path.join(bdir3, 'financial-tracker-data.notadate.json'), '{}');
+  check('L2 a backup file with an unreadable name is treated as old (a new backup is made)', !!ds.maybeBackup(p, {}));
+
   // ---------- L2 corrupt original is rescued ----------
   p = fresh(); fs.writeFileSync(p, '{broken');
   r = ds.saveData(p, good(1));
