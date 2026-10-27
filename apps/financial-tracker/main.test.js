@@ -35,6 +35,7 @@ function setupCase(opts) {
   for (const f of ['main.js', 'datastore.js', 'session.js']) fs.copyFileSync(path.join(here, f), path.join(appDir, f));
   const docs = path.join(base, 'Documents'); fs.mkdirSync(docs);
   if (opts.envLine !== undefined) fs.writeFileSync(path.join(base, '.env'), opts.envLine);
+  if (opts.sharedEnvLine !== undefined) { fs.mkdirSync(path.join(base, 'shared')); fs.writeFileSync(path.join(base, 'shared', '.env'), opts.sharedEnvLine); }
   const sent = [], winHandlers = {}, wcHandlers = {}, ipc = {}, timers = [], opened = [];
   let closeCalls = 0, closedNow = 0;
   const electron = {
@@ -123,6 +124,21 @@ const last = (c, ch) => { const m = c.sent.filter(x => x[0] === ch); return m.le
   c = setupCase({ sysEnv: stale });
   await start(c);
   check('L2 Windows variable used when .env has none', last(c, 'initial-data').path === stale);
+
+  // ---------- L2: FORGE keeps its settings in shared\.env ----------
+  const sh = path.join(root, 'sh.json'); fs.writeFileSync(sh, good(11));
+  c = setupCase({ sharedEnvLine: 'ANTHROPIC_API_KEY=abc\nFINANCIAL_DATA_PATH=' + sh + '\n' });
+  await start(c);
+  check('L2 shared\\.env is read (where ASSET keeps FINANCIAL_DATA_PATH)', last(c, 'initial-data') && last(c, 'initial-data').path === sh);
+  c = setupCase({ sharedEnvLine: 'FINANCIAL_DATA_PATH=' + sh + '\n', envLine: 'FINANCIAL_DATA_PATH=' + data + '\n' });
+  await start(c);
+  check('L2 shared\\.env wins over a root .env', last(c, 'initial-data').path === sh);
+  c = setupCase({ sharedEnvLine: 'GEMINI_API_KEY=x\n', envLine: 'FINANCIAL_DATA_PATH=' + data + '\n' });
+  await start(c);
+  check('L2 shared\\.env without the setting -> root .env is used', last(c, 'initial-data').path === data);
+  c = setupCase({ sharedEnvLine: 'FINANCIAL_DATA_PATH=' + sh + '\n', sysEnv: stale });
+  await start(c);
+  check('L2 shared\\.env beats a stale Windows variable', last(c, 'initial-data').path === sh);
 
   // ---------- L2: --data-file launch option ----------
   const viaArg = path.join(root, 'viaarg.json'); fs.writeFileSync(viaArg, good(7));

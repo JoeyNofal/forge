@@ -9,7 +9,7 @@ let allowClose = false;
 
 // ── Where is the data file? ──
 // 0) a --data-file launch option (for testing on a copy)
-// 1) FINANCIAL_DATA_PATH in the FORGE .env file (the same setting ASSET uses)
+// 1) FINANCIAL_DATA_PATH in the FORGE shared\.env file (the same setting ASSET uses), or a .env in the repo root
 // 2) FINANCIAL_DATA_PATH as a Windows system variable
 // 3) Documents\FinancialTracker\financial-tracker-data.json
 // If the file is not there, the app says so. It never invents a new empty file by itself.
@@ -28,8 +28,11 @@ function dataPathFromArgs(argv) {
 function configuredDataPath() {
   const fromArg = dataPathFromArgs(process.argv);
   if (fromArg) return fromArg;
-  const envFile = path.join(__dirname, '..', '..', '.env');
-  return pickDataPath(readDotEnvValue(envFile, 'FINANCIAL_DATA_PATH'), process.env, defaultDataPath());
+  // FORGE keeps its settings in shared\.env (that is where ASSET reads them); a .env in the repo root also works.
+  const repoRoot = path.join(__dirname, '..', '..');
+  const fromEnvFile = readDotEnvValue(path.join(repoRoot, 'shared', '.env'), 'FINANCIAL_DATA_PATH')
+    || readDotEnvValue(path.join(repoRoot, '.env'), 'FINANCIAL_DATA_PATH');
+  return pickDataPath(fromEnvFile, process.env, defaultDataPath());
 }
 
 function sendLoadState() {
