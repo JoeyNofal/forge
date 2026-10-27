@@ -15,7 +15,7 @@
       "target": ["portable"],
       "icon": "icon.png"
     },
-    "files": ["main.js", "preload.js", "datastore.js", "session.js", "index.html"]
+    "files": ["main.js", "preload.js", "datastore.js", "session.js", "index.html", "vendor/*"]
   },
   "devDependencies": {
     "electron": "^36.0.0",

@@ -24,6 +24,12 @@ for (const ch of ['initial-data', 'load-problem', 'flush-request'])
 for (const id of ['load-problem', 'lp-title', 'lp-msg', 'lp-path', 'lp-choose', 'lp-create', 'lp-backups'])
   check('L1 index.html has #' + id, html.includes('id="' + id + '"'));
 
+check('L1 index.html loads no scripts from the internet', !/<script[^>]*\bsrc=["']https?:/i.test(html));
+check('L1 index.html loads nothing from the internet (no http/https src or href at all)', !/(?:src|href)=["']https?:/i.test(html));
+for (const f of ['vendor/chart.umd.js', 'vendor/exceljs.min.js'])
+  check('L1 ' + f + ' exists and is not tiny', fs.existsSync(path.join(here, f)) && fs.statSync(path.join(here, f)).size > 100000);
+check('L1 package.json packages the vendor folder', /vendor\//.test(rd('package.json')));
+
 // ---------- harness: a temp copy of the app + a fake electron ----------
 const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ft-main-'));
 let caseN = 0;
