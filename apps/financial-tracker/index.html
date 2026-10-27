@@ -444,6 +444,15 @@ body {
 
 /* file picker hidden */
 #file-input { display: none; }
+
+/* data file problem screen (covers the whole app, saving is off while it shows) */
+#load-problem { position: fixed; inset: 0; z-index: 9999; background: rgba(15,15,17,0.97); align-items: center; justify-content: center; }
+.lp-box { max-width: 560px; padding: 28px; border: 1px solid var(--red); border-radius: 12px; background: var(--surface); }
+.lp-box h2 { color: var(--red); margin-bottom: 10px; }
+.lp-box p { margin: 8px 0; line-height: 1.5; }
+.lp-path { font-family: monospace; word-break: break-all; color: var(--accent); }
+.lp-btns { display: flex; gap: 10px; margin-top: 16px; flex-wrap: wrap; }
+.lp-btns button { padding: 8px 14px; cursor: pointer; background: var(--surface2); color: var(--text); border: 1px solid var(--accent); border-radius: 6px; }
 </style>
 </head>
 <body>
@@ -486,6 +495,20 @@ body {
 
 <!-- TOAST -->
 <div id="toast"></div>
+
+<!-- DATA FILE PROBLEM (blocks the whole app, turns saving off) -->
+<div id="load-problem" style="display:none">
+  <div class="lp-box">
+    <h2 id="lp-title"></h2>
+    <p id="lp-msg"></p>
+    <p class="lp-path" id="lp-path"></p>
+    <div class="lp-btns">
+      <button id="lp-choose">Choose another file…</button>
+      <button id="lp-create">Create a new empty file here</button>
+      <button id="lp-backups">Open backups folder</button>
+    </div>
+  </div>
+</div>
 
 <!-- FILE INPUT -->
 <input type="file" id="file-input" accept=".json" style="display:none">
@@ -546,14 +569,21 @@ const App = {
   currentView: 'dashboard',
   charts: {},
   saveTimeout: null,
+  saveBlocked: false,   // true while the data file was not loaded safely: nothing may be saved
+  dirty: false,         // true while there are edits not yet written to the file
+  failStreak: 0,        // how many saves in a row have failed
 
   // ── FILE I/O (Electron native) ──
   async loadFile() {
     try {
       if (window.electronAPI) {
         const result = await window.electronAPI.loadFile();
-        if (!result.ok) return;
+        if (!result.ok) {
+          if (result.problem) App.showToast('Could not open that file: ' + (result.problem.error || result.problem.state) + ' (your current data is unchanged)', 'error');
+          return;
+        }
         App.data = App.mergeWithDefaults(JSON.parse(result.data));
+        App.saveBlocked = false; App.dirty = false; App.hideLoadProblem();
         const name = result.path.split('\\').pop().split('/').pop();
         document.getElementById('file-name-display').textContent = name;
         App.renderCurrentView();
@@ -745,40 +775,86 @@ const App = {
 
   scheduleSave() {
     const ind = document.getElementById('save-indicator');
+    if (App.saveBlocked) {
+      ind.textContent = 'NOT SAVED'; ind.className = '';
+      App.showToast('Saving is OFF: the data file was not loaded safely.', 'error');
+      return;
+    }
+    App.dirty = true;
     ind.textContent = 'Saving…'; ind.className = 'saving';
     clearTimeout(App.saveTimeout);
     App.saveTimeout = setTimeout(App.saveFile, 800);
   },
 
+  // Write any pending edit right now (used when the window is closing).
+  async flushNow() {
+    clearTimeout(App.saveTimeout);
+    if (App.saveBlocked || !App.dirty) return;
+    await App.saveFile();
+  },
+
   async saveFile() {
     const ind = document.getElementById('save-indicator');
+    if (App.saveBlocked) return;
     const json = JSON.stringify(App.data, null, 2);
+    let saved = false, why = '';
     try {
       if (window.electronAPI) {
         // Electron: save directly to file via main process
         const result = await window.electronAPI.saveData(json);
-        if (result.ok) {
-          ind.textContent = 'Saved ✓'; ind.className = 'saved';
-        } else {
-          ind.textContent = 'Save failed'; ind.className = '';
-          App.showToast('Save failed: ' + result.error, 'error');
-        }
+        if (result && result.ok) saved = true; else why = (result && result.error) || 'unknown error';
       } else if (App.fileHandle) {
         const writable = await App.fileHandle.createWritable();
         await writable.write(json); await writable.close();
-        ind.textContent = 'Saved ✓'; ind.className = 'saved';
+        saved = true;
       } else {
         const blob = new Blob([json], {type:'application/json'});
         const a = document.createElement('a');
         a.href = URL.createObjectURL(blob);
         a.download = 'financial-tracker-data.json';
         a.click(); URL.revokeObjectURL(a.href);
-        ind.textContent = 'Downloaded ✓'; ind.className = 'saved';
+        saved = true;
       }
-    } catch(e) {
-      ind.textContent = 'Save failed'; ind.className = '';
+    } catch(e) { why = e.message; }
+    if (saved) {
+      App.failStreak = 0; App.dirty = false;
+      ind.textContent = 'Saved ✓'; ind.className = 'saved';
+      setTimeout(() => { if (!App.dirty) { ind.textContent = '—'; ind.className = ''; } }, 3000);
+    } else {
+      // Never give up silently: keep the edit in memory, say so, and try again in 5 seconds.
+      App.failStreak++;
+      ind.textContent = 'SAVE FAILED - retrying'; ind.className = '';
+      if (App.failStreak === 1) App.showToast('Save failed: ' + why + ' (will retry)', 'error');
+      clearTimeout(App.saveTimeout);
+      App.saveTimeout = setTimeout(App.saveFile, 5000);
     }
-    setTimeout(() => { ind.textContent = '—'; ind.className = ''; }, 3000);
+  },
+
+  // Shown when the data file is missing/unreadable. Turns saving off and covers the app.
+  showLoadProblem(info) {
+    App.saveBlocked = true;
+    clearTimeout(App.saveTimeout);
+    const missing = !!info && info.state === 'missing';
+    document.getElementById('lp-title').textContent = missing ? 'Data file not found' : 'Data file could not be read safely';
+    document.getElementById('lp-msg').textContent = missing
+      ? 'No data file exists at the location below. Nothing has been created or changed. Choose your real file, or create a new empty one here.'
+      : 'Reason: ' + ((info && (info.error || info.state)) || 'unknown') + '. Your file has NOT been changed. Saving is turned off until a good file is loaded.';
+    document.getElementById('lp-path').textContent = (info && info.path) || '(no path set)';
+    document.getElementById('lp-create').style.display = missing ? '' : 'none';
+    document.getElementById('lp-backups').style.display = missing ? 'none' : '';
+    document.getElementById('load-problem').style.display = 'flex';
+  },
+
+  hideLoadProblem() { document.getElementById('load-problem').style.display = 'none'; },
+
+  async createNewFile() {
+    if (!window.electronAPI) return;
+    const r = await window.electronAPI.createNewFile(JSON.stringify(DEFAULT_DATA));
+    if (!r || !r.ok) { App.showToast('Could not create the file: ' + ((r && r.error) || 'unknown error'), 'error'); return; }
+    App.data = JSON.parse(JSON.stringify(DEFAULT_DATA));
+    App.saveBlocked = false; App.dirty = false; App.hideLoadProblem();
+    App.renderCurrentView();
+    App.showToast('New empty data file created', 'success');
   },
 
   // ── UTILS ──
@@ -1104,10 +1180,23 @@ const App = {
         try {
           App.data = App.mergeWithDefaults(JSON.parse(data));
           const name = path.split('\\').pop().split('/').pop();
-          document.getElementById('file-name-display').textContent = name;
+          const nameEl = document.getElementById('file-name-display');
+          nameEl.textContent = name; nameEl.title = path;
+          App.saveBlocked = false; App.dirty = false; App.hideLoadProblem();
           App.renderCurrentView();
-        } catch(e) { console.error('Failed to load initial data:', e); }
+        } catch(e) {
+          console.error('Failed to load initial data:', e);
+          App.showLoadProblem({ path, state: 'corrupt', error: 'the file could not be processed: ' + e.message });
+        }
       });
+      window.electronAPI.onLoadProblem(info => App.showLoadProblem(info));
+      window.electronAPI.onFlushRequest(async () => {
+        try { await App.flushNow(); } catch(e) { /* closing anyway */ }
+        window.electronAPI.flushDone();
+      });
+      document.getElementById('lp-choose').addEventListener('click', App.loadFile);
+      document.getElementById('lp-backups').addEventListener('click', () => window.electronAPI.openBackupsFolder());
+      document.getElementById('lp-create').addEventListener('click', App.createNewFile);
       // Get app info for API key status
       
     }
