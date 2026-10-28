@@ -2313,9 +2313,10 @@ Views.forecast = {
 
     for (let w=1; w<=52; w++) {
       // Work week Monday = payDate - 7 days (work week ends previous Friday)
-      const workWeekMon = new Date(payDate); workWeekMon.setDate(payDate.getDate()-7);
-      const hasSunday = App.calc.isAlternatingSunday(workWeekMon);
-      const hours = hasSunday ? 48 : 36;
+      const fh = Number(App.data.settings.forecastFixedHours);
+      const hours = App.data.settings.forecastHoursMode === 'alternating'
+        ? (App.calc.isAlternatingSunday(new Date(new Date(payDate).setDate(payDate.getDate()-7))) ? 48 : 36)
+        : (fh > 0 && fh <= 168 ? fh : 40);   // 40 hours every week, unless the settings say 'alternating' (old 48/36 pattern)
       const pred = App.calc.predictNetPay({regular:hours, overtime:0, holiday:0, pto:0, nightshift:0, bonus:0});
       vault += pred.net - weeklyFixed - weeklyGroceries;
       carLoan = Math.max(0, carLoan - weeklyCarPayment);

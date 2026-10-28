@@ -50,6 +50,18 @@ function core(zone) {
   check('a bill due today is on the list (dated today)', bills && bills.some(b => b.name === 'DueToday' && App.fmtDateInput(b.date) === todayS));
   check('bill dates are real Dates the page can show', bills && bills.every(b => b.date instanceof w.Date && App.fmtDate(b.date) !== '—'));
   check('the 31st bill falls on a real last-of-month date', bills && bills.filter(b => b.name === 'ThirtyFirst').every(b => { const s = App.fmtDateInput(b.date); return +s.slice(8, 10) === new Date(+s.slice(0, 4), +s.slice(5, 7), 0).getDate(); }));
+  // 3c. forecast hours: 40 every week by default (the 48/36 Sunday pattern only when switched on)
+  const V = w.eval('Views');
+  App.data.settings.alternatingSundayStart = '2026-06-21';
+  delete App.data.settings.forecastHoursMode; delete App.data.settings.forecastFixedHours;
+  let rows = V.forecast.generate();
+  check('forecast: 52 weeks, all 40 hours by default', rows.length === 52 && rows.every(r => r.hours === 40), rows.map(r => r.hours).slice(0, 6).join(','));
+  App.data.settings.forecastFixedHours = 38; rows = V.forecast.generate();
+  check('forecast: fixed hours can be changed in the settings', rows.every(r => r.hours === 38));
+  App.data.settings.forecastFixedHours = 'junk'; rows = V.forecast.generate();
+  check('forecast: a bad hours setting falls back to 40', rows.every(r => r.hours === 40));
+  App.data.settings.forecastHoursMode = 'alternating'; rows = V.forecast.generate();
+  check('forecast: alternating mode still gives the old 48/36 pattern', rows.every(r => r.hours === 48 || r.hours === 36) && rows.some(r => r.hours === 48) && rows.some(r => r.hours === 36));
   // 4. no old time-zone traps left in the two display helpers
   const m = raw.match(/fmtDate\(d\) \{[^\n]*\n\s*fmtDateInput\(d\) \{[^\n]*\n/);
   check('fmtDate and fmtDateInput are one-line calls into dates.js', !!m && !/toISOString|toLocale/.test(m[0]));
