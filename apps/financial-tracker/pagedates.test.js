@@ -50,6 +50,28 @@ function core(zone) {
   check('a bill due today is on the list (dated today)', bills && bills.some(b => b.name === 'DueToday' && App.fmtDateInput(b.date) === todayS));
   check('bill dates are real Dates the page can show', bills && bills.every(b => b.date instanceof w.Date && App.fmtDate(b.date) !== '—'));
   check('the 31st bill falls on a real last-of-month date', bills && bills.filter(b => b.name === 'ThirtyFirst').every(b => { const s = App.fmtDateInput(b.date); return +s.slice(8, 10) === new Date(+s.slice(0, 4), +s.slice(5, 7), 0).getDate(); }));
+  // 3d. payday itself, and "N days" counted in whole calendar days
+  const dow = w.FTDates.dayOfWeek(todayS), kToFri = (5 - dow + 7) % 7, friday = w.FTDates.addDays(todayS, kToFri);
+  App.data.paychecks = [{ id: 'p9', approved: true, date: w.FTDates.addDays(friday, -7), grossPay: 1, netPay: 1 }];
+  const np2 = App.calc.nextPaycheckDate();
+  check('the next paycheck is the coming Friday, and payday itself (today) still counts', App.fmtDateInput(np2) === friday, App.fmtDateInput(np2) + ' vs ' + friday);
+  const al = w.eval('Views').dashboard.buildAlerts({ flex: 9999, cc: 0, cc2: 0, vault: 9999 }, [], np2);
+  const msg = (al.find(a => /Next paycheck in/.test(a.msg)) || {}).msg || '';
+  check('"Next paycheck in N days" is whole calendar days (' + kToFri + ')', msg.includes('in ' + kToFri + ' day' + (kToFri !== 1 ? 's' : '') + ' '), msg);
+  // pretend today is that Friday (payday) and its paycheck is not entered yet
+  const realToday = w.FTDates.todayStr; w.FTDates.todayStr = () => friday;
+  App.data.paychecks = [{ id: 'p9', approved: true, date: w.FTDates.addDays(friday, -7), grossPay: 1, netPay: 1 }];
+  const npPay = App.calc.nextPaycheckDate();
+  check('ON payday the next paycheck is today (0 days), not a week away', App.fmtDateInput(npPay) === friday, App.fmtDateInput(npPay));
+  const alPay = w.eval('Views').dashboard.buildAlerts({ flex: 9999, cc: 0, cc2: 0, vault: 9999 }, [], npPay);
+  check('ON payday the alert says "in 0 days"', ((alPay.find(a => /Next paycheck in/.test(a.msg)) || {}).msg || '').includes('in 0 days'));
+  w.FTDates.todayStr = realToday;
+  App.data.paychecks = [{ id: 'p8', approved: true, date: friday, grossPay: 1, netPay: 1 }];
+  check('once that paycheck is approved the next one is a week later', App.fmtDateInput(App.calc.nextPaycheckDate()) === w.FTDates.addDays(friday, 7));
+  App.data.paychecks = [{ id: 'p7', approved: true, date: '2200-12-31' }];
+  check('a paycheck dated at the edge of the supported years does not crash', (() => { try { return App.calc.nextPaycheckDate() instanceof w.Date; } catch (e) { return false; } })());
+  App.data.paychecks = [{ id: 'p6', approved: true, date: 'garbage' }, { id: 'p5', approved: false, date: '2026-01-02' }];
+  check('unreadable or unapproved paychecks are ignored (falls back to the next Friday)', (() => { try { const d = App.calc.nextPaycheckDate(); return w.FTDates.dayOfWeek(App.fmtDateInput(d)) === 5; } catch (e) { return false; } })());
   // 3c. forecast hours: 40 every week by default (the 48/36 Sunday pattern only when switched on)
   const V = w.eval('Views');
   App.data.settings.alternatingSundayStart = '2026-06-21';

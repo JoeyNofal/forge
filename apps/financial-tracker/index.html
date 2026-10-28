@@ -1017,13 +1017,13 @@ const App = {
         .map(b => ({ name: b.name, amount: b.amount, date: FTDates.parseDate(b.date), freq: b.freq }));
     },
     nextPaycheckDate() {
-      const approved = App.data.paychecks.filter(p=>p.approved).sort((a,b)=>new Date(b.date)-new Date(a.date));
+      const todayS = FTDates.todayStr();
+      const approved = App.data.paychecks.filter(p => p.approved && FTDates.toDateStr(p.date)).map(p => FTDates.toDateStr(p.date)).sort();
       if (!approved.length) return App.calc.nextFriday(new Date());
-      const last = new Date(approved[0].date);
-      const next = new Date(last); next.setDate(last.getDate()+7);
-      const today = new Date();
-      while (next <= today) next.setDate(next.getDate()+7);
-      return App.calc.nextFriday(next);
+      let next = FTDates.addDays(approved[approved.length-1], 7);
+      while (next && FTDates.compare(next, todayS) < 0) next = FTDates.addDays(next, 7);   // a payday that is TODAY still counts as the next paycheck
+      if (!next) return App.calc.nextFriday(new Date());
+      return App.calc.nextFriday(FTDates.parseDate(next));
     },
     fundsReallocation(balance) {
       const carFund = Math.floor(balance/2/500)*500;
@@ -1446,7 +1446,7 @@ Views.dashboard = {
       alerts.push({type:'warn', icon:'◎', msg:`SAVOR has a balance — ${App.fmt(accts.cc2)}`});
     const daysToPaycheck = Math.ceil((nextPay-new Date())/(1000*60*60*24));
     alerts.push({type:'info', icon:'◎', msg:`Next paycheck in ${daysToPaycheck} day${daysToPaycheck!==1?'s':''} — ${App.fmtDate(nextPay)}`});
-    const soonBills = bills.filter(b=>{const d=Math.ceil((b.date-new Date())/(1000*60*60*24));return d<=5;});
+    const soonBills = bills.filter(b => FTDates.daysBetween(FTDates.todayStr(), FTDates.fmtDateInput(b.date)) <= 5);
     if (soonBills.length) alerts.push({type:'warn', icon:'◷', msg:`${soonBills.length} bill${soonBills.length>1?'s':''} due within 5 days`});
     return alerts;
   },
