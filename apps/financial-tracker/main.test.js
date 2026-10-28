@@ -26,6 +26,10 @@ for (const id of ['load-problem', 'lp-title', 'lp-msg', 'lp-path', 'lp-choose', 
 
 check('L1 index.html loads no scripts from the internet', !/<script[^>]*\bsrc=["']https?:/i.test(html));
 check('L1 index.html loads nothing from the internet (no http/https src or href at all)', !/(?:src|href)=["']https?:/i.test(html));
+const fontUrls = [...html.matchAll(/url\("(vendor\/fonts\/[^"]+)"\)/g)].map(m => m[1]);
+check('L1 index.html declares 8 local fonts and every font file exists', fontUrls.length === 8 && fontUrls.every(u => fs.existsSync(path.join(here, u)) && fs.statSync(path.join(here, u)).size > 5000));
+check('L1 the three font license files are included', ['dm-sans', 'dm-serif-display', 'dm-mono'].every(n => fs.existsSync(path.join(here, 'vendor', 'fonts', 'LICENSE-' + n + '.txt'))));
+check('L1 package.json packages vendor subfolders too', /vendor\/\*\*\/\*/.test(rd('package.json')));
 for (const f of ['vendor/chart.umd.js', 'vendor/exceljs.min.js'])
   check('L1 ' + f + ' exists and is not tiny', fs.existsSync(path.join(here, f)) && fs.statSync(path.join(here, f)).size > 100000);
 check('L1 package.json packages the vendor folder', /vendor\//.test(rd('package.json')));
