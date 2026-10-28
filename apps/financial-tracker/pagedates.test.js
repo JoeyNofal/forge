@@ -11,7 +11,8 @@ function core(zone) {
   const check = (name, cond, extra) => { if (cond) passed++; else { failed++; fails.push(name + (extra ? ' -> ' + extra : '')); } };
   const raw = fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8');
   const datesSrc = fs.readFileSync(path.join(__dirname, 'dates.js'), 'utf8');
-  const html = raw.replace('<script src="dates.js"></script>', () => '<script>' + datesSrc + '</script>').replace(/<script[^>]*\bsrc=[^>]*><\/script>/g, '');
+  const billsSrc = fs.readFileSync(path.join(__dirname, 'bills.js'), 'utf8');
+  const html = raw.replace('<script src="dates.js"></script>', () => '<script>' + datesSrc + '</script>').replace('<script src="bills.js"></script>', () => '<script>' + billsSrc + '</script>').replace(/<script[^>]*\bsrc=[^>]*><\/script>/g, '');
   const errors = []; const vc = new VirtualConsole(); vc.on('jsdomError', e => errors.push(String(e.message || e).slice(0, 200)));
   const dom = new JSDOM(html, {
     runScripts: 'dangerously', pretendToBeVisual: true, virtualConsole: vc, url: 'http://localhost/',
@@ -41,6 +42,14 @@ function core(zone) {
   check('next paycheck after Friday 2099-10-02 is Friday 2099-10-09 (shown)', np && App.fmtDate(np) === 'Oct 9, 2099', np && App.fmtDate(np));
   check('next paycheck date pre-filled into the form is 2099-10-09', np && App.fmtDateInput(np) === '2099-10-09', np && App.fmtDateInput(np));
   check('"work week end" pre-filled is the Friday a week earlier, 2099-10-02', (() => { const we = new w.Date(np); we.setDate(np.getDate() - 7); return App.fmtDateInput(we) === '2099-10-02'; })());
+  // 3b. a bill due today stays on the list (it used to vanish), and the 31st never spills into the next month
+  const todayS = w.FTDates.todayStr(), dayNow = +todayS.slice(8, 10);
+  App.data.fixedExpenses = [{ id: 'e1', name: 'DueToday', amount: 10, frequency: 'monthly', dueDay: dayNow }, { id: 'e2', name: 'ThirtyFirst', amount: 20, frequency: 'monthly', dueDay: 31 }];
+  let bills; try { bills = App.calc.upcoming30DayBills(); } catch (e) { bills = null; }
+  check('bills list works on the page', Array.isArray(bills) && bills.length >= 2, bills && JSON.stringify(bills.length));
+  check('a bill due today is on the list (dated today)', bills && bills.some(b => b.name === 'DueToday' && App.fmtDateInput(b.date) === todayS));
+  check('bill dates are real Dates the page can show', bills && bills.every(b => b.date instanceof w.Date && App.fmtDate(b.date) !== '—'));
+  check('the 31st bill falls on a real last-of-month date', bills && bills.filter(b => b.name === 'ThirtyFirst').every(b => { const s = App.fmtDateInput(b.date); return +s.slice(8, 10) === new Date(+s.slice(0, 4), +s.slice(5, 7), 0).getDate(); }));
   // 4. no old time-zone traps left in the two display helpers
   const m = raw.match(/fmtDate\(d\) \{[^\n]*\n\s*fmtDateInput\(d\) \{[^\n]*\n/);
   check('fmtDate and fmtDateInput are one-line calls into dates.js', !!m && !/toISOString|toLocale/.test(m[0]));

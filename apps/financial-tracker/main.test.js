@@ -30,7 +30,8 @@ const fontUrls = [...html.matchAll(/url\("(vendor\/fonts\/[^"]+)"\)/g)].map(m =>
 check('L1 index.html declares 8 local fonts and every font file exists', fontUrls.length === 8 && fontUrls.every(u => fs.existsSync(path.join(here, u)) && fs.statSync(path.join(here, u)).size > 5000));
 check('L1 the three font license files are included', ['dm-sans', 'dm-serif-display', 'dm-mono'].every(n => fs.existsSync(path.join(here, 'vendor', 'fonts', 'LICENSE-' + n + '.txt'))));
 check('L1 index.html loads dates.js and uses it for fmtDate and fmtDateInput', html.includes('<script src="dates.js"></script>') && html.includes('FTDates.fmtDate(d)') && html.includes('FTDates.fmtDateInput(d)'));
-check('L1 package.json packages dates.js', /"dates\.js"/.test(rd('package.json')));
+check('L1 package.json packages dates.js and bills.js', /"dates\.js"/.test(rd('package.json')) && /"bills\.js"/.test(rd('package.json')));
+check('L1 index.html loads bills.js and the bills list comes from it', html.includes('<script src="bills.js"></script>') && html.includes('FTBills.upcomingBills('));
 check('L1 package.json packages vendor subfolders too', /vendor\/\*\*\/\*/.test(rd('package.json')));
 for (const f of ['vendor/chart.umd.js', 'vendor/exceljs.min.js'])
   check('L1 ' + f + ' exists and is not tiny', fs.existsSync(path.join(here, f)) && fs.statSync(path.join(here, f)).size > 100000);

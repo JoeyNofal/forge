@@ -8,6 +8,7 @@
 <script src="vendor/chart.umd.js"></script>
 <script src="vendor/exceljs.min.js"></script>
 <script src="dates.js"></script>
+<script src="bills.js"></script>
 <style>
 /* fonts saved locally (SIL Open Font License, see vendor/fonts) so the app works with no internet */
 @font-face { font-family: 'DM Serif Display'; font-style: normal; font-weight: 400; font-display: swap; src: url("vendor/fonts/dm-serif-display-latin-400-normal.woff2") format('woff2'); }
@@ -1011,25 +1012,9 @@ const App = {
       const diff = day <= 5 ? 5-day : 7-day+5;
       d.setDate(d.getDate()+diff); return d;
     },
-    upcoming30DayBills() {
-      const now = new Date(); const end = new Date(); end.setDate(now.getDate()+30);
-      const bills = [];
-      for (const e of App.data.fixedExpenses) {
-        if (e.endDate && new Date(e.endDate) < now) continue;
-        if (e.frequency === 'monthly') {
-          const due = new Date(now.getFullYear(), now.getMonth(), e.dueDay||1);
-          if (due < now) due.setMonth(due.getMonth()+1);
-          if (due <= end) bills.push({name:e.name, amount:e.amount, date:due, freq:e.frequency});
-        } else if (e.frequency === 'biweekly' && e.startDate) {
-          let d = new Date(e.startDate);
-          while (d < now) d.setDate(d.getDate()+14);
-          while (d <= end) { bills.push({name:e.name, amount:e.amount, date:new Date(d), freq:e.frequency}); d.setDate(d.getDate()+14); }
-        } else if (e.frequency === 'weekly') {
-          let d = new Date(now); d.setDate(d.getDate()+1);
-          while (d <= end) { bills.push({name:e.name, amount:e.amount, date:new Date(d), freq:e.frequency}); d.setDate(d.getDate()+7); }
-        }
-      }
-      return bills.sort((a,b)=>a.date-b.date);
+    upcoming30DayBills() {   // bills.js: plain calendar dates, due-today kept, day 31 clamped, start/end dates respected
+      return FTBills.upcomingBills(App.data.fixedExpenses, FTDates.todayStr(), 30)
+        .map(b => ({ name: b.name, amount: b.amount, date: FTDates.parseDate(b.date), freq: b.freq }));
     },
     nextPaycheckDate() {
       const approved = App.data.paychecks.filter(p=>p.approved).sort((a,b)=>new Date(b.date)-new Date(a.date));
