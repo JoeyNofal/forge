@@ -1444,7 +1444,7 @@ Views.dashboard = {
       alerts.push({type:'warn', icon:'◎', msg:`FREEDOM has a balance — ${App.fmt(accts.cc)}`});
     if (accts.cc2 > 0)
       alerts.push({type:'warn', icon:'◎', msg:`SAVOR has a balance — ${App.fmt(accts.cc2)}`});
-    const daysToPaycheck = Math.ceil((nextPay-new Date())/(1000*60*60*24));
+    const daysToPaycheck = FTDates.daysBetween(FTDates.todayStr(), FTDates.fmtDateInput(nextPay));
     alerts.push({type:'info', icon:'◎', msg:`Next paycheck in ${daysToPaycheck} day${daysToPaycheck!==1?'s':''} — ${App.fmtDate(nextPay)}`});
     const soonBills = bills.filter(b => FTDates.daysBetween(FTDates.todayStr(), FTDates.fmtDateInput(b.date)) <= 5);
     if (soonBills.length) alerts.push({type:'warn', icon:'◷', msg:`${soonBills.length} bill${soonBills.length>1?'s':''} due within 5 days`});
