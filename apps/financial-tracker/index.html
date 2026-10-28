@@ -7,6 +7,7 @@
 
 <script src="vendor/chart.umd.js"></script>
 <script src="vendor/exceljs.min.js"></script>
+<script src="dates.js"></script>
 <style>
 /* fonts saved locally (SIL Open Font License, see vendor/fonts) so the app works with no internet */
 @font-face { font-family: 'DM Serif Display'; font-style: normal; font-weight: 400; font-display: swap; src: url("vendor/fonts/dm-serif-display-latin-400-normal.woff2") format('woff2'); }
@@ -869,14 +870,8 @@ const App = {
   // ── UTILS ──
   uid() { return '_' + Math.random().toString(36).substr(2,9) + Date.now().toString(36); },
   fmt(n) { return new Intl.NumberFormat('en-US',{style:'currency',currency:'USD'}).format(n||0); },
-  fmtDate(d) {
-    const dt = d instanceof Date ? d : new Date(d);
-    return dt.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});
-  },
-  fmtDateInput(d) {
-    const dt = d instanceof Date ? d : new Date(d);
-    return dt.toISOString().split('T')[0];
-  },
+  fmtDate(d) { return FTDates.fmtDate(d); },            // dates.js: plain calendar dates, no time-zone shifts
+  fmtDateInput(d) { return FTDates.fmtDateInput(d); },
   showToast(msg, type='') {
     const t = document.getElementById('toast');
     t.textContent = msg; t.className = type ? `show ${type}` : 'show';

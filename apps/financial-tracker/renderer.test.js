@@ -6,7 +6,8 @@ const { JSDOM, VirtualConsole } = require('jsdom');
 let passed = 0, failed = 0;
 function check(name, cond, extra) { if (cond) passed++; else { failed++; console.log('FAIL: ' + name + (extra ? '  -> ' + extra : '')); } }
 const rawHtml = fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8');
-const html = rawHtml.replace(/<script[^>]*\bsrc=[^>]*><\/script>/g, '');   // no internet in tests
+const datesSrc = fs.readFileSync(path.join(__dirname, 'dates.js'), 'utf8');
+const html = rawHtml.replace('<script src="dates.js"></script>', () => '<script>' + datesSrc + '</script>').replace(/<script[^>]*\bsrc=[^>]*><\/script>/g, '');   // dates.js inlined, nothing from the internet
 const tick = () => new Promise(r => setImmediate(r));
 const goodData = (n) => JSON.stringify({ accounts: { vault: 100, flex: 50, funds: 10 }, transactions: Array.from({ length: n === undefined ? 2 : n }, (_, i) => ({ id: 't' + i, date: '2026-05-0' + (1 + (i % 9)), accountId: 'vault', amount: 1, description: 'x', balance: 100 })), settings: {}, paychecks: [], fixedExpenses: [] });
 
