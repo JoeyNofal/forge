@@ -6,6 +6,11 @@
 //  * banks / savings / receivable (BREX): amounts carry over unchanged.
 //  * credit cards and loans: regular entries recorded "change in amount owed", so their sign is
 //    flipped into cash flow; transfers were already written as cash flow and keep their sign.
+//  * EXCEPT a transfer on a card/loan whose typed balance moved the WRONG way (the old direction
+//    bug): you had already fixed the number by hand, so it is kept exactly as the old page counted
+//    it (flagged with a note, not linked to its partner).
+//  * old transfers had no link between their two halves: unambiguous pairs (same date and
+//    description, equal and opposite amounts, different accounts) are linked.
 //  * opening balance = typed balance of the first typed entry minus what the entries up to it do.
 //  * if the converted math does not end on the number the old page showed, ONE labeled
 //    "Migration adjustment" entry is added, dated at that account's last entry.
@@ -42,7 +47,7 @@ function convert(old, opts) {
   Object.keys(stored).forEach(add);
   txns.forEach(t => t && typeof t === 'object' && add(t.accountId));
 
-  const rep = { accounts: [], problems: [], skipped: [], unlinked: 0, renamedIds: 0, directionBug: [], oldNetWorth: 0, newNetWorth: null, validateProblems: [] };
+  const rep = { accounts: [], problems: [], skipped: [], unlinked: 0, renamedIds: 0, paired: 0, unpaired: 0, directionBug: [], oldNetWorth: 0, newNetWorth: null, validateProblems: [] };
   const kindOf = (id) => (DEFS[id] ? DEFS[id].kind : 'bank');
   const roleOf = (id) => (DEFS[id] ? DEFS[id].role : 'none');
   const debtOf = (id) => L.isDebt(kindOf(id));
@@ -54,10 +59,21 @@ function convert(old, opts) {
     const amt = L.toCents(t.amount), date = typeof t.date === 'string' ? t.date.slice(0, 10) : '';
     if (amt === null || !okDate(date)) { rep.skipped.push({ i, account: t.accountId, why: amt === null ? 'bad amount' : 'bad date' }); return; }
     const row = { i, id: typeof t.id === 'string' && t.id ? t.id : null, account: t.accountId, date, amt, bal: L.toCents(t.balance), type: typeof t.type === 'string' && t.type ? t.type : 'transaction', desc: String(t.description == null ? '' : t.description).slice(0, 200), linked: typeof t.linkedId === 'string' ? t.linkedId : null };
-    row.v2amt = debtOf(row.account) && row.type !== 'transfer' ? -amt : amt;
     (byAcct[row.account] = byAcct[row.account] || []).push(row);
     if (row.id && !byOldId[row.id]) byOldId[row.id] = row;
   });
+
+  // sign rule per entry (needs the typed balance of the previous typed entry of the same account)
+  for (const id of Object.keys(byAcct)) {
+    const debt = debtOf(id);
+    let prev = null;
+    for (const r of byAcct[id]) {
+      r.bug = false;
+      if (debt && r.type === 'transfer' && r.bal !== null && prev !== null && r.amt !== 0 && r.bal - prev === r.amt) { r.bug = true; r.before = prev; }
+      r.v2amt = debt ? ((r.type === 'transfer' && !r.bug) ? r.amt : -r.amt) : r.amt;
+      if (r.bal !== null) prev = r.bal;
+    }
+  }
 
   // new unique ids; transfer partners must exist and cancel
   const used = new Set();
@@ -71,9 +87,18 @@ function convert(old, opts) {
     r.link = null;
     if (r.type === 'transfer' && r.linked) {
       const p = byOldId[r.linked];
-      if (p && p !== r && p.linked === r.id && p.amt + r.amt === 0) r.link = p.nid; else rep.unlinked++;
+      if (p && p !== r && p.linked === r.id && p.amt + r.amt === 0 && !p.bug && !r.bug) r.link = p.nid; else rep.unlinked++;
     }
   }
+  // old transfers had no links: pair the unambiguous ones
+  const cand = all.filter(r => r.type === 'transfer' && !r.link && !r.linked && !r.bug && r.amt !== 0);
+  const groups = {};
+  for (const r of cand) { const k = r.date + '|' + r.desc.trim().toLowerCase() + '|' + Math.abs(r.amt); (groups[k] = groups[k] || []).push(r); }
+  for (const k of Object.keys(groups)) {
+    const g = groups[k];
+    if (g.length === 2 && g[0].account !== g[1].account && g[0].amt + g[1].amt === 0) { g[0].link = g[1].nid; g[1].link = g[0].nid; rep.paired++; }
+  }
+  rep.unpaired = cand.filter(r => !r.link).length;
 
   const out = Object.assign({}, old);
   delete out.accounts; delete out.transactions;
@@ -96,6 +121,7 @@ function convert(old, opts) {
     for (const r of rows) {
       const e = { id: r.nid, accountId: id, date: r.date, description: r.desc, amountCents: r.v2amt, type: r.type };
       if (r.link) e.linkedId = r.link;
+      if (r.bug) e.note = 'Old app moved this balance the wrong way; kept as the old page counted it.';
       v2txns.push(e);
     }
     // the number the old page showed: latest typed balance by date (ties: entry order), else the stored value
@@ -104,15 +130,7 @@ function convert(old, opts) {
     rep.oldNetWorth += debt ? -page : page;
     rep.accounts.push({ id, name: accounts[accounts.length - 1].name, kind, role: roleOf(id), opening, openingDate, entries: rows.length, page, v2Balance: null, adjustment: 0, adjustmentDate: null });
     lastDates[id] = dates.length ? dates[dates.length - 1] : null;
-    // direction bug: a transfer on a card/loan whose typed balance moved WITH the cash flow
-    if (debt) {
-      let prev = null;
-      for (const r of rows) {
-        if (r.bal === null) continue;
-        if (prev !== null && r.type === 'transfer' && r.amt !== 0 && r.bal - prev === r.amt) rep.directionBug.push({ account: id, date: r.date, desc: r.desc.slice(0, 28), amount: r.amt, before: prev, after: r.bal });
-        prev = r.bal;
-      }
-    }
+    for (const r of rows) if (r.bug) rep.directionBug.push({ account: id, date: r.date, desc: r.desc.slice(0, 28), amount: r.amt, before: r.before, after: r.bal });
   }
   const data = Object.assign(out, { schemaVersion: 2, accounts, transactions: v2txns });
   for (const info of rep.accounts) {
@@ -139,9 +157,10 @@ function format(r) {
     lines.push('  ' + (a.adjustment === 0 ? 'no adjustment needed' : 'ADJUSTMENT entry ' + money(a.adjustment) + ' dated ' + a.adjustmentDate));
   }
   lines.push('');
-  lines.push('Transfers on cards/loans where the OLD app moved the balance the wrong way (' + r.directionBug.length + '):');
+  lines.push('Wrong-way transfers on cards/loans, KEPT exactly as the old page counted them (' + r.directionBug.length + '):');
   r.directionBug.forEach(b => lines.push('  ' + b.date + '  ' + b.account + '  ' + b.desc.padEnd(28) + ' amount ' + money(b.amount) + '  balance went ' + money(b.before) + ' -> ' + money(b.after)));
   if (r.skipped.length) lines.push('Skipped entries (' + r.skipped.length + '): ' + r.skipped.slice(0, 10).map(s => (s.account || '?') + ' #' + s.i + ' ' + s.why).join('; '));
+  lines.push('Old transfers paired automatically: ' + r.paired + '; left as plain entries (no clear partner): ' + r.unpaired);
   if (r.unlinked) lines.push('Transfers whose partner was missing or did not match (now plain entries): ' + r.unlinked);
   if (r.renamedIds) lines.push('Entries that shared an id (given new ids): ' + r.renamedIds);
   r.problems.forEach(p => lines.push('NOTE: ' + p));

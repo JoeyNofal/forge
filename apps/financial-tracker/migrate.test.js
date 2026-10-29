@@ -28,9 +28,13 @@ check('bank amounts carry over unchanged, opening derived', r1.data.transactions
 check('card: a regular entry (owed +50) becomes cash flow -50', r1.data.transactions.find(t => t.id === 'cc-2026-02-03-50').amountCents === -5000);
 check('card: a transfer into it keeps its sign (+20 payment lowers what is owed)', r1.data.transactions.find(t => t.id === 't2').amountCents === 2000);
 check('the old direction-bug transfer is listed with its before and after', r1.report.directionBug.length === 1 && r1.report.directionBug[0].account === 'cc' && r1.report.directionBug[0].before === 3000 && r1.report.directionBug[0].after === 4000);
-check('the converted math ends at 20.00 owed; old page showed 40.00; ONE adjustment of +20.00 dated at the last entry', info(r1, 'cc').v2Balance === 2000 && info(r1, 'cc').page === 4000 && info(r1, 'cc').adjustment === 2000 && info(r1, 'cc').adjustmentDate === '2026-02-05');
-const adj = r1.data.transactions.filter(t => t.type === 'migration_adjustment');
-check('exactly one labeled adjustment entry; the debt sign is right (owed goes up by 20)', adj.length === 1 && adj[0].accountId === 'cc' && adj[0].date === '2026-02-05' && adj[0].description === M.ADJ_TEXT && adj[0].amountCents === -2000 && bal(r1, 'cc') === 4000);
+check('the wrong-way transfer is KEPT as the old page counted it: card ends at 40.00, no adjustment', info(r1, 'cc').v2Balance === 4000 && info(r1, 'cc').page === 4000 && info(r1, 'cc').adjustment === 0);
+const kept = r1.data.transactions.find(t => t.id === 't4'), keptPartner = r1.data.transactions.find(t => t.id === 't3');
+check('a kept wrong-way entry has the old effect (+10 owed = -10 cash flow), a note, and no link to its partner', kept.amountCents === -1000 && /wrong way/.test(kept.note) && !kept.linkedId && !keptPartner.linkedId && L.validate(r1.data).length === 0);
+// a typed-balance typo on a bank and on a card gets ONE labeled adjustment, dated at the last entry
+const typo = conv({ accounts: {}, transactions: [tx('vault', '2026-03-01', 100, 100), tx('vault', '2026-03-02', -10, 100), tx('cc', '2026-03-01', 50, 50), tx('cc', '2026-03-02', 10, 100)] });
+const adj = typo.data.transactions.filter(t => t.type === 'migration_adjustment');
+check('typo: bank is 10.00 too low in the math, so +10.00; card owes 40.00 more on the page, so -40.00 cash flow; each dated at its last entry', adj.length === 2 && info(typo, 'vault').adjustment === 1000 && info(typo, 'cc').adjustment === 4000 && adj.find(t => t.accountId === 'vault').amountCents === 1000 && adj.find(t => t.accountId === 'cc').amountCents === -4000 && adj.every(t => t.date === '2026-03-02' && t.description === M.ADJ_TEXT) && bal(typo, 'vault') === 10000 && bal(typo, 'cc') === 10000);
 check('every account ends on the number the old page showed', r1.report.accounts.every(a => bal(r1, a.id) === a.page));
 check('net worth matches and the shape check is clean', r1.report.netWorthMatches && r1.report.oldNetWorth === 83000 && r1.report.validateProblems.length === 0);
 check('transfers stay linked, both halves cancel', r1.data.transactions.find(t => t.id === 't1').linkedId === 't2' && r1.data.transactions.find(t => t.id === 't2').linkedId === 't1');
@@ -60,9 +64,27 @@ check('refusals: already v2, bad input, bad today', !conv({ schemaVersion: 2, ac
 check('a mostly empty file converts to 7 empty accounts with no adjustments', (() => { const r = conv({}); return r.ok && r.data.accounts.length === 7 && r.data.transactions.length === 0 && r.report.validateProblems.length === 0; })());
 
 // ---------- the printed preview ----------
-const txt = M.format(r1.report);
-check('preview names accounts, the adjustment, the wrong-way transfer, net worth MATCH, and says nothing was written', /FREEDOM \(Chase\)/.test(txt) && /ADJUSTMENT entry \$20\.00 dated 2026-02-05/.test(txt) && /balance went \$30\.00 -> \$40\.00/.test(txt) && /MATCH/.test(txt) && !/DO NOT MATCH/.test(txt) && /nothing was written/.test(txt));
+const txt = M.format(r1.report), txt2 = M.format(typo.report);
+check('preview names accounts, the kept wrong-way transfer, pairing, net worth MATCH, and says nothing was written', /FREEDOM \(Chase\)/.test(txt) && /KEPT exactly as the old page counted them \(1\)/.test(txt) && /balance went \$30\.00 -> \$40\.00/.test(txt) && /paired automatically/.test(txt) && /MATCH/.test(txt) && !/DO NOT MATCH/.test(txt) && /nothing was written/.test(txt) && /ADJUSTMENT entry \$10\.00 dated 2026-03-02/.test(txt2));
 check('a missing net worth is shown as unavailable, never as $0.00', /unavailable/.test(M.format(Object.assign({}, r1.report, { newNetWorth: null, netWorthMatches: false }))));
+
+// ---------- the real car-loan story: wrong-way transfer, then a manual fix ----------
+const story = conv({ accounts: {}, transactions: [
+  tx('car_loan', '2026-05-31', -1500, 13000), tx('vault', '2026-06-28', -3000, 5000, { id: 'v1', type: 'transfer' }),
+  tx('car_loan', '2026-06-28', 3000, 16000, { id: 'c1', type: 'transfer' }), tx('car_loan', '2026-06-28', -6500, 9500)] });
+check('car-loan story: the wrong-way payment and your manual fix net out exactly as the old page, NO big adjustment', info(story, 'car_loan').page === 950000 && info(story, 'car_loan').adjustment === 0 && bal(story, 'car_loan') === 950000 && story.report.directionBug.length === 1);
+// ---------- pairing old unlinked transfers ----------
+const pr = conv({ accounts: {}, transactions: [
+  tx('vault', '2026-02-02', -310, 1000, { id: 'a1', type: 'transfer', description: 'Weekly allowance' }), tx('flex', '2026-02-02', 310, 310, { id: 'a2', type: 'transfer', description: 'weekly allowance ' }),
+  tx('vault', '2026-02-09', -5, 995, { id: 'b1', type: 'transfer', description: 'Same' }), tx('flex', '2026-02-09', 5, 315, { id: 'b2', type: 'transfer', description: 'Same' }), tx('vault', '2026-02-09', -5, 990, { id: 'b3', type: 'transfer', description: 'Same' }), tx('funds', '2026-02-09', 5, 5, { id: 'b4', type: 'transfer', description: 'Same' }),
+  tx('vault', '2026-02-10', -7, 983, { id: 'c1x', type: 'transfer', description: 'Lone' }),
+  tx('vault', '2026-02-11', -9, 974, { id: 'd1', type: 'transfer', description: 'Same account' }), tx('vault', '2026-02-11', 9, 983, { id: 'd2', type: 'transfer', description: 'Same account' })] });
+const link = (id) => pr.data.transactions.find(t => t.id === id).linkedId;
+check('pairing: an unambiguous pair is linked both ways (case and spaces in the description ignored)', link('a1') === 'a2' && link('a2') === 'a1' && pr.report.paired === 1);
+check('pairing: four identical transfers (ambiguous), a lone one, and a same-account pair stay plain entries', !link('b1') && !link('b2') && !link('b3') && !link('b4') && !link('c1x') && !link('d1') && !link('d2') && pr.report.unpaired === 7);
+check('pairing: the converted file is still valid and halves cancel', L.validate(pr.data).length === 0);
+const pdebt = conv({ accounts: {}, transactions: [tx('vault', '2026-02-02', -20, 100, { id: 'p1', type: 'transfer', description: 'pay card' }), tx('cc', '2026-02-02', 20, 30, { id: 'p2', type: 'transfer', description: 'pay card' }), tx('cc', '2026-01-01', 50, 50)] });
+check('pairing a correct card payment: linked, and the card still ends where the page says', pdebt.data.transactions.find(t => t.id === 'p2').linkedId === 'p1' && pdebt.report.paired === 1);
 
 // ---------- L4 / L5 ----------
 const bigT = []; for (let i = 0; i < 50000; i++) bigT.push(tx(['vault', 'flex', 'cc'][i % 3], '2026-0' + (1 + (i % 9)) + '-1' + (i % 9), (i % 7) - 3, null, { id: 'b' + i }));
