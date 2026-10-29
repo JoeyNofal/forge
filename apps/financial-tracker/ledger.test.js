@@ -52,6 +52,16 @@ check('transfer refusals', !bad({ fromId: 'zzz' }).ok && !bad({ toId: 'vault' })
 check('transfer to or from a closed account is refused', !L.addTransfer(mk([], [A('vault', 'bank', 'vault'), A('flex', 'bank', 'flex'), A('funds', 'savings', 'funds'), A('old', 'bank', 'none', 0, { closed: true })]), { fromId: 'vault', toId: 'old', amountCents: 5, date: '2026-05-01', makeId: ids }).ok);
 check('a transfer dated in the future only counts from its date', L.balanceCents(tr('vault', 'flex', 700, '2026-09-01').data, 'flex', '2026-08-31') === 0 && L.balanceCents(tr('vault', 'flex', 700, '2026-09-01').data, 'flex', '2026-09-01') === 700);
 
+// ---------- L2 receivable (money a friend owes you) ----------
+const rec = mk([T('r1', 'brex', '2026-02-01', 50000)], [A('vault', 'bank', 'vault', 100000), A('flex', 'bank', 'flex'), A('funds', 'savings', 'funds'), A('brex', 'receivable', 'none', 100000)]);
+check('receivable balance goes UP when you lend more, like a bank', L.balanceCents(rec, 'brex', '2026-12-31') === 150000);
+check('receivable counts as an ASSET in net worth', L.netWorthCents(rec, '2026-12-31') === 100000 + 150000 && L.validate(rec).length === 0);
+const lend = L.addTransfer(rec, { fromId: 'vault', toId: 'brex', amountCents: 20000, date: '2026-05-01', makeId: ids }).data;
+check('lending from VAULT raises BREX and lowers VAULT (old code got this backwards)', L.balanceCents(lend, 'brex', '2026-12-31') === 170000 && L.balanceCents(lend, 'vault', '2026-12-31') === 80000 && L.netWorthCents(lend, '2026-12-31') === L.netWorthCents(rec, '2026-12-31'));
+const back2 = L.addTransfer(lend, { fromId: 'brex', toId: 'vault', amountCents: 70000, date: '2026-06-01', makeId: ids }).data;
+check('a repayment lowers BREX and raises VAULT; paid in full it can be closed', L.balanceCents(back2, 'brex', '2026-12-31') === 100000 && L.balanceCents(back2, 'vault', '2026-12-31') === 150000 && L.closeAccount(L.addTransfer(back2, { fromId: 'brex', toId: 'vault', amountCents: 100000, date: '2026-07-01', makeId: ids }).data, 'brex', '2026-12-31').ok);
+check('a receivable is not a debt', !L.isDebt('receivable') && L.KINDS.includes('receivable'));
+
 // ---------- L2 delete / close / validate ----------
 const del1 = L.deleteTransaction(t1.data, t1.data.transactions[0].id, true), del2 = L.deleteTransaction(t1.data, t1.data.transactions[0].id, false);
 check('deleting a transfer with both halves removes both', del1.ok && del1.data.transactions.length === 0 && del1.removed === 2);

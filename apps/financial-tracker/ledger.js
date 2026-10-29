@@ -8,6 +8,9 @@
 //                    balance = opening - sum(amounts)
 //   (spending on a card is negative, so the debt grows; a payment is positive,
 //    so the debt shrinks.)
+//   receivable (money someone owes YOU, e.g. a friend you lent to) behaves like
+//    a bank account and counts as an asset: lending more is positive, a
+//    repayment is negative.
 // A transaction counts from its own date onward (date <= asOf), and only if its
 // date is on or after the account's openingDate (the opening balance already
 // includes anything older).
@@ -15,7 +18,7 @@
 
 const D = require('./dates.js');
 
-const KINDS = ['bank', 'savings', 'credit_card', 'loan'];
+const KINDS = ['bank', 'savings', 'credit_card', 'loan', 'receivable'];
 const ROLES = ['vault', 'flex', 'funds', 'none'];
 const MAX_CENTS = 9e13; // $900 billion: anything larger is a typo, not money
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
