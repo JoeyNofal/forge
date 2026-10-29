@@ -1363,3 +1363,77 @@ test_exercise_vocab 10, test_atlas_rules 40, test_training_rules 38, test_atlas_
 1. Read this record and the project files. Clone the repo (HEAD should be 3685b1d), install the packages from the Session 15 record.
 2. Ask Joey ONE question: which of the three options for 1.3a (pause, small steps, patch route). Then do exactly that, in small replies.
 3. Keep every reply short, with the build tracker on top, and ask before any change touching more than one file.
+
+# FORGE — Completion Record, Session 18
+*(Financial Tracker: audit, Step A data safety, offline, Step B1 dates/bills/forecast, B2 design agreed. Last commit pushed: 0364079 on main. Paste this into the Completion Record file.)*
+
+## 0. Where things stand
+- This session was a side trip from ATLAS: Joey asked to test and improve his existing Financial Tracker (Electron app, "Vault"). ATLAS is unchanged since Session 17 (item 1.3a still undecided: pause / small steps / patch route; 1.3b, 1.4, 1.5 and Phases 2-4 not started).
+- The NEW tracker lives in `apps/financial-tracker/` (copied from `reference/Financial Tracker/FinancialTracker/Files`; `reference/` stays an untouched copy of the old one).
+- The OLD tracker stays Joey's LIVE app until the switch-over (B6): `D:\Projects\Financial Tracker\FinancialTracker\financial-tracker-data.json`. ASSET still reads that file (its built-in default path). The new app only ever runs on throwaway COPIES until then.
+- Step A (data safety + offline) is DONE and hands-on tested. Step B1 (dates, bills, forecast hours, paycheck dates) is DONE. B2 design is AGREED (section 6); no B2 code yet.
+
+## 1. Standing rules (new or reconfirmed this session)
+- Joey is running low on tokens: ONE small step per reply, short replies, no big chunks; wait for his green run before the next step. Every reply says where we are in the plan.
+- Claude never edits his files; every change is a FIND / REPLACE block (Ctrl+H, "1 of 1" match) or a whole new file, with exact PowerShell steps. Claude tests in its own sandbox clone first (mocked tests only); Joey runs the real checks and pastes the output. Claude must not run commands that stop his other programs (it once ran Stop-Process -Name electron, which closed his normal tracker; nothing was lost; never again).
+- After every green step: git status, git add -A, git commit, git push. Do not commit on a failing test (it happened once; fixed in the next commit).
+- Tests must be able to FAIL: Claude mutation-checks new tests by deliberately breaking the code and confirming the tests notice.
+- Throwaway copy for hands-on checks: `D:\Projects\Forge\data\ft-handson\copy.json` (data\ is gitignored). Launch: `cd "D:\Projects\Forge\apps\financial-tracker"` then `npx electron . --data-file "D:\Projects\Forge\data\ft-handson\copy.json"`.
+- Whole test command: `cd "D:\Projects\Forge\apps\financial-tracker"` then `npm test` (runs 7 suites in order).
+
+## 2. Repo and config facts
+- FORGE's real settings file is `D:\Projects\Forge\shared\.env` (NOT the repo root). It has NO `FINANCIAL_DATA_PATH` line yet; do not add it until switch-over (two apps writing one file is the thing to avoid).
+- Data path priority in the new app: `--data-file` launch option > `FINANCIAL_DATA_PATH` in shared\.env (or a root .env) > Windows system variable > `Documents\FinancialTracker\financial-tracker-data.json`. The .env wins over a stale system variable (Lesson #12). If the file is missing the app SAYS SO and creates nothing.
+- Sandbox recipe for the tracker: clone the repo, `git reset --hard && git clean -fdq apps && git pull` before each step (the sandbox only sees what Joey pushed); jsdom installed outside the repo and symlinked as node_modules; Linux honours TZ so the time-zone tests really run there.
+- Commits this session (all on main): 96b203d (Financial Tracker added to reference/), 26ec643, cf53436, af7150e, db48fdc, 7d48e64, 9f7f2e9, 86e84c9, 233359f, 0f08a7e, 42e89e7, b905ad2, 5545f98, 0364079.
+
+## 3. What was built (files in apps/financial-tracker/)
+- `datastore.js` (+ `datastore.test.js`, 58): loadData (ok / missing / corrupt / invalid / error, never throws, never creates a file), saveData (refuses empty/invalid/oddly shaped data, wipe guard: refuses to replace a file that has transactions with one that has none, atomic write via temp file + rename with retries, keeps an `.unreadable-<stamp>` copy of a broken original), dated backups in `backups/` (at most one per 10 minutes, newest 30 kept; the 10-minute rule reads the time from the backup's FILE NAME, because Windows keeps the old modified time on copies).
+- `session.js` (+ `session.test.js`, 75): DataSession decides WHEN saving is allowed (only after a safe load; "choose another file" never replaces a working session; "create new" only when the file is truly missing); parseDotEnv / readDotEnvValue / pickDataPath.
+- `main.js` (rewritten) + `preload.js` (rewritten) (+ `main.test.js`, 101: runs the REAL main.js against a fake electron in a temp copy of the app): problem screen messages, save-data / create-new-file / load-file / import-file / open-backups-folder / flush-done, save-on-close (page is asked to flush; 3 s fallback), https-only open-external, startup backup. REMOVED: the Claude API handler and key lookup, DevTools auto-open, the hardcoded D: path.
+- `index.html` changes: full-screen "data file not found / could not be read safely" screen (saving OFF while it shows, buttons: choose another file / create new empty file (only when missing) / open backups folder); save indicator never hides a failure (SAVE FAILED - retrying, one message, retry every 5 s); pending edits flushed on close; a valid-JSON file that breaks loading now shows the problem screen instead of silent zeros; file-name tooltip shows the full path.
+- Offline: `vendor/chart.umd.js` (Chart.js 4.4.1), `vendor/exceljs.min.js` (ExcelJS 4.4.0), `vendor/fonts/` (DM Sans 300/400/500/600, DM Serif Display normal+italic, DM Mono 400/500, woff2, with their SIL OFL license files); the Google Fonts link (it caused a black screen offline) and both CDN scripts are gone; a test fails if any http(s) src/href returns. `package.json` "files" packages main, preload, datastore, session, dates, bills, index.html and vendor/**/*; `npm test` script added; jsdom is a devDependency.
+- `dates.js` (+ `dates.test.js`, 603 checks run once per time zone in 9 zones incl. +14h, 30-minute offsets, DST days): plain 'YYYY-MM-DD' calendar dates (no time-zone shifts); todayStr, parseDate, fmtDate, fmtDateInput, addDays, daysBetween, dayOfWeek, dueDateInMonth (day 31 clamps to month end), compare; recognises Dates from another window (cross-realm safe).
+- `bills.js` (+ `bills.test.js`, 61): upcomingBills(expenses, today, days): bill due today stays; day 29-31 clamped; start/end dates respected per occurrence; biweekly needs a start date (else skipped, as before); weekly with no start date counts from tomorrow (as before, flagged for B3); unknown frequencies skipped.
+- `renderer.test.js` (54; real page in jsdom with a fake electronAPI) and `pagedates.test.js` (175 checks over 5 time zones; real page, date display, evening "today", next paycheck, bills list, forecast hours).
+- Page wiring: fmtDate/fmtDateInput call dates.js; upcoming30DayBills calls bills.js; nextPaycheckDate uses calendar dates (a payday that is TODAY counts as the next paycheck, "0 days", until its paycheck is approved); "Next paycheck in N days" and the "bills due within 5 days" alert count whole calendar days.
+- Forecast hours: Joey works 40 hours every week now (he may go back to the alternating-Sunday 48/36 pattern next year). Forecast uses `settings.forecastFixedHours` (default 40, bad value -> 40); the old 48/36 pattern only if `settings.forecastHoursMode === 'alternating'` (legacy math kept as is; revisit when he returns to it). There is NO settings screen for these two keys yet (B4).
+
+## 4. Test baseline at commit 0364079 (Joey's machine, all green)
+datastore 58, session 75, dates 603 (9 time zones), bills 61, main 101, renderer 54, pagedates 175 (5 time zones). The datastore suite also prints two info lines (hostile reader: a few saves may report a clean failure; realistic reader: 0 failures).
+
+## 5. Hands-on checks done on a copy of his real data (all passed)
+A normal start/save/close (balances matched the old app, no DevTools, edit + quick close persisted, dated backup made); B damaged file (red screen, original file hash unchanged, "choose another file" recovered); C missing file (not-found screen, nothing created); D read-only file (SAVE FAILED - retrying, then Saved after unlock); E all 8 pages fine; offline (Wi-Fi off) charts and fonts fine; dates/paycheck form and Forecast pages looked right.
+
+## 6. B2 DESIGN AGREED (no code yet)
+- File format version 2 (`schemaVersion: 2`; the app refuses a newer version; v1 files are converted ONLY by a migration script run on a COPY, never silently by the app).
+- Accounts become a list: {id, name, kind: bank | savings | credit_card | loan, role: vault | flex | funds | none, openingCents, openingDate, closed}. VAULT, FLEX, FUNDS keep roles (renamable, not deletable); other accounts can be added, renamed, closed. Credit card / loan balance = AMOUNT OWED (positive = owed), same as ASSET's convention. Default names stay: VAULT, FLEX, FUNDS, FREEDOM (Chase), SAVOR (Capital One), BREX, Car Loan.
+- Money stored as integer CENTS. A transaction has NO typed balance: balance = opening + sum of its transactions. A transaction dated in the FUTURE counts only FROM its date (Joey's answer).
+- A transfer creates TWO linked entries sharing an id; deleting one offers to delete both; the sign comes from the account kind (fixes the car-loan direction bug).
+- FUNDS is plain savings (no Car Fund / Savings split, car fund settings removed). The car loan becomes an ordinary loan account closed at $0 (it ends in about 2 weeks; history kept, hidden when closed).
+- Migration report per account: derived opening balance, detected sign convention, every transaction whose typed balance does not match the math. DEFAULT: insert a clearly labeled "Migration adjustment" entry so every account ends at exactly today's balance (Joey agreed).
+- Paycheck recommendation priority (agreed earlier): FLEX allowance first, then Savings +$100 vs last time, then VAULT up to its buffer. VAULT target is 7 months of expenses + $1,500 (the code uses months+1 = 8; fix).
+- Targets and accounts must be editable in the app (B4), not hardcoded.
+- Plan: B2.2 a tested `ledger.js` module (cents math, balances, transfers; no page changes) -> B2.3 migration script + report on a copy -> B3 screens use the new model (amount-only entry, FUNDS savings, car loan as a loan account) -> B4 editable accounts/targets + the new paycheck order + a settings control for forecast hours -> B5 update FORGE's ASSET reader (net worth math, settings keys, fundsSubAccounts/car keys) and its tests together with the tracker -> B6 real-data check against the bank, Electron upgrade, switch-over (set FINANCIAL_DATA_PATH in shared\.env then).
+
+## 7. Audit findings and status (from reading the code; 24 items)
+FIXED: unreadable file silently wiped data (1); non-atomic save (2); lost edit on quick close (3); hardcoded path and silent new empty file (4); dates a day early and evening "today" = tomorrow (6); bill due today vanished (7); day-31 bills rolled into next month (8, plus start/end dates ignored per bill occurrence); CDN dependency / black screen offline (21); Claude API handler (22); DevTools on launch (24); forecast hours wrong for his real schedule; next-paycheck form dates a day off; "N days" off by hours; payday skipped to next week.
+STILL OPEN (all addressed by B2-B4 unless noted): typed balances / backdated entries / deletes leave balances stale (10, 11); quick transfer into the car loan raises the loan and card transfers have the wrong direction (9); settings cannot be set to 0 because of `||` defaults (12); FUNDS split jumps at $1,000 boundaries and a negative FUNDS gives a negative Car Fund (13); Car Fund target hardcoded 3000 (14); groceries divided by 4.33 in FLEX but 4 in the forecast (15); expired expenses still count in the VAULT buffer and yearly/quarterly frequencies are silently ignored (16); VAULT target uses 8 months not 7 (17); floating-point money (18); negative net pay at zero hours (19); paycheck code temporarily overwrites real settings and restores them (20); IMPORT FROM OLD APP still always throws (reads the removed `conversations`) and, if fixed, would replace all data (5: left as is on purpose, to be redone in B2/B3); the unused `isAlternatingSunday` math still uses time-of-day arithmetic (legacy, only when mode = alternating).
+UNCONFIRMED: item 23 — Joey's real data file may contain an old `anthropicApiKey` value (a secret scan flagged it; the file was never pushed and is gitignored). Ask him to check and delete that line; ASSET reads that file too.
+
+## 8. Process findings
+- The backup throttle read file modified times; Windows keeps the original's old time on copies, so a backup was made almost every time. Found by Joey's real backups listing; fixed (time now read from the file name) with a test that simulates Windows behaviour. Lesson: tests run on Linux hide Windows-only behaviour; always read his real output.
+- One test was committed while failing (5 lines in 5 zones) because one edit had been skipped; fixed in the next commit. Remind him to run npm test and read ALL result lines before committing.
+- `npm audit` shows 2 "high" items: Electron 36 (almost all advisories are for features this offline, local-only app does not use) and extract-zip (install-time tool). Decision: upgrade Electron once, right before switch-over (B6), with a hands-on check.
+- `Get-Process electron` listed 5 processes from 10/18: they were his normal Electron apps, not leftovers.
+
+## 9. Open items / next
+- NEXT: B2.2 `ledger.js` (cents math, balances as of today, linked transfers, closing an account) with L1-L5 tests, no page changes.
+- ATLAS 1.3a decision (pause / small steps / patch route) and the biceps-left-out rule approval are still waiting from Session 17; phone page, history analysis and all later phases unchanged.
+- Add `FINANCIAL_DATA_PATH` to shared\.env only at switch-over.
+- A settings screen for forecast hours / hours mode comes in B4.
+
+## 10. How the next chat should start
+1. Read this record and the project files. Clone the repo (HEAD should be 0364079 or later), `git reset --hard && git clean -fdq apps && git pull` in the sandbox before each step.
+2. Ask Joey for nothing new: start B2.2 (ledger.js + tests) in the sandbox, hand him ONE small step with FIND/REPLACE or new files, and wait for his npm test output.
+3. Keep every reply short with the plan position on top, and remind him to commit and push after each green step.

@@ -5,7 +5,7 @@
   "main": "main.js",
   "scripts": {
     "start": "electron .",
-    "test": "node datastore.test.js && node session.test.js && node dates.test.js && node bills.test.js && node main.test.js && node renderer.test.js && node pagedates.test.js",
+    "test": "node datastore.test.js && node session.test.js && node dates.test.js && node bills.test.js && node ledger.test.js && node main.test.js && node renderer.test.js && node pagedates.test.js",
     "build": "electron-builder --win --x64"
   },
   "build": {
@@ -15,7 +15,7 @@
       "target": ["portable"],
       "icon": "icon.png"
     },
-    "files": ["main.js", "preload.js", "datastore.js", "session.js", "dates.js", "bills.js", "index.html", "vendor/**/*"]
+    "files": ["main.js", "preload.js", "datastore.js", "session.js", "dates.js", "bills.js", "ledger.js", "index.html", "vendor/**/*"]
   },
   "devDependencies": {
     "electron": "^36.0.0",
