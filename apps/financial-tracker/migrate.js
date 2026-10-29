@@ -1,6 +1,7 @@
 // migrate.js - converts an OLD (v1) Financial Tracker file to the v2 ledger format, IN MEMORY.
 // convert() never touches a file. The command line prints a preview and writes nothing.
 //   Run:  node migrate.js <path-to-old-file>
+//   Save: node migrate.js <path-to-old-file> --write <new-file.json>   (new file only, never overwrites)
 //
 // Rules (agreed in B2):
 //  * banks / savings / receivable (BREX): amounts carry over unchanged.
@@ -16,6 +17,7 @@
 //    "Migration adjustment" entry is added, dated at that account's last entry.
 'use strict';
 const fs = require('fs');
+const path = require('path');
 const L = require('./ledger.js');
 const D = require('./dates.js');
 
@@ -171,13 +173,55 @@ function format(r) {
   return lines.join('\n');
 }
 
+// Save a converted file as a NEW file, then read it back and re-check it.
+// Never overwrites anything; never touches the old file; removes only a file it just made and could not verify.
+function writeConverted(res, outPath, opts) {
+  if (!res || !res.ok || !res.data || !res.report) return { ok: false, error: 'nothing to write' };
+  const rep = res.report;
+  if (!rep.netWorthMatches) return { ok: false, error: 'net worth does not match the old page numbers' };
+  if (rep.validateProblems.length) return { ok: false, error: 'the converted file has shape problems' };
+  if (typeof outPath !== 'string' || !outPath) return { ok: false, error: 'no output path given' };
+  const out = path.resolve(outPath);
+  const norm = (p) => (process.platform === 'win32' ? p.toLowerCase() : p);
+  if (opts && opts.inputPath && norm(path.resolve(opts.inputPath)) === norm(out)) return { ok: false, error: 'the output file cannot be the input file' };
+  if (!/\.json$/i.test(out)) return { ok: false, error: 'the output file name must end in .json' };
+  if (!fs.existsSync(path.dirname(out))) return { ok: false, error: 'the output folder does not exist' };
+  const text = JSON.stringify(res.data, null, 2) + '\n';
+  try { fs.writeFileSync(out, text, { flag: 'wx', encoding: 'utf8' }); }
+  catch (e) { return { ok: false, error: e && e.code === 'EEXIST' ? 'that file already exists (it will not be overwritten)' : 'could not write: ' + (e && e.message) }; }
+  // read it back and check it against the old page numbers
+  const fails = [];
+  try {
+    const back = JSON.parse(fs.readFileSync(out, 'utf8'));
+    if (JSON.stringify(back) !== JSON.stringify(res.data)) fails.push('the saved file differs from what was converted');
+    if (L.validate(back).length) fails.push('the saved file fails the shape check');
+    for (const a of rep.accounts) if (L.balanceCents(back, a.id, '2199-12-31') !== a.page) fails.push(a.name + ' does not end on the old page number');
+    if (L.netWorthCents(back, '2199-12-31') !== rep.oldNetWorth) fails.push('net worth of the saved file does not match');
+  } catch (e) { fails.push('the saved file could not be read back: ' + (e && e.message)); }
+  if (fails.length) {
+    let removed = false;
+    try { fs.unlinkSync(out); removed = true; } catch (e) { removed = false; }
+    return { ok: false, error: 'verification failed: ' + fails.join('; '), removed };
+  }
+  return { ok: true, path: out, bytes: Buffer.byteLength(text), accounts: res.data.accounts.length, entries: res.data.transactions.length };
+}
+
 if (require.main === module) {
-  const file = process.argv[2];
-  if (!file) { console.log('Usage: node migrate.js <path-to-old-file>'); process.exit(2); }
+  const args = process.argv.slice(2);
+  const wi = args.indexOf('--write');
+  const outArg = wi >= 0 ? args[wi + 1] : null;
+  const skip = wi >= 0 ? wi + 1 : -1;
+  const file = args.find((a, i) => !a.startsWith('--') && i !== skip);
+  if (!file || (wi >= 0 && !outArg)) { console.log('Usage: node migrate.js <path-to-old-file> [--write <new-file.json>]'); process.exit(2); }
   let old;
   try { old = JSON.parse(fs.readFileSync(file, 'utf8')); } catch (e) { console.log('Could not read the file as JSON: ' + e.message); process.exit(1); }
   const res = convert(old, { today: D.todayStr() });
   if (!res.ok) { console.log('Cannot convert: ' + res.error); process.exit(1); }
-  console.log(format(res.report));
+  console.log(format(res.report).replace('(preview only: nothing was written)', wi >= 0 ? '' : '(preview only: nothing was written)'));
+  if (wi >= 0) {
+    const w = writeConverted(res, outArg, { inputPath: file });
+    if (!w.ok) { console.log('NOT WRITTEN: ' + w.error + (w.removed ? ' (the new file was removed again)' : '')); process.exit(1); }
+    console.log('WRITTEN and VERIFIED: ' + w.path + '  (' + w.accounts + ' accounts, ' + w.entries + ' entries, ' + w.bytes + ' bytes). The old file was not touched.');
+  }
 }
-module.exports = { convert, format, DEFS, ADJ_TEXT };
+module.exports = { convert, format, writeConverted, DEFS, ADJ_TEXT };

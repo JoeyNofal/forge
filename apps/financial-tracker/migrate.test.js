@@ -12,7 +12,8 @@ const bal = (res, id) => L.balanceCents(res.data, id, '2199-12-31');
 
 // ---------- L1 static ----------
 const src = fs.readFileSync(path.join(__dirname, 'migrate.js'), 'utf8').replace(/\/\*[^]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
-check('L1 migrate.js never writes, deletes or renames anything', !/writeFile|appendFile|unlinkSync|renameSync|rmSync|mkdirSync|createWriteStream|copyFile|\.promises/.test(src));
+check('L1 the only write is ONE exclusive-create write (flag wx); no append, rename, rm, mkdir, copy or stream', !/appendFile|renameSync|rmSync|mkdirSync|createWriteStream|copyFile|\.promises/.test(src) && (src.match(/writeFileSync/g) || []).length === 1 && /writeFileSync\(out, text, \{ flag: 'wx'/.test(src));
+check('L1 at most one delete, and only of the file it just created', (src.match(/unlinkSync/g) || []).length === 1 && /unlinkSync\(out\)/.test(src));
 check('L1 convert() never reads the clock (only the command line asks for today)', !/new Date|Date\.now/.test(src) && (src.match(/todayStr/g) || []).length === 1);
 
 // ---------- L2 the rules ----------
@@ -93,6 +94,34 @@ check('L4 50,000 entries convert fast and every account lands on its page number
 check('L5 hostile input never crashes', (() => { try { conv({ accounts: 'x', transactions: [{ accountId: 5 }, { accountId: 'a', amount: {}, balance: [] }, tx('a', '2026-01-01', 1e400, 1), tx('a', '2026-01-01', 1, 'x'), tx('a', '2026-01-01', 1, 1, { id: {}, type: 5, linkedId: 7, description: 'x'.repeat(1e6) })] }); conv({ accounts: [null, { id: 3 }, { id: 'q', balance: 'z' }], transactions: 'no' }); return true; } catch (e) { console.log(e); return false; } })());
 check('L5 a huge description is capped', conv({ accounts: {}, transactions: [tx('vault', '2026-01-01', 1, 1, { description: 'x'.repeat(1e6) })] }).data.transactions[0].description.length === 200);
 
+// ---------- saving the converted file (new file only) ----------
+const wdir = fs.mkdtempSync(path.join(os.tmpdir(), 'mw-'));
+const W = (name) => path.join(wdir, name);
+const goodRes = () => conv(old1);
+const w1 = M.writeConverted(goodRes(), W('new.json'));
+check('write: a new file is created and verified', w1.ok && fs.existsSync(W('new.json')) && w1.entries === goodRes().data.transactions.length && w1.accounts === 7);
+const saved = JSON.parse(fs.readFileSync(W('new.json'), 'utf8'));
+check('write: the saved file is exactly the converted data, valid, version 2, and ends on the old page numbers', JSON.stringify(saved) === JSON.stringify(goodRes().data) && L.validate(saved).length === 0 && saved.schemaVersion === 2 && L.netWorthCents(saved, '2199-12-31') === 83000);
+check('write: feeding the saved v2 file back into convert is refused (no double conversion)', !conv(saved).ok);
+const before1 = fs.readFileSync(W('new.json'));
+const w2 = M.writeConverted(goodRes(), W('new.json'));
+check('write: an existing file is NEVER overwritten (and stays byte-for-byte the same)', !w2.ok && /already exists/.test(w2.error) && Buffer.compare(fs.readFileSync(W('new.json')), before1) === 0);
+fs.mkdirSync(W('folder.json'));
+check('write: a folder with that name is refused too', !M.writeConverted(goodRes(), W('folder.json')).ok);
+fs.writeFileSync(W('old-in.json'), '{"keep":"me"}');
+check('write: output equal to the input file is refused with its own clear message, even spelled differently, input untouched', /input file/.test(M.writeConverted(goodRes(), W('old-in.json'), { inputPath: W('old-in.json') }).error) && /input file/.test(M.writeConverted(goodRes(), path.join(wdir, '.', 'sub', '..', 'old-in.json'), { inputPath: W('old-in.json') }).error) && fs.readFileSync(W('old-in.json'), 'utf8') === '{"keep":"me"}');
+check('write: refuses a name without .json, a missing folder, an empty or missing path, nothing to write', !M.writeConverted(goodRes(), W('x.txt')).ok && !M.writeConverted(goodRes(), path.join(wdir, 'nope', 'x.json')).ok && !M.writeConverted(goodRes(), '').ok && !M.writeConverted(goodRes()).ok && !M.writeConverted(null, W('y.json')).ok && !M.writeConverted({ ok: false }, W('y.json')).ok && !fs.existsSync(W('x.txt')) && !fs.existsSync(W('y.json')));
+const bad1 = goodRes(); bad1.report.netWorthMatches = false;
+const bad2 = goodRes(); bad2.report.validateProblems = ['x'];
+check('write: refuses when net worth does not match or the shape check found problems, and creates nothing', !M.writeConverted(bad1, W('b1.json')).ok && !M.writeConverted(bad2, W('b2.json')).ok && !fs.existsSync(W('b1.json')) && !fs.existsSync(W('b2.json')));
+const bad3 = goodRes(); bad3.report.accounts[0].page += 1;
+const w3 = M.writeConverted(bad3, W('b3.json'));
+check('write: if the read-back check fails, the file it just made is removed again and it says so', !w3.ok && /verification failed/.test(w3.error) && w3.removed === true && !fs.existsSync(W('b3.json')));
+check('write: nothing but the intended files is left in the folder', fs.readdirSync(wdir).sort().join() === 'folder.json,new.json,old-in.json');
+const t1 = Date.now(); const bigW = M.writeConverted(conv({ accounts: {}, transactions: bigT }), W('big.json'));
+check('L4 a 50,000-entry file is written and verified quickly', bigW.ok && Date.now() - t1 < 8000, (Date.now() - t1) + 'ms');
+fs.rmSync(wdir, { recursive: true, force: true });
+
 // ---------- the command line leaves the file untouched ----------
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'mg-')), f = path.join(tmp, 'old.json');
 fs.writeFileSync(f, JSON.stringify(old1, null, 2));
@@ -107,6 +136,16 @@ fs.writeFileSync(f, JSON.stringify({ schemaVersion: 2, accounts: [], transaction
 const v2 = cp.spawnSync('node', [path.join(__dirname, 'migrate.js'), f], { encoding: 'utf8' });
 check('CLI on an already-v2 file refuses', v2.status === 1 && /already version 2/.test(v2.stdout));
 check('CLI with no path prints usage', /Usage/.test(cp.spawnSync('node', [path.join(__dirname, 'migrate.js')], { encoding: 'utf8' }).stdout));
+fs.writeFileSync(f, JSON.stringify(old1, null, 2));
+const hA = hash(), outF = path.join(tmp, 'converted.json');
+const cw = cp.spawnSync('node', [path.join(__dirname, 'migrate.js'), f, '--write', outF], { encoding: 'utf8' });
+check('CLI --write creates the new file, says WRITTEN and VERIFIED, old file untouched', cw.status === 0 && /WRITTEN and VERIFIED/.test(cw.stdout) && !/preview only/.test(cw.stdout) && fs.existsSync(outF) && hash() === hA && JSON.parse(fs.readFileSync(outF, 'utf8')).schemaVersion === 2);
+const outBefore = fs.readFileSync(outF);
+const cw2 = cp.spawnSync('node', [path.join(__dirname, 'migrate.js'), f, '--write', outF], { encoding: 'utf8' });
+check('CLI --write a second time refuses and leaves the first result alone', cw2.status === 1 && /NOT WRITTEN/.test(cw2.stdout) && Buffer.compare(fs.readFileSync(outF), outBefore) === 0);
+const cw3 = cp.spawnSync('node', [path.join(__dirname, 'migrate.js'), f, '--write', f], { encoding: 'utf8' });
+check('CLI --write onto the input file is refused, input untouched', cw3.status === 1 && /NOT WRITTEN: the output file cannot be the input file/.test(cw3.stdout) && hash() === hA);
+check('CLI --write without a path prints usage and writes nothing', /Usage/.test(cp.spawnSync('node', [path.join(__dirname, 'migrate.js'), f, '--write'], { encoding: 'utf8' }).stdout) && fs.readdirSync(tmp).sort().join() === 'converted.json,old.json');
 fs.rmSync(tmp, { recursive: true, force: true });
 
 console.log(failed === 0 ? passed + '/' + passed + ' passed' : passed + '/' + (passed + failed) + ' passed, ' + failed + ' FAILED');
