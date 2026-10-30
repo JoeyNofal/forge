@@ -16,7 +16,10 @@
 // includes anything older).
 'use strict';
 
-const D = require('./dates.js');
+(function (root, factory) {
+  if (typeof module === 'object' && module.exports) module.exports = factory(require('./dates.js'));
+  else root.FTLedger = factory(root.FTDates);
+})(typeof self !== 'undefined' ? self : this, function (D) {
 
 const KINDS = ['bank', 'savings', 'credit_card', 'loan', 'receivable'];
 const ROLES = ['vault', 'flex', 'funds', 'none'];
@@ -168,4 +171,5 @@ function validate(data) {
   return p;
 }
 
-module.exports = { KINDS, ROLES, MAX_CENTS, isDebt, toCents, fromCents, effectCents, findAccount, balanceCents, allBalances, netWorthCents, addTransfer, deleteTransaction, closeAccount, validate };
+return { KINDS, ROLES, MAX_CENTS, isDebt, toCents, fromCents, effectCents, findAccount, balanceCents, allBalances, netWorthCents, addTransfer, deleteTransaction, closeAccount, validate };
+});, ROLES, MAX_CENTS, isDebt, toCents, fromCents, effectCents, findAccount, balanceCents, allBalances, netWorthCents, addTransfer, deleteTransaction, closeAccount, validate };

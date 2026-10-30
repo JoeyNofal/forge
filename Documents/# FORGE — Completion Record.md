@@ -1437,3 +1437,83 @@ UNCONFIRMED: item 23 — Joey's real data file may contain an old `anthropicApiK
 1. Read this record and the project files. Clone the repo (HEAD should be 0364079 or later), `git reset --hard && git clean -fdq apps && git pull` in the sandbox before each step.
 2. Ask Joey for nothing new: start B2.2 (ledger.js + tests) in the sandbox, hand him ONE small step with FIND/REPLACE or new files, and wait for his npm test output.
 3. Keep every reply short with the plan position on top, and remind him to commit and push after each green step.
+
+# FORGE — Completion Record, Session 19
+*(Financial Tracker: B2.2 ledger, B2.3 migration (report, conversion, new-file save). B2 CLOSED. B3 order agreed. Last commit pushed: a3af103 on main. Paste this into the Completion Record file.)*
+
+## 0. Where things stand
+- Side project continues from Session 18: the Financial Tracker (Electron app "Vault") in `apps/financial-tracker/`. ATLAS and everything else is unchanged since Session 17 (1.3a decision, biceps-left-out rule, 1.3b, 1.4, 1.5, Phases 2-4 all still open).
+- B2 (data model + migration) is CLOSED and pushed. NEXT: B3 (screens use the new model), in the order agreed in section 6.
+- The OLD tracker stays his live app until B6: `D:\Projects\Financial Tracker\FinancialTracker\financial-tracker-data.json`. ASSET still reads that file. The new app only ever runs on throwaway copies.
+- Item 23 (old `anthropicApiKey` in his live data file) is CLOSED: he deleted the line from the live file himself (it was an old, unused key, already deleted on the Anthropic side); verified gone from the live file and a fresh copy.
+
+## 1. Standing rules (reconfirmed this session)
+- Claude never edits his files; code arrives as whole new files or FIND/REPLACE blocks (or "select to end of file and replace") with exact PowerShell steps. Claude tests in its own sandbox clone first (mocked tests only); he runs the real checks and pastes the output.
+- One small step per reply, short replies, plan position stated at the top, questions in ONE numbered list.
+- Tests must be able to FAIL: Claude mutation-checks new tests by deliberately breaking the code. This session it found a surviving mutant (the same-path check was masked by the exclusive-create flag) and the test was made sensitive to the check's own message.
+- After every green step: `git status`, `git add -A`, `git commit`, `git push`. Read ALL `npm test` lines before committing.
+- Sandbox routine (fixes the "pull blocked by my own leftover files" slip that happened 3 times): `cd /home/claude/forge && git checkout -q . && git clean -fdq apps && git pull -q` BEFORE writing anything.
+- Throwaway data for hands-on checks lives in `D:\Projects\Forge\data\ft-handson\` (gitignored): `copy.json` (copy of the live file, RECOPY before each preview because the live file changes), `converted-v2.json` (first converted file).
+- Whole test command: `cd "D:\Projects\Forge\apps\financial-tracker"` then `npm test`.
+
+## 2. What was built (all in apps/financial-tracker/, pushed)
+- **ledger.js + ledger.test.js (51)** — pure money math for the v2 format. Money = whole CENTS. `toCents` (rounds, rejects junk/absurd sizes, never -0), `fromCents`, `balanceCents(data, id, asOf)`, `allBalances`, `netWorthCents`, `addTransfer` (two linked entries, new data object, refuses same/closed/unknown accounts, bad amounts/dates), `deleteTransaction` (optionally both halves), `closeAccount` (only role "none" and balance exactly 0), `validate`. Account kinds: bank, savings, credit_card, loan, receivable.
+  - SIGN RULE: an entry's `amountCents` is CASH FLOW (negative = out, positive = in). Bank/savings/receivable: balance = opening + sum. Credit card/loan store AMOUNT OWED: balance = opening - sum. A balance counts entries dated from the account's `openingDate` through the as-of day (future-dated entries count only from their date). Fixes the old car-loan/card transfer-direction bug.
+  - Receivable (BREX = money a friend owes him): behaves like a bank, counts as an asset.
+- **migrate-report.js + test (22)** — read-only report on an old (v1) file (per-account derived opening, sign convention, typed-balance mismatches). Never writes.
+- **migrate.js + migrate.test.js (56)** — converts an old file to v2 IN MEMORY and prints a preview; `--write <new.json>` saves it.
+  - Rules: bank/savings/BREX amounts carry over; card/loan regular entries flip into cash-flow sign, transfers keep their sign; opening = typed balance of the first typed entry minus what the entries up to it do; if the converted math does not end on the number the OLD PAGE showed (latest typed balance by date), ONE labeled "Migration adjustment" entry is added, dated at that account's LAST entry (his choice), type `migration_adjustment`.
+  - Wrong-way transfers (a card/loan transfer whose typed balance moved WITH the cash flow = the old direction bug) are KEPT exactly as the old page counted them: old effect, a `note` on the entry, not linked to the partner. Reason (found in his real rows): after each such transfer he had already corrected the balance by hand, so "fixing" the direction double-counted his fixes (it had produced adjustments of exactly twice the transfer amounts: $9,000 car loan, $153.18 card).
+  - Old transfers had no link between halves: unambiguous pairs (same date, same description case/space-insensitive, equal and opposite amounts, different accounts, exactly two candidates) are linked; ambiguous ones stay plain entries.
+  - Skipped (not carried over): entries that are not objects or have no `accountId` (his real file has two "Test mobile -$5" test entries of a different shape, #313/#314, which the old page never counted), bad amounts, bad dates.
+  - Duplicate ids are renamed; transfer partners must exist and cancel or the link is dropped; descriptions capped at 200; other file keys (settings, paychecks, fixedExpenses, ...) are carried over untouched; `accounts`/`transactions` are replaced; `schemaVersion: 2`; a file that is already v2 is refused.
+  - `writeConverted` / `--write`: NEW file only (exclusive-create flag, never overwrites; refuses input path, non-.json, missing folder, net-worth mismatch, shape problems); reads the file back and re-checks (identical content, shape, every account ends on its old page number, net worth); on a failed check it removes ONLY the file it just made. A folder or existing file with that name is refused. The old file is never touched.
+- **package.json** `npm test` now runs: datastore, session, dates, bills, ledger, migrate-report, migrate, main, renderer, pagedates. (migrate files are dev tools, not in the packaged "files" list.)
+
+## 3. His real data, as the tools found it (numbers are NOT real yet by his own statement)
+- Accounts: vault, flex, funds, cc (FREEDOM, Chase), cc2 (SAVOR, Capital One), car_loan, brex. All derived openings are $0 (histories start from "Starting balance" entries; earliest 2025-11-17 on car_loan).
+- Real preview on a fresh copy (2026-10-29): FLEX, FUNDS, FREEDOM $0.00, SAVOR $50.00, Car Loan $2,500.00, BREX $1,640.00 all land on the old page numbers with NO adjustment; VAULT needs one adjustment of $219.76 dated 2026-09-11 (math $2,882.67 vs old page $3,102.43). The adjustment is exactly the sum of 4 typed-balance mismatches (gaps $32.49, -$15.12, $142.39, $60.00: entries "Weekly FLEX Allowance", "Rent", "FREEDOM paid", "Physical Therapy"). Net worth $6,532.88 on both sides (MATCH), shape check clean. 485 entries written to converted-v2.json (7 accounts, 141,515 bytes).
+- 4 wrong-way transfers kept (2 on FREEDOM: $60.57 on 2026-06-17, $16.02 on 2026-07-07; 2 on Car Loan: $3,000 "Car Loan Payment to Dad" 2026-06-28, $1,500 "Car Loan Paid" 2026-07-31). 31 old transfers auto-paired, 2 left as plain entries, 5 whose declared partner was missing/mismatched (incl. "Transfer to BREX -$1" and the vault halves of the two kept car-loan payments) became plain entries.
+- Typed balances in the old file carry float noise (e.g. 49.27999999999997); cents rounding handles it.
+- The live file changed during the session (the car loan went from $5,000 to $2,500 after a payment he made; he states $2,500 is the real remaining amount). The old copy was stale: ALWAYS recopy before a preview or the final migration.
+- Old per-type sign facts (from the type-count check): banks/BREX follow one rule; cards/loans: regular entries move the typed (owed) balance WITH the amount, correct transfers INTO a card move it against the amount.
+
+## 4. Decisions log (his answers this session)
+- BREX is money a friend owes him, so it is a new account kind `receivable` (asset), NOT a debt; the old code wrongly treated it like a credit card for transfers.
+- Migration adjustment entries are dated at the account's last entry (agreed: "nice suggestion").
+- "Right now none of the numbers are real. I don't want anything to be real until it's fully built." The bank reconciliation (which VAULT number is right, $3,102.43 vs $2,882.67) is therefore B6, not now.
+- B3 questions answered: (1) the order a-d below is OK; (2) the new app runs only on `converted-v2.json` (a throwaway copy) until B6; (3) "Migration adjustment" entries are HIDDEN in the transaction list, in a collapsed "migration" row (not shown inline).
+- Carried over from Session 18 (unchanged): paycheck recommendation priority FLEX allowance first, then Savings +$100 vs last time, then VAULT up to its buffer (VAULT target 7 months of expenses + $1,500; the old code uses 8 months); FUNDS becomes plain savings (no Car Fund/Savings split, car-fund settings removed); targets and accounts editable in the app (B4); forecast hours settings control (B4); Electron upgrade once at B6; `FINANCIAL_DATA_PATH` goes into `shared\.env` only at switch-over.
+
+## 5. Process findings / lessons
+- Several of Claude's own test assertions were wrong (loose "or true"-style conditions, a wrong sign in a typo fixture, a static check that matched variable names like `renamedIds`/`unlinked`); each was caught by running the tests and mutation-checking, then tightened. Always compute real expected numbers before writing an assertion.
+- Real bugs caught by tests or smoke runs before delivery: net worth computed for year 9999 (dates.js only supports up to ~2199) printed "$0.00" (now uses 2199-12-31 and prints "unavailable" if missing); the new `--write` argument parser dropped the input file name when no `--write` was given.
+- Real data beat assumption twice: the "convert wrong-way transfers correctly" rule I first proposed would have double-counted his manual fixes; only reading his actual rows showed it. Read real rows before choosing a conversion rule.
+- A one-off read-only inspection can be run without creating a file via a PowerShell single-quoted here-string piped to `node - "<path>"` (tested in the sandbox first).
+
+## 6. NEXT: B3 (agreed order; one small step per reply)
+- **B3a** the app loads a v2 file READ-ONLY and shows the same balances (new app, run only on `converted-v2.json`).
+- **B3b** add an entry by amount only (no typed balance; balance computed by ledger.js).
+- **B3c** transfers (including car loan and cards, the corrected direction), delete-one-offers-both for linked transfers.
+- **B3d** FUNDS as plain savings (no Car Fund/Savings split).
+- Migration adjustment entries are hidden in a collapsed "migration" row (his choice). Kept wrong-way entries carry a `note` field the screens may show.
+- Then B4 (editable accounts/targets, new paycheck order, forecast-hours settings control), B5 (update FORGE's ASSET reader: net-worth math, settings keys, fundsSubAccounts/car keys, together with the tracker), B6 (real-data check against the bank, recopy the live file, Electron upgrade, switch-over).
+
+## 7. Audit items still open (all addressed by B3/B4 unless noted)
+Typed balances / backdated entries / deletes leaving stale balances (10, 11); quick transfer into the car loan raising the loan and card transfers with the wrong direction (9); settings that cannot be set to 0 because of `||` defaults (12); FUNDS split jumping at $1,000 and negative Car Fund (13); Car Fund target hardcoded 3000 (14); groceries divided by 4.33 in FLEX but 4 in the forecast (15); expired expenses still counting in the VAULT buffer and yearly/quarterly frequencies ignored (16); VAULT target 8 months not 7 (17); floating-point money (18, fixed in the new model); negative net pay at zero hours (19); paycheck code temporarily overwriting real settings (20); IMPORT FROM OLD APP still throws (5, to be redone). The unused `isAlternatingSunday` math still uses time-of-day arithmetic (legacy).
+
+## 8. Test baseline at commit a3af103 (his machine, all green)
+datastore 58, session 75, dates 603 (9 time zones), bills 61, ledger 51, migrate-report 22, migrate 56, main 101, renderer 54, pagedates 175 (5 time zones). (Datastore also prints two info lines about hostile/realistic readers; "failed" 1-2 on the hostile reader is expected and means a clean failure, not a bug.)
+Commits this session: 58759e5 (ledger), e298f0d (report), d016217 (receivable kind), 244e739 (migrate.js), 316d78e (keep wrong-way entries, pairing), a3af103 (--write).
+
+## 9. Open items
+- NEXT: B3a (see section 6).
+- Not yet decided: whether the 2 unpaired old transfers and 5 unlinked ones should be listed by name in the preview (small optional step).
+- ATLAS 1.3a decision (pause / small steps / patch route) and the biceps-left-out rule approval (id bb167142) are still waiting from Session 17; ATLAS 1.3b, 1.4, 1.5, phone page, history analysis unchanged.
+- B6 must recopy the live file, decide which VAULT number is right against his real bank, and only then set `FINANCIAL_DATA_PATH` in `shared\.env`.
+- Non-ATLAS items unchanged from Sessions 15-18 (photo scan/macros, scheduler/sub-agents/skills, voice, mobile app, Autonomous Build System, STOCK/FLAME/CASE/PULSE/HEAL).
+
+## 10. How the next chat should start
+1. Read this record and the project files. Clone the repo (HEAD should be a3af103 or later) and run the sandbox routine in section 1 before touching anything.
+2. Ask nothing new: start B3a (load a v2 file read-only and show the same balances) in the sandbox. First look at how `index.html` loads data, builds balances and renders the 8 pages, then hand him ONE small step with exact steps, and wait for his `npm test` output.
+3. Keep every reply short with the plan position on top, and remind him to commit and push after each green step.
