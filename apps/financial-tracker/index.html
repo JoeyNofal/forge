@@ -9,6 +9,8 @@
 <script src="vendor/exceljs.min.js"></script>
 <script src="dates.js"></script>
 <script src="bills.js"></script>
+<script src="ledger.js"></script>
+<script src="v2view.js"></script>
 <style>
 /* fonts saved locally (SIL Open Font License, see vendor/fonts) so the app works with no internet */
 @font-face { font-family: 'DM Serif Display'; font-style: normal; font-weight: 400; font-display: swap; src: url("vendor/fonts/dm-serif-display-latin-400-normal.woff2") format('woff2'); }
@@ -682,6 +684,10 @@ const App = {
   mergeWithDefaults(loaded) {
     const d = JSON.parse(JSON.stringify(DEFAULT_DATA));
 
+    // ── NEW FILE FORMAT (v2): shown READ-ONLY through a bridge that gives the pages the shape they know ──
+    const isV2 = typeof FTV2View !== 'undefined' && FTV2View.isV2(loaded);
+    if (isV2) { loaded = FTV2View.toPageData(loaded, FTDates.todayStr()); d.migrationEntries = loaded.migrationEntries; d._v2ReadOnly = true; }
+
     // ── NEW APP FORMAT ──
     if (loaded.accounts && !Array.isArray(loaded.accounts)) {
       // Plain object — just merge it
@@ -766,6 +772,8 @@ const App = {
     });
 
     // ── Rebuild fundsSubAccounts from FUNDS balance ──
+    // v2: the ledger's balance as of today is the truth (the latest row may be dated in the future)
+    if (isV2) Object.keys(loaded.accounts).forEach(id => { d.accounts[id] = loaded.accounts[id]; });
     const fundsBalance = d.accounts.funds;
     if (fundsBalance > 0) {
       // Use loaded subaccounts if they sum correctly, otherwise recalculate
@@ -786,6 +794,11 @@ const App = {
 
   scheduleSave() {
     const ind = document.getElementById('save-indicator');
+    if (App.data && App.data._v2ReadOnly) {
+      ind.textContent = 'READ-ONLY'; ind.className = '';
+      App.showToast('This is a v2 file, opened read-only. Nothing was saved.', 'error');
+      return;
+    }
     if (App.saveBlocked) {
       ind.textContent = 'NOT SAVED'; ind.className = '';
       App.showToast('Saving is OFF: the data file was not loaded safely.', 'error');
@@ -800,13 +813,13 @@ const App = {
   // Write any pending edit right now (used when the window is closing).
   async flushNow() {
     clearTimeout(App.saveTimeout);
-    if (App.saveBlocked || !App.dirty) return;
+    if (App.saveBlocked || !App.dirty || (App.data && App.data._v2ReadOnly)) return;
     await App.saveFile();
   },
 
   async saveFile() {
     const ind = document.getElementById('save-indicator');
-    if (App.saveBlocked) return;
+    if (App.saveBlocked || (App.data && App.data._v2ReadOnly)) return;
     const json = JSON.stringify(App.data, null, 2);
     let saved = false, why = '';
     try {
@@ -906,6 +919,8 @@ const App = {
     Object.keys(App.charts).forEach(k => App.destroyChart(k));
     App.charts = {};
     const vc = document.getElementById('view-container');
+    const ind = document.getElementById('save-indicator');
+    if (App.data && App.data._v2ReadOnly && ind) { ind.textContent = 'READ-ONLY (v2)'; ind.className = ''; }
     const views = {
       dashboard: Views.dashboard,
       inputs: Views.inputs,
@@ -2189,6 +2204,16 @@ Views.ledgers = {
   render() {
     const acct = Views.ledgers.currentAccount;
     const txns = App.data.transactions.filter(t=>t.accountId===acct).sort((a,b)=>new Date(b.date)-new Date(a.date));
+    const mig = (App.data.migrationEntries || []).filter(t=>t.accountId===acct);
+    const migTotal = mig.reduce((s,t)=>s+t.amount,0);
+    const migRow = !mig.length ? '' : `
+              <tr style="cursor:pointer" onclick="Views.ledgers.toggleMigration()" id="migration-row">
+                <td></td><td colspan="5" style="color:var(--text3)">${Views.ledgers.showMigration?'▾':'▸'} Migration adjustment · ${mig.length} entr${mig.length===1?'y':'ies'} · ${migTotal>=0?'+':''}${App.fmt(migTotal)} — click to ${Views.ledgers.showMigration?'hide':'show'}</td>
+              </tr>` + (Views.ledgers.showMigration ? mig.map(t=>`
+              <tr class="migration-entry">
+                <td></td><td>${App.fmtDate(t.date)}</td><td class="desc">${t.description}</td>
+                <td class="${t.amount>=0?'pos':'neg'}">${t.amount>=0?'+':''}${App.fmt(t.amount)}</td><td>${App.fmt(t.balance)}</td><td><span class="badge badge-accent">migration</span></td>
+              </tr>`).join('') : '');
     const accountNames = {vault:'VAULT',flex:'FLEX',funds:'FUNDS',cc:'FREEDOM',cc2:'SAVOR',car_loan:'Car Loan',brex:'BREX'};
     return `
     <div class="section-header"><div class="section-title">Ledgers</div></div>
@@ -2217,6 +2242,7 @@ Views.ledgers = {
             <th>Date</th><th>Description</th><th>Amount</th><th>Balance</th><th>Type</th>
           </tr></thead>
           <tbody>
+            ${migRow}
             ${txns.map(t=>`
               <tr>
                 <td><input type="checkbox" class="txn-check" data-id="${t.id}" onchange="Views.ledgers.onCheck()"></td>
@@ -2232,6 +2258,8 @@ Views.ledgers = {
       ` : '<div class="empty-state"><div class="icon">≡</div><p>No transactions for this account.</p></div>'}
     </div>`;
   },
+  showMigration: false,
+  toggleMigration() { Views.ledgers.showMigration = !Views.ledgers.showMigration; App.renderCurrentView(); },
   switchAccount(id) { Views.ledgers.currentAccount=id; App.renderCurrentView(); },
   selectAll(checked) {
     document.querySelectorAll('.txn-check').forEach(c=>c.checked=checked);
