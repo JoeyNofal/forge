@@ -172,4 +172,4 @@ function validate(data) {
 }
 
 return { KINDS, ROLES, MAX_CENTS, isDebt, toCents, fromCents, effectCents, findAccount, balanceCents, allBalances, netWorthCents, addTransfer, deleteTransaction, closeAccount, validate };
-});, ROLES, MAX_CENTS, isDebt, toCents, fromCents, effectCents, findAccount, balanceCents, allBalances, netWorthCents, addTransfer, deleteTransaction, closeAccount, validate };
+});
