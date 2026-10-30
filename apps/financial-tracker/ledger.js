@@ -115,6 +115,25 @@ function addTransfer(data, opts) {
   return { ok: true, data: out };
 }
 
+// One ordinary entry typed by amount only (cash flow: + money in, - money out). Returns
+// { ok:true, data, id } (a NEW data object; the input is untouched) or { ok:false, error }.
+function addTransaction(data, opts) {
+  const o = opts || {};
+  const a = findAccount(data, o.accountId);
+  if (!a) return { ok: false, error: 'unknown account' };
+  if (a.closed) return { ok: false, error: 'account is closed' };
+  if (!Number.isSafeInteger(o.amountCents) || o.amountCents === 0 || Math.abs(o.amountCents) > MAX_CENTS) return { ok: false, error: 'amount must be a non-zero number of cents' };
+  if (!validDate(o.date)) return { ok: false, error: 'bad date' };
+  const desc = typeof o.description === 'string' ? o.description.trim().slice(0, 200) : '';
+  if (!desc) return { ok: false, error: 'description is empty' };
+  const txns = Array.isArray(data.transactions) ? data.transactions : [];
+  const mk = typeof o.makeId === 'function' ? o.makeId : defaultId;
+  const id = mk();
+  if (typeof id !== 'string' || !id || txns.some(x => x && x.id === id)) return { ok: false, error: 'could not make a unique id' };
+  const t = { id, accountId: a.id, date: o.date, description: desc, amountCents: o.amountCents, type: 'transaction' };
+  return { ok: true, id, data: Object.assign({}, data, { transactions: txns.concat([t]) }) };
+}
+
 // Delete one entry. If it is half of a transfer, bothHalves:true removes the partner too.
 function deleteTransaction(data, id, bothHalves) {
   const txns = Array.isArray(data.transactions) ? data.transactions : [];
@@ -171,5 +190,5 @@ function validate(data) {
   return p;
 }
 
-return { KINDS, ROLES, MAX_CENTS, isDebt, toCents, fromCents, effectCents, findAccount, balanceCents, allBalances, netWorthCents, addTransfer, deleteTransaction, closeAccount, validate };
+return { KINDS, ROLES, MAX_CENTS, isDebt, toCents, fromCents, effectCents, findAccount, balanceCents, allBalances, netWorthCents, addTransfer, addTransaction, deleteTransaction, closeAccount, validate };
 });
