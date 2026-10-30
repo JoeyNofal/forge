@@ -686,6 +686,7 @@ const App = {
 
     // ── NEW FILE FORMAT (v2): shown READ-ONLY through a bridge that gives the pages the shape they know ──
     const isV2 = typeof FTV2View !== 'undefined' && FTV2View.isV2(loaded);
+    App.v2Raw = isV2 ? loaded : null;
     if (isV2) { loaded = FTV2View.toPageData(loaded, FTDates.todayStr()); d.migrationEntries = loaded.migrationEntries; d._v2ReadOnly = true; }
 
     // ── NEW APP FORMAT ──
@@ -795,8 +796,8 @@ const App = {
   scheduleSave() {
     const ind = document.getElementById('save-indicator');
     if (App.data && App.data._v2ReadOnly) {
-      ind.textContent = 'READ-ONLY'; ind.className = '';
-      App.showToast('This is a v2 file, opened read-only. Nothing was saved.', 'error');
+      ind.textContent = 'NOT SAVED'; ind.className = '';
+      App.showToast('This change was not saved: for v2 files only "Add Transaction" is saved for now.', 'error');
       return;
     }
     if (App.saveBlocked) {
@@ -815,6 +816,15 @@ const App = {
     clearTimeout(App.saveTimeout);
     if (App.saveBlocked || !App.dirty || (App.data && App.data._v2ReadOnly)) return;
     await App.saveFile();
+  },
+
+  async saveV2(raw) {
+    if (App.saveBlocked) return { ok: false, error: 'saving is off (the data file was not loaded safely)' };
+    if (!window.electronAPI) return { ok: false, error: 'saving a v2 file needs the desktop app' };
+    try {
+      const r = await window.electronAPI.saveData(JSON.stringify(raw, null, 2));
+      return r && r.ok ? { ok: true } : { ok: false, error: (r && r.error) || 'unknown error' };
+    } catch (e) { return { ok: false, error: e.message }; }
   },
 
   async saveFile() {
@@ -920,7 +930,7 @@ const App = {
     App.charts = {};
     const vc = document.getElementById('view-container');
     const ind = document.getElementById('save-indicator');
-    if (App.data && App.data._v2ReadOnly && ind) { ind.textContent = 'READ-ONLY (v2)'; ind.className = ''; }
+    if (App.data && App.data._v2ReadOnly && ind) { ind.textContent = 'v2 · entries only'; ind.className = ''; }
     const views = {
       dashboard: Views.dashboard,
       inputs: Views.inputs,
@@ -1721,6 +1731,7 @@ Views.inputs = {
       const acct = document.getElementById('txn-account').value;
       const current = App.data.accounts[acct] || 0;
       document.getElementById('txn-balance').value = (current + amount).toFixed(2);
+      if (App.v2Raw) Views.inputs.previewV2();
     }
   },
 
@@ -1765,9 +1776,55 @@ Views.inputs = {
       document.getElementById('txn-balance').value = (current + amt).toFixed(2);
     });
     // When description is manually typed and matches a hidden item, unhide it on transaction save
+    Views.inputs.setupV2Form();
+  },
+
+  setupV2Form() {
+    if (!App.v2Raw) return;
+    const $ = (id) => document.getElementById(id);
+    $('txn-type').closest('.form-group').style.display = 'none';
+    const bal = $('txn-balance'); bal.readOnly = true; bal.placeholder = 'Calculated';
+    bal.closest('.form-group').querySelector('label').textContent = 'Balance After (calculated)';
+    $('txn-amount').closest('.form-group').querySelector('label').textContent = 'Amount (+ money in / − money out)';
+    const note = document.createElement('div'); note.id = 'txn-v2-note'; note.style.cssText = 'font-size:0.72rem;color:var(--text3);margin-top:4px';
+    $('txn-date').closest('.form-group').appendChild(note);
+    ['txn-amount', 'txn-account', 'txn-date'].forEach(id => { $(id).addEventListener('input', Views.inputs.previewV2); $(id).addEventListener('change', Views.inputs.previewV2); });
+    Views.inputs.previewV2();
+  },
+
+  previewV2() {
+    const $ = (id) => document.getElementById(id);
+    if (!App.v2Raw || !$('txn-v2-note')) return;
+    const acctId = $('txn-account').value, date = $('txn-date').value, c = FTLedger.toCents($('txn-amount').value) || 0;
+    const a = FTLedger.findAccount(App.v2Raw, acctId), b = a ? FTLedger.balanceCents(App.v2Raw, acctId, date) : null;
+    $('txn-balance').value = (a && b !== null) ? FTLedger.fromCents(b + FTLedger.effectCents(a.kind, c)).toFixed(2) : '';
+    let msg = '';
+    if (date && date > FTDates.todayStr()) msg = 'Future date: it counts in balances from ' + date + '.';
+    if (a && (a.kind === 'credit_card' || a.kind === 'loan')) msg += (msg ? ' ' : '') + 'Card/loan: spending is negative, a payment is positive.';
+    $('txn-v2-note').textContent = msg;
+  },
+
+  async addTransactionV2() {
+    const $ = (id) => document.getElementById(id);
+    if (App.v2Busy) { App.showToast('Still saving the last entry - try again in a moment', 'error'); return; }
+    const date = $('txn-date').value, accountId = $('txn-account').value, description = $('txn-desc').value.trim();
+    const cents = FTLedger.toCents($('txn-amount').value);
+    if (!date || !description || cents === null || cents === 0) { App.showToast('Enter a date, a description and an amount (not zero)', 'error'); return; }
+    const r = FTLedger.addTransaction(App.v2Raw, { accountId, date, description, amountCents: cents });
+    if (!r.ok) { App.showToast('Could not add the entry: ' + r.error, 'error'); return; }
+    App.v2Busy = true;
+    let saved;
+    try { saved = await App.saveV2(r.data); } finally { App.v2Busy = false; }
+    if (!saved.ok) { App.showToast('NOT saved, nothing was added: ' + saved.error, 'error'); return; }
+    App.data = App.mergeWithDefaults(r.data);
+    App.dirty = false;
+    App.renderCurrentView();
+    const ind = $('save-indicator'); if (ind) { ind.textContent = 'Saved ✓'; ind.className = 'saved'; }
+    App.showToast('Transaction added and saved', 'success');
   },
 
   addTransaction() {
+    if (App.v2Raw) { Views.inputs.addTransactionV2(); return; }
     const date = document.getElementById('txn-date').value;
     const accountId = document.getElementById('txn-account').value;
     const description = document.getElementById('txn-desc').value.trim();
