@@ -11,6 +11,7 @@
 <script src="bills.js"></script>
 <script src="ledger.js"></script>
 <script src="v2view.js"></script>
+<script src="paycheckrec.js"></script>
 <style>
 /* fonts saved locally (SIL Open Font License, see vendor/fonts) so the app works with no internet */
 @font-face { font-family: 'DM Serif Display'; font-style: normal; font-weight: 400; font-display: swap; src: url("vendor/fonts/dm-serif-display-latin-400-normal.woff2") format('woff2'); }
@@ -987,7 +988,7 @@ const App = {
     },
     vaultBufferTarget() {
       const m = App.calc.monthlyExpenses();
-      return m * (App.data.settings.vaultBufferMonths + 1) + 1500;
+      return m * App.data.settings.vaultBufferMonths + 1500;
     },
     vaultBufferStatus() {
       const vault = App.data.accounts.vault;
@@ -1076,95 +1077,43 @@ const App = {
       return {label:'Poor', color:'red'};
     },
 
+    // Dollars FUNDS held at the END of the given day ('YYYY-MM-DD'); null when the day is unusable.
+    fundsAsOf(dateStr) {
+      if (!dateStr) return null;
+      if (App.v2Raw) { const b = FTLedger.balanceCents(App.v2Raw, 'funds', dateStr); return b === null ? 0 : FTLedger.fromCents(b); }
+      let best = null, bestDate = null;
+      App.data.transactions.forEach(t => {
+        const d = t && t.accountId === 'funds' && typeof t.balance === 'number' ? FTDates.toDateStr(t.date) : null;
+        if (d && FTDates.compare(d, dateStr) <= 0 && (bestDate === null || FTDates.compare(d, bestDate) >= 0)) { best = t.balance; bestDate = d; }
+      });
+      return best === null ? 0 : best;
+    },
+    // The approved paycheck just before this one (what savings is compared against), or null.
+    previousApprovedPaycheck(paycheck) {
+      const mine = FTDates.toDateStr(paycheck.date);
+      let best = null, bestDate = null;
+      App.data.paychecks.forEach(p => {
+        if (!p || p === paycheck || !p.approved) return;
+        const d = FTDates.toDateStr(p.date);
+        if (!d || (mine && FTDates.compare(d, mine) >= 0)) return;
+        if (bestDate === null || FTDates.compare(d, bestDate) > 0) { best = p; bestDate = d; }
+      });
+      return best;
+    },
     paycheckRecommendation(paycheck) {
       if (!paycheck) return null;
-      const net = paycheck.netPay || 0;
-      const flex = App.calc.flexAllowance();
-
-      // What's left after FLEX takes its allowance
-      let remaining = net - flex;
-      if (remaining < 0) remaining = 0;
-
-      // Current state
-      const currentFunds = App.data.accounts.funds;
-      const currentVault = App.data.accounts.vault;
-      const vaultTarget = App.calc.vaultBufferTarget();
-
-      // Last FUNDS transaction savings balance
-      const fundsTxns = App.data.transactions
-        .filter(t => t.accountId === 'funds' && t.balance !== undefined)
-        .sort((a, b) => new Date(a.date) - new Date(b.date));
-      const lastFundsTxn = fundsTxns.length ? fundsTxns[fundsTxns.length - 1] : null;
-      const lastFundsBalance = lastFundsTxn ? lastFundsTxn.balance : currentFunds;
-      const lastSavings = Math.floor(lastFundsBalance / 2 / 500) % 1 === 0
-        ? lastFundsBalance - Math.floor(lastFundsBalance / 2 / 500) * 500
-        : 0;
-      const lastCarFund = Math.floor(lastFundsBalance / 2 / 500) * 500;
-
-      // Calculate current car fund and savings fund
-      const currentCarFund = Math.floor(currentFunds / 2 / 500) * 500;
-      const currentSavings = currentFunds - currentCarFund;
-
-      // Priority 1 — Car fund needs to be at $1,500
-      const carFundTarget = App.data.settings.carFundTarget || 1500;
-      let toFunds = 0;
-      let carFundNote = '';
-      let savingsNote = '';
-      let vaultNote = '';
-
-      // How much FUNDS total balance is needed for car fund to hit $1,500?
-      // carFund = floor(FUNDS/2/500)*500 >= 1500 means FUNDS >= 3000
-      const fundsNeededForCarTarget = 3000;
-
-      if (currentFunds < fundsNeededForCarTarget) {
-        // Car fund below target — top it up first
-        const neededForCar = fundsNeededForCarTarget - currentFunds;
-        toFunds = Math.min(remaining, neededForCar);
-        carFundNote = `Car Fund top-up: ${App.fmt(toFunds)}`;
-        remaining -= toFunds;
-      } else {
-        carFundNote = `Car Fund: at target ✓`;
-      }
-
-      // Priority 2 — Savings fund needs to be $100 more than last FUNDS transaction savings
-      const savingsTarget = lastSavings + 100;
-      const savingsShortfall = savingsTarget - currentSavings;
-      let toSavings = 0;
-
-      if (savingsShortfall > 0 && remaining > 0) {
-        // Need to add enough to FUNDS so savings fund reaches target
-        // Since savings = FUNDS - carFund, and carFund stays the same if we add small amounts,
-        // we need to add savingsShortfall to FUNDS
-        toSavings = Math.min(remaining, savingsShortfall);
-        toFunds += toSavings;
-        savingsNote = `Savings Fund +${App.fmt(toSavings)}`;
-        remaining -= toSavings;
-      } else {
-        savingsNote = currentSavings >= savingsTarget ? `Savings Fund: on track ✓` : `Savings Fund: no funds left`;
-      }
-
-      // Priority 3 — Rest goes to VAULT
-      const toVault = remaining;
-      if (currentVault >= vaultTarget) {
-        vaultNote = `VAULT: at target ✓ — extra ${App.fmt(toVault)} to FUNDS`;
-        toFunds += toVault;
-      } else {
-        vaultNote = `VAULT buffer: ${App.fmt(toVault)}`;
-      }
-
-      return {
-        netPay: paycheck.netPay,
-        date: paycheck.date,
-        approved: paycheck.approved,
-        flex,
-        toFunds,
-        toVault: currentVault >= vaultTarget ? 0 : toVault,
-        carFundNote,
-        savingsNote,
-        vaultNote
-      };
+      const prev = App.calc.previousApprovedPaycheck(paycheck);
+      const prevDate = prev ? FTDates.toDateStr(prev.date) : null;
+      const r = FTPayRec.recommend({
+        netPay: paycheck.netPay, flex: App.calc.flexAllowance(),
+        currentFunds: App.data.accounts.funds, currentVault: App.data.accounts.vault,
+        vaultTarget: App.calc.vaultBufferTarget(),
+        baselineFunds: prevDate ? App.calc.fundsAsOf(prevDate) : null,
+        fmt: (n) => App.fmt(n)
+      });
+      return Object.assign({ netPay: paycheck.netPay, date: paycheck.date, approved: paycheck.approved }, r);
     }
-  },
+  },   // ── INIT ──
 
   // ── INIT ──
   init() {
@@ -1406,7 +1355,7 @@ Views.dashboard = {
             <div style="padding:10px;background:rgba(109,184,145,0.08);border:1px solid rgba(109,184,145,0.2);border-radius:var(--radius-sm)">
               <div style="font-size:0.65rem;color:var(--green);font-family:var(--font-mono);text-transform:uppercase;letter-spacing:0.06em">→ Transfer to FUNDS</div>
               <div style="font-family:var(--font-mono);font-size:1.1rem;color:var(--green);margin-top:2px">${App.fmt(rec.toFunds)}</div>
-              <div style="font-size:0.68rem;color:var(--text3);margin-top:3px">${rec.carFundNote}</div>
+              <div style="font-size:0.68rem;color:var(--text3);margin-top:3px">${rec.extraNote || ''}</div>
               <div style="font-size:0.68rem;color:var(--text3);margin-top:1px">${rec.savingsNote}</div>
             </div>
             <div style="padding:10px;background:rgba(126,184,212,0.08);border:1px solid rgba(126,184,212,0.2);border-radius:var(--radius-sm)">
