@@ -1317,7 +1317,7 @@ Views.dashboard = {
           </div>
           <div class="badge badge-accent">Savings Pool</div>
         </div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+        <div id="funds-split" style="display:grid;grid-template-columns:1fr 1fr;gap:10px;${App.v2Raw ? 'display:none' : ''}">
           <div style="background:var(--surface3);border-radius:8px;padding:12px">
             <div style="font-size:0.65rem;color:var(--text3);font-family:var(--font-mono);text-transform:uppercase;letter-spacing:0.07em">Car Fund</div>
             <div style="font-family:var(--font-mono);font-size:1.15rem;color:var(--accent);margin-top:4px">${App.fmt(funds.carFund)}</div>
@@ -2735,8 +2735,8 @@ Views.settings = {
         <div class="form-group"><label>Car Loan Monthly Target ($)</label><input type="number" id="s-carloan" value="${s.carLoanMonthlyTarget}" step="50"></div>
       </div>
       <div class="form-row">
-        <div class="form-group"><label>Car Fund Minimum ($)</label><input type="number" id="s-carmin" value="${s.carFundMinimum}" step="50"></div>
-        <div class="form-group"><label>Car Fund Target ($)</label><input type="number" id="s-cartarget" value="${s.carFundTarget}" step="50"></div>
+        ${App.v2Raw ? '' : `<div class="form-group"><label>Car Fund Minimum ($)</label><input type="number" id="s-carmin" value="${s.carFundMinimum}" step="50"></div>`}
+        ${App.v2Raw ? '' : `<div class="form-group"><label>Car Fund Target ($)</label><input type="number" id="s-cartarget" value="${s.carFundTarget}" step="50"></div>`}
         <div class="form-group"><label>Car Loan Initial Balance ($)</label><input type="number" id="s-carloaninitial" value="${s.carLoanInitial}" step="100"></div>
       </div>
     </div>
@@ -2817,8 +2817,8 @@ Views.settings = {
     s.flexFloor = parseFloat(document.getElementById('s-flexfloor').value)||s.flexFloor;
     s.vaultBufferMonths = parseInt(document.getElementById('s-vaultmonths').value)||s.vaultBufferMonths;
     s.carLoanMonthlyTarget = parseFloat(document.getElementById('s-carloan').value)||s.carLoanMonthlyTarget;
-    s.carFundMinimum = parseFloat(document.getElementById('s-carmin').value)||s.carFundMinimum;
-    s.carFundTarget = parseFloat(document.getElementById('s-cartarget').value)||s.carFundTarget;
+    if (document.getElementById('s-carmin')) s.carFundMinimum = parseFloat(document.getElementById('s-carmin').value)||s.carFundMinimum;
+    if (document.getElementById('s-cartarget')) s.carFundTarget = parseFloat(document.getElementById('s-cartarget').value)||s.carFundTarget;
     s.carLoanInitial = parseFloat(document.getElementById('s-carloaninitial').value)||s.carLoanInitial;
     s.ccLimit = parseFloat(document.getElementById('s-cclimit').value)||s.ccLimit;
     s.ccPaymentDueDay = parseInt(document.getElementById('s-ccdue').value)||s.ccPaymentDueDay;
