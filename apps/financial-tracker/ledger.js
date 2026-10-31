@@ -144,6 +144,27 @@ function deleteTransaction(data, id, bothHalves) {
   return { ok: true, data: Object.assign({}, data, { transactions: txns.filter(x => !(x && gone.has(x.id))) }), removed: gone.size, partner: t.linkedId || null };
 }
 
+// Delete several entries in one go (all or nothing). If one is half of a transfer: bothHalves:true
+// removes its partner too; otherwise the partner stays and becomes an ordinary entry (its link is
+// cleared, so the file stays valid). Returns { ok:true, data, removed } or { ok:false, error }.
+function deleteTransactions(data, ids, bothHalves) {
+  const txns = data && Array.isArray(data.transactions) ? data.transactions : [];
+  if (!Array.isArray(ids) || !ids.length) return { ok: false, error: 'nothing selected' };
+  const gone = new Set();
+  for (const id of ids) {
+    const t = txns.find(x => x && x.id === id);
+    if (!t) return { ok: false, error: 'not found: ' + String(id).slice(0, 40) };
+    if (t.type === 'migration_adjustment') return { ok: false, error: 'a migration adjustment cannot be deleted here' };
+    gone.add(id);
+    if (bothHalves && t.linkedId && txns.some(x => x && x.id === t.linkedId)) gone.add(t.linkedId);
+  }
+  const kept = txns.filter(x => !(x && gone.has(x.id))).map(x => {
+    if (!x || !x.linkedId || !gone.has(x.linkedId)) return x;
+    const y = Object.assign({}, x); delete y.linkedId; delete y.transferId; return y;
+  });
+  return { ok: true, data: Object.assign({}, data, { transactions: kept }), removed: gone.size };
+}
+
 // Close an account: only if it is not VAULT/FLEX/FUNDS and its balance is exactly 0.
 function closeAccount(data, id, asOf) {
   const a = findAccount(data, id);
@@ -190,5 +211,5 @@ function validate(data) {
   return p;
 }
 
-return { KINDS, ROLES, MAX_CENTS, isDebt, toCents, fromCents, effectCents, findAccount, balanceCents, allBalances, netWorthCents, addTransfer, addTransaction, deleteTransaction, closeAccount, validate };
+return { KINDS, ROLES, MAX_CENTS, isDebt, toCents, fromCents, effectCents, findAccount, balanceCents, allBalances, netWorthCents, addTransfer, addTransaction, deleteTransaction, deleteTransactions, closeAccount, validate };
 });
