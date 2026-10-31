@@ -17,13 +17,13 @@ const v2 = M.convert(old, { today: '2026-10-29' }).data;
 const END = '2199-12-31';
 
 function makePage() {
-  const timers = new Map(); let tid = 1; const errors = [], confirms = [], ask = { answer: true };
+  const timers = new Map(); let tid = 1; const errors = [], confirms = [], ask = { choice: 'both' }; let lastBar = null;
   const api = { saved: [], handlers: {}, saveResult: () => ({ ok: true }), saveData: async (j) => { api.saved.push(j); const r = api.saveResult(j); if (r instanceof Error) throw r; return r; }, createNewFile: async () => ({ ok: true }), loadFile: async () => ({ ok: false, canceled: true }), importFile: async () => ({ ok: false }), openBackupsFolder: async () => '', getAppInfo: async () => ({}), openExternal: async () => {}, flushDone: () => Promise.resolve(),
     onInitialData: (cb) => { api.handlers.initial = cb; }, onLoadProblem: (cb) => { api.handlers.problem = cb; }, onFlushRequest: (cb) => { api.handlers.flush = cb; } };
   const vc = new VirtualConsole(); vc.on('jsdomError', e => errors.push(String(e.message || e).slice(0, 200)));
   const dom = new JSDOM(html, { runScripts: 'dangerously', pretendToBeVisual: true, virtualConsole: vc, url: 'http://localhost/', beforeParse(w) {
     w.electronAPI = api; w.Chart = class { constructor() {} destroy() {} update() {} }; w.Chart.register = () => {}; w.ExcelJS = {};
-    w.confirm = (m) => { confirms.push(m); return ask.answer; };
+    w.confirm = (m) => { confirms.push(m); return true; };
     w.setTimeout = (fn, ms) => { const id = tid++; timers.set(id, { fn, ms }); return id; }; w.clearTimeout = (id) => { timers.delete(id); };
     w.HTMLCanvasElement.prototype.getContext = () => null; } });
   const w = dom.window, App = w.eval('App'), Views = w.eval('Views');
@@ -33,8 +33,9 @@ function makePage() {
   const xfer = (o) => { App.currentView = 'inputs'; App.renderCurrentView(); $('tf-from').value = o.from; $('tf-to').value = o.to; $('tf-amount').value = o.amount === undefined ? '' : o.amount; $('tf-desc').value = o.desc || ''; if (o.date) $('tf-date').value = o.date; };
   const lastSaved = () => JSON.parse(api.saved[api.saved.length - 1]);
   const ledger = (acct) => { App.currentView = 'ledgers'; Views.ledgers.currentAccount = acct; App.renderCurrentView(); };
-  const del = async (ids) => { ledger(App._acct || 'vault'); for (const id of ids) { const c = w.document.querySelector('.txn-check[data-id="' + id + '"]'); if (!c) return false; c.checked = true; } Views.ledgers.deleteSelected(); $('del-confirm-yes').click(); await tick(); await tick(); await tick(); return true; };
-  return { w, App, Views, api, toasts, errors, timers, confirms, ask, $, open, xfer, lastSaved, ledger, del };
+  const pick = async () => { await tick(); const bar = $('del-half-bar'); lastBar = bar ? { text: bar.textContent, buttons: [...bar.querySelectorAll('button')].map(b => b.textContent), count: w.document.querySelectorAll('#del-half-bar').length } : null; if (bar) $('del-half-' + ask.choice).click(); await tick(); await tick(); await tick(); };
+  const del = async (ids) => { lastBar = null; ledger(App._acct || 'vault'); for (const id of ids) { const c = w.document.querySelector('.txn-check[data-id="' + id + '"]'); if (!c) return false; c.checked = true; } Views.ledgers.deleteSelected(); $('del-confirm-yes').click(); await pick(); return true; };
+  return { w, App, Views, api, toasts, errors, timers, confirms, ask, $, open, xfer, lastSaved, ledger, del, bar: () => lastBar };
 }
 
 (async () => {
@@ -89,19 +90,40 @@ function makePage() {
   p.App._acct = 'vault';
   const vBefore = p.App.data.accounts.vault; const nDel = p.api.saved.length;
   await p.del([ordinary.id]);
-  check('deleting an ordinary entry: one save, entry gone, balance moves back, nothing asked about transfers', p.api.saved.length === nDel + 1 && !T().some(t => t.id === ordinary.id) && p.App.data.accounts.vault === vBefore + 100 && p.confirms.length === 0 && p.toasts.some(m => /1 transaction\(s\) deleted and saved/.test(m)), p.confirms.join('|'));
+  check('deleting an ordinary entry: one save, entry gone, balance moves back, nothing asked about transfers', p.api.saved.length === nDel + 1 && !T().some(t => t.id === ordinary.id) && p.App.data.accounts.vault === vBefore + 100 && p.confirms.length === 0 && p.bar() === null && p.toasts.some(m => /1 transaction\(s\) deleted and saved/.test(m)), p.confirms.join('|'));
   check('the saved file no longer contains it and is still valid', !p.lastSaved().transactions.some(t => t.id === ordinary.id) && L.validate(p.lastSaved()).length === 0);
 
   const pay = T().find(t => t.description === 'Pay card' && t.accountId === 'vault'), payHalf = T().find(t => t.id === pay.linkedId);
-  p.ask.answer = true; const c0 = p.confirms.length; const ccB = p.App.data.accounts.cc, vB = p.App.data.accounts.vault;
+  p.ask.choice = 'both'; const ccB = p.App.data.accounts.cc, vB = p.App.data.accounts.vault;
   await p.del([pay.id]);
-  check('deleting one half asks first, and answering Yes removes BOTH sides', p.confirms.length === c0 + 1 && /other side/.test(p.confirms[c0]) && !T().some(t => t.id === pay.id || t.id === payHalf.id) && p.App.data.accounts.cc === ccB + 25 && p.App.data.accounts.vault === vB + 25 && L.validate(p.lastSaved()).length === 0, p.confirms[c0]);
+  check('deleting one half shows a bar with three clear buttons (no pop-up), and "Delete both sides" removes BOTH', !!p.bar() && p.confirms.length === 0 && /one half of a transfer/.test(p.bar().text) && JSON.stringify(p.bar().buttons) === JSON.stringify(['Delete both sides', 'Delete only the selected', 'Keep everything']) && !T().some(t => t.id === pay.id || t.id === payHalf.id) && p.App.data.accounts.cc === ccB + 25 && p.App.data.accounts.vault === vB + 25 && L.validate(p.lastSaved()).length === 0, JSON.stringify(p.bar()));
+  check('the bar is gone after answering', !p.$('del-half-bar'));
 
   const dbl = T().filter(t => t.description === 'dbl'), dblA = dbl.find(t => t.accountId === 'vault'), dblB = dbl.find(t => t.accountId === 'flex');
-  p.ask.answer = false; const fB = p.App.data.accounts.flex; const c1 = p.confirms.length;
+  p.ask.choice = 'one'; const fB = p.App.data.accounts.flex;
   await p.del([dblA.id]);
   const surv = T().find(t => t.id === dblB.id);
-  check('answering No removes only the selected half; the other stays, becomes an ordinary entry, file valid', p.confirms.length === c1 + 1 && !T().some(t => t.id === dblA.id) && !!surv && !surv.linkedId && p.App.data.accounts.flex === fB && L.validate(p.lastSaved()).length === 0);
+  check('"Delete only the selected" removes only that half; the other stays, becomes an ordinary entry, file valid', !!p.bar() && !T().some(t => t.id === dblA.id) && !!surv && !surv.linkedId && p.App.data.accounts.flex === fB && L.validate(p.lastSaved()).length === 0);
+
+  // "Keep everything" deletes nothing and saves nothing
+  p.xfer({ from: 'vault', to: 'flex', amount: '2', desc: 'keepme' }); await p.Views.inputs.addTransferV2(); await tick();
+  const keepA = T().find(t => t.description === 'keepme' && t.accountId === 'vault'); const nK = p.api.saved.length, cntK = T().length; p.ask.choice = 'keep';
+  await p.del([keepA.id]);
+  check('"Keep everything": nothing deleted, nothing saved, the user is told', p.api.saved.length === nK && T().length === cntK && T().some(t => t.id === keepA.id) && p.toasts.some(m => /Nothing was deleted/.test(m)) && !p.$('del-half-bar'));
+
+  // asking twice never stacks two bars
+  p.ledger('vault'); p.w.document.querySelector('.txn-check[data-id="' + keepA.id + '"]').checked = true;
+  p.Views.ledgers.deleteSelected(); p.$('del-confirm-yes').click(); await tick(); p.Views.ledgers.deleteSelected(); p.$('del-confirm-yes').click(); await tick();
+  check('asking twice leaves ONE bar on screen', p.w.document.querySelectorAll('#del-half-bar').length === 1);
+  p.$('del-half-keep').click(); await tick(); await tick();
+  check('and answering it leaves none, with nothing deleted', p.w.document.querySelectorAll('#del-half-bar').length === 0 && T().some(t => t.id === keepA.id));
+
+  // "Delete both sides" with a failed save changes nothing
+  p.ask.choice = 'both'; p.api.saveResult = () => ({ ok: false, error: 'disk full' }); const rawK = p.App.v2Raw;
+  await p.del([keepA.id]);
+  check('a failed save after "Delete both sides" changes nothing on screen', p.App.v2Raw === rawK && T().some(t => t.id === keepA.id) && T().some(t => t.id === keepA.linkedId) && p.toasts.some(m => /NOT saved, nothing was changed: disk full/.test(m)));
+  p.api.saveResult = () => ({ ok: true });
+  check('the desktop pop-up (confirm) is never used for any of this', p.confirms.length === 0);
 
   // (Both halves of a transfer can never be ticked together: the Ledgers page shows one account at a time. ledger-delete.test.js covers that case.)
 

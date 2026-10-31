@@ -2368,6 +2368,26 @@ Views.ledgers = {
     const btn = document.getElementById('del-selected-btn');
     if(btn) btn.style.display = any?'':'none';
   },
+  askHalvesV2(n) {
+    return new Promise(resolve => {
+      if (Views.ledgers.halfPending) Views.ledgers.halfPending('keep');
+      const box = document.createElement('div');
+      box.id = 'del-half-bar';
+      box.style.cssText = 'display:flex;align-items:center;gap:10px;flex-wrap:wrap;background:rgba(224,123,123,0.1);border:1px solid rgba(224,123,123,0.3);border-radius:var(--radius-sm);padding:10px 12px;margin:0 0 12px 0';
+      box.innerHTML = '<span style="font-size:0.82rem;color:var(--red)">' + (n === 1 ? 'This entry is one half of a transfer.' : n + ' of these entries are halves of transfers.') + ' Also delete the matching other side?</span>'
+        + '<button id="del-half-both" class="btn btn-danger btn-sm">Delete both sides</button>'
+        + '<button id="del-half-one" class="btn btn-secondary btn-sm">Delete only the selected</button>'
+        + '<button id="del-half-keep" class="btn btn-secondary btn-sm">Keep everything</button>';
+      const table = document.querySelector('#view-container .data-table');
+      if (table) table.insertAdjacentElement('beforebegin', box); else document.getElementById('view-container').appendChild(box);
+      const done = (choice) => { box.remove(); Views.ledgers.halfPending = null; resolve(choice); };
+      Views.ledgers.halfPending = done;
+      box.querySelector('#del-half-both').onclick = () => done('both');
+      box.querySelector('#del-half-one').onclick = () => done('one');
+      box.querySelector('#del-half-keep').onclick = () => done('keep');
+    });
+  },
+
   async deleteV2(ids) {
     const raw = App.v2Raw, txns = Array.isArray(raw.transactions) ? raw.transactions : [];
     const sel = new Set(ids);
@@ -2375,9 +2395,11 @@ Views.ledgers = {
     let both = false;
     if (halves.length) {
       const n = halves.length;
-      both = confirm((n === 1 ? 'This entry is one half of a transfer.' : n + ' of these entries are halves of transfers.') + '\n\nAlso delete the matching other side?\n\nOK = Yes, delete both sides\nCancel = No, delete only what I selected');
+      const choice = await Views.ledgers.askHalvesV2(n);
+      if (choice === 'keep') { App.showToast('Nothing was deleted', 'success'); return; }
+      both = choice === 'both';
     }
-    const r = FTLedger.deleteTransactions(raw, ids, both);
+    const r = FTLedger.deleteTransactions(App.v2Raw, ids, both);
     if (!r.ok) { App.showToast('Could not delete: ' + r.error, 'error'); return; }
     await App.commitV2(r.data, r.removed + ' transaction(s) deleted and saved');
   },
