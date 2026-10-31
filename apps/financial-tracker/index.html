@@ -827,6 +827,20 @@ const App = {
     } catch (e) { return { ok: false, error: e.message }; }
   },
 
+  async commitV2(raw, okMessage) {
+    if (App.v2Busy) { App.showToast('Still saving the last change - try again in a moment', 'error'); return false; }
+    App.v2Busy = true;
+    let saved;
+    try { saved = await App.saveV2(raw); } finally { App.v2Busy = false; }
+    if (!saved.ok) { App.showToast('NOT saved, nothing was changed: ' + saved.error, 'error'); return false; }
+    App.data = App.mergeWithDefaults(raw);
+    App.dirty = false;
+    App.renderCurrentView();
+    const ind = document.getElementById('save-indicator'); if (ind) { ind.textContent = 'Saved ✓'; ind.className = 'saved'; }
+    App.showToast(okMessage, 'success');
+    return true;
+  },
+
   async saveFile() {
     const ind = document.getElementById('save-indicator');
     if (App.saveBlocked || (App.data && App.data._v2ReadOnly)) return;
@@ -1788,6 +1802,7 @@ Views.inputs = {
     $('txn-amount').closest('.form-group').querySelector('label').textContent = 'Amount (+ money in / − money out)';
     const note = document.createElement('div'); note.id = 'txn-v2-note'; note.style.cssText = 'font-size:0.72rem;color:var(--text3);margin-top:4px';
     $('txn-date').closest('.form-group').appendChild(note);
+    Views.inputs.fillTransferSelectsV2();
     ['txn-amount', 'txn-account', 'txn-date'].forEach(id => { $(id).addEventListener('input', Views.inputs.previewV2); $(id).addEventListener('change', Views.inputs.previewV2); });
     Views.inputs.previewV2();
   },
@@ -1856,7 +1871,33 @@ Views.inputs = {
     document.getElementById('txn-balance').value = '';
   },
 
+  fillTransferSelectsV2() {
+    const from = document.getElementById('tf-from'), to = document.getElementById('tf-to');
+    if (!from || !to || !App.v2Raw) return;
+    const open = (App.v2Raw.accounts || []).filter(a => a && !a.closed && typeof a.id === 'string');
+    const esc = (s) => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+    const opts = open.map(a => '<option value="' + esc(a.id) + '">' + esc(a.name || a.id) + '</option>').join('');
+    from.innerHTML = opts; to.innerHTML = opts;
+    if (open.some(a => a.id === 'vault')) from.value = 'vault';
+    if (open.some(a => a.id === 'flex')) to.value = 'flex';
+  },
+
+  async addTransferV2() {
+    const $ = (id) => document.getElementById(id);
+    const fromId = $('tf-from').value, toId = $('tf-to').value;
+    const cents = FTLedger.toCents($('tf-amount').value);
+    const date = $('tf-date').value || FTDates.todayStr();
+    if (cents === null || cents <= 0) { App.showToast('Enter a valid amount', 'error'); return; }
+    if (fromId === toId) { App.showToast('From and To must be different', 'error'); return; }
+    const to = FTLedger.findAccount(App.v2Raw, toId);
+    const description = $('tf-desc').value.trim() || ('Transfer to ' + (to ? to.name : toId));
+    const r = FTLedger.addTransfer(App.v2Raw, { fromId, toId, amountCents: cents, date, description });
+    if (!r.ok) { App.showToast('Could not record the transfer: ' + r.error, 'error'); return; }
+    await App.commitV2(r.data, 'Transfer recorded and saved');
+  },
+
   addTransfer() {
+    if (App.v2Raw) { Views.inputs.addTransferV2(); return; }
     const from = document.getElementById('tf-from').value;
     const to = document.getElementById('tf-to').value;
     const amount = parseFloat(document.getElementById('tf-amount').value);
@@ -2327,6 +2368,19 @@ Views.ledgers = {
     const btn = document.getElementById('del-selected-btn');
     if(btn) btn.style.display = any?'':'none';
   },
+  async deleteV2(ids) {
+    const raw = App.v2Raw, txns = Array.isArray(raw.transactions) ? raw.transactions : [];
+    const sel = new Set(ids);
+    const halves = ids.map(id => txns.find(t => t && t.id === id)).filter(t => t && t.linkedId && !sel.has(t.linkedId) && txns.some(x => x && x.id === t.linkedId));
+    let both = false;
+    if (halves.length) {
+      const n = halves.length;
+      both = confirm((n === 1 ? 'This entry is one half of a transfer.' : n + ' of these entries are halves of transfers.') + '\n\nAlso delete the matching other side?\n\nOK = Yes, delete both sides\nCancel = No, delete only what I selected');
+    }
+    const r = FTLedger.deleteTransactions(raw, ids, both);
+    if (!r.ok) { App.showToast('Could not delete: ' + r.error, 'error'); return; }
+    await App.commitV2(r.data, r.removed + ' transaction(s) deleted and saved');
+  },
   deleteSelected() {
     const ids = [...document.querySelectorAll('.txn-check:checked')].map(c=>c.dataset.id);
     if (!ids.length) return;
@@ -2335,6 +2389,7 @@ Views.ledgers = {
       bar.style.display = 'flex';
       document.getElementById('del-confirm-count').textContent = `Delete ${ids.length} transaction(s)?`;
       document.getElementById('del-confirm-yes').onclick = () => {
+        if (App.v2Raw) { bar.style.display = 'none'; Views.ledgers.deleteV2(ids); return; }
         App.data.transactions = App.data.transactions.filter(t=>!ids.includes(t.id));
         App.scheduleSave(); App.renderCurrentView();
         App.showToast(`${ids.length} transaction(s) deleted`);
