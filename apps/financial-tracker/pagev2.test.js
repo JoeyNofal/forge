@@ -41,7 +41,7 @@ function makePage() {
   p.api.handlers.initial({ path: 'C:\\x\\converted-v2.json', data: JSON.stringify(v2) }); await tick();
   const A = p.App.data.accounts;
   check('balances equal the old page: VAULT 950, FREEDOM owed 40', A.vault === 950 && A.cc === 40, JSON.stringify(A));
-  check('v2 data is flagged read-only and the indicator says so', p.App.data._v2ReadOnly === true && /entries only/.test(p.$('save-indicator').textContent), p.$('save-indicator').textContent);
+  check('v2 data is not flagged read-only any more (everything saves)', p.App.data._v2ReadOnly === undefined && p.App.v2Raw !== null);
   check('migration entry is not in the normal transaction list', p.App.data.transactions.every(t => t.type !== 'migration_adjustment') && p.App.data.migrationEntries.length === 1);
   p.App.currentView = 'ledgers'; p.Views.ledgers.currentAccount = 'vault'; p.App.renderCurrentView();
   const body = () => p.$('view-container').textContent;
@@ -57,8 +57,8 @@ function makePage() {
   // L4/L5 nothing can ever be saved from a v2 file
   p.App.dirty = true; p.App.scheduleSave(); await p.App.saveFile(); await p.App.flushNow();
   for (const t of [...p.timers.values()]) await t.fn();
-  check('edit, save, flush and every pending timer: nothing was written', p.api.saved.length === 0, 'saves: ' + p.api.saved.length);
-  check('the user is told it is read-only', p.toasts.some(m => /not saved/i.test(m)));
+  check('edit, save, flush and every pending timer: the file is written and its ledger part is untouched', p.api.saved.length >= 1 && p.api.saved.every(j => { const f = JSON.parse(j); return f.schemaVersion === 2 && JSON.stringify(f.accounts) === JSON.stringify(v2.accounts) && JSON.stringify(f.transactions) === JSON.stringify(v2.transactions); }), 'saves: ' + p.api.saved.length);
+  check('no "not saved" warning any more', !p.toasts.some(m => /not saved/i.test(m)));
 
   // L2 v1 file still loads and saves exactly as before
   const q = makePage(); await tick();

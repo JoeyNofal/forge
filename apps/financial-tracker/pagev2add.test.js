@@ -63,7 +63,7 @@ const today = () => { const d = new Date(), z = (n) => String(n).padStart(2, '0'
   const last = f.transactions[f.transactions.length - 1];
   check('the saved file is v2 with the accounts still a list', f.schemaVersion === 2 && Array.isArray(f.accounts) && f.accounts.length === v2.accounts.length);
   check('the new entry: -3000 cents, no dollar amount, no typed balance, type transaction', last.amountCents === -3000 && last.description === 'Groceries' && last.accountId === 'vault' && last.type === 'transaction' && !('amount' in last) && !('balance' in last));
-  check('every earlier entry and every other key is byte-for-byte unchanged', JSON.stringify(f.transactions.slice(0, -1)) === JSON.stringify(v2.transactions) && JSON.stringify(Object.assign({}, f, { transactions: 0 })) === JSON.stringify(Object.assign({}, v2, { transactions: 0 })) && JSON.stringify(v2) === before);
+  check('every earlier entry and every account is byte-for-byte unchanged', JSON.stringify(f.transactions.slice(0, -1)) === JSON.stringify(v2.transactions) && JSON.stringify(f.accounts) === JSON.stringify(v2.accounts) && f.schemaVersion === 2 && JSON.stringify(v2) === before);
   check('no page-only fields leaked into the file', !/_v2ReadOnly|migrationEntries|fundsSubAccounts/.test(p.api.saved[0]));
   check('the saved file passes the shape check and VAULT is 920.00 in it', L.validate(f).length === 0 && L.balanceCents(f, 'vault', '2199-12-31') === 92000);
   check('the screen now shows VAULT 920 and the entry in Ledgers', p.App.data.accounts.vault === 920 && (p.App.currentView = 'ledgers', p.Views.ledgers.currentAccount = 'vault', p.App.renderCurrentView(), /Groceries/.test(p.$('view-container').textContent)));
@@ -115,7 +115,7 @@ const today = () => { const d = new Date(), z = (n) => String(n).padStart(2, '0'
   // L2 nothing else is saved from a v2 file
   const n2 = p.api.saved.length;
   p.App.dirty = true; p.App.scheduleSave(); await p.App.flushNow(); for (const t of [...p.timers.values()]) await t.fn();
-  check('other edits are still NOT saved on a v2 file (and the user is told)', p.api.saved.length === n2 && p.toasts.some(m => /not saved/i.test(m)));
+  check('other edits are saved on a v2 file too (and the user is not warned)', p.api.saved.length > n2 && !p.toasts.some(m => /^This change was not saved/i.test(m)));
 
   // L2 v1 files are unchanged
   const q = makePage(); await tick(); await q.open(old);

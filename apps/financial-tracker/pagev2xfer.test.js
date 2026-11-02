@@ -141,7 +141,7 @@ function makePage() {
 
   // L2 other edits still unsaved on v2
   const n2 = p.api.saved.length; p.App.dirty = true; p.App.scheduleSave(); await p.App.flushNow(); for (const t of [...p.timers.values()]) await t.fn();
-  check('other edits are still NOT saved on a v2 file', p.api.saved.length === n2);
+  check('other edits are saved on a v2 file too', p.api.saved.length > n2);
 
   // L2 v1 unchanged
   const q = makePage(); await tick(); await q.open(old);

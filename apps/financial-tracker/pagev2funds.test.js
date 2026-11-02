@@ -53,7 +53,7 @@ const shown = (p, id) => p.w.getComputedStyle(p.$(id)).display !== 'none';
   check('v2 settings: no Car Fund Minimum / Target boxes, the other boxes are still there', !p.$('s-carmin') && !p.$('s-cartarget') && !/Car Fund/.test(c.textContent) && !!p.$('s-flexfloor') && !!p.$('s-carloan') && !!p.$('s-carloaninitial'));
   let threw = false; try { p.Views.settings.save(); } catch (e) { threw = e.message; }
   await tick(); for (const t of [...p.timers.values()]) await t.fn();
-  check('v2 settings: Save does not crash and nothing is written to the file', threw === false && p.api.saved.length === 0, String(threw) + ' saves: ' + p.api.saved.length);
+  check('v2 settings: Save does not crash and the settings are written to the file', threw === false && p.api.saved.length >= 1 && JSON.parse(p.api.saved[p.api.saved.length - 1]).schemaVersion === 2, String(threw) + ' saves: ' + p.api.saved.length);
   check('v2: the Paycheck and Forecast pages (unchanged until B4) still render', (() => { try { p.view('paychecks'); p.view('forecast'); return true; } catch (e) { return false; } })());
   check('v2: no page errors', p.errors.length === 0 && pn.errors.length === 0 && pz.errors.length === 0, p.errors.concat(pn.errors, pz.errors).join(' | '));
 
