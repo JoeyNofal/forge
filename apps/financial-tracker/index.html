@@ -2472,7 +2472,7 @@ Views.groceries = {
       <div class="card-subtitle">Since September 2024</div>
       <div class="chart-container" style="margin-bottom:20px"><canvas id="grocery-chart"></canvas></div>
       <table class="data-table">
-        <thead><tr><th>Month</th><th>Total</th><th>vs Average</th><th></th></tr></thead>
+        <thead><tr><th>Month</th><th>Total</th><th>Add to month</th><th>vs Average</th><th></th></tr></thead>
         <tbody>
           ${months.map(m=>{
             const key=`${m.year}-${String(m.month).padStart(2,'0')}`;
@@ -2481,6 +2481,7 @@ Views.groceries = {
             return `<tr>
               <td class="desc">${new Date(m.year,m.month-1,1).toLocaleDateString('en-US',{month:'long',year:'numeric'})}</td>
               <td><input type="number" class="form-group input" style="background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:5px 8px;font-size:0.8rem;width:110px;font-family:var(--font-mono)" data-key="${key}" value="${val||''}" placeholder="0.00" step="0.01" min="0" onchange="Views.groceries.save('${key}', this.value)"></td>
+              <td style="white-space:nowrap"><input type="number" id="gadd-${key}" placeholder="+ amount" step="0.01" style="background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:5px 8px;font-size:0.8rem;width:100px;font-family:var(--font-mono)" onkeydown="if(event.key==='Enter')Views.groceries.add('${key}')"> <button class="btn btn-secondary btn-sm" onclick="Views.groceries.add('${key}')">+ Add</button></td>
               <td>${avg>0&&val?`<span class="badge badge-${val>avg*1.1?'red':val<avg*0.9?'green':'accent'}">${diff>0?'+':''}${diff.toFixed(0)}%</span>`:'—'}</td>
               <td></td>
             </tr>`;
@@ -2498,6 +2499,21 @@ Views.groceries = {
       m++; if(m>12){m=1;y++;}
     }
     return months;
+  },
+  // Add to a month that already has a total (a negative amount takes money off, e.g. a refund).
+  add(key) {
+    const box = document.getElementById('gadd-' + key);
+    const amtC = box ? FTLedger.toCents(box.value) : null;
+    if (amtC === null || amtC === 0) { App.showToast('Enter an amount to add', 'error'); return; }
+    const totalC = Math.round((App.data.groceries[key] || 0) * 100) + amtC;
+    if (totalC < 0) { App.showToast('That would make the month total negative', 'error'); return; }
+    if (totalC > FTLedger.MAX_CENTS) { App.showToast('That total is too large', 'error'); return; }
+    App.data.groceries[key] = totalC / 100;
+    App.scheduleSave();
+    const [y, m] = key.split('-').map(Number);
+    const month = new Date(y, m - 1, 1).toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+    App.renderCurrentView();
+    App.showToast('Added ' + App.fmt(amtC / 100) + ' to ' + month + ': total now ' + App.fmt(totalC / 100), 'success');
   },
   save(key, val) {
     const n = parseFloat(val);
