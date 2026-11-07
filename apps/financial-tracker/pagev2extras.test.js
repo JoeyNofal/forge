@@ -149,17 +149,13 @@ const sameLedger = (f, base) => JSON.stringify(f.accounts) === JSON.stringify(ba
   check('stress: the latest settings value is in the file, and it equals what the page shows', sf.settings.flexFloor === s.App.data.settings.flexFloor && sf.settings.flexFloor === floor, sf.settings.flexFloor + ' vs ' + floor);
   check('stress: the original entries are all still there and untouched', JSON.stringify(sf.transactions.slice(0, v2.transactions.length)) === JSON.stringify(v2.transactions) && s.App.v2Busy === false);
 
-  // L2 "Update Balances" is switched off on v2 files until it goes through the ledger
-  const ub = makePage(); await tick(); await ub.open(v2);
-  const vBefore = ub.App.data.accounts.vault, nTx = ub.App.v2Raw.transactions.length;
-  ub.$('bal-vault').value = String(vBefore + 50); ub.Views.dashboard.saveBalances(); await ub.fire(); await tick();
-  check('Update Balances is switched off on a v2 file: nothing changes, nothing is written, the user is told', ub.App.data.accounts.vault === vBefore && ub.App.v2Raw.transactions.length === nTx && ub.api.saved.length === 0 && ub.toasts.some(m => /Update Balances is not available/.test(m)));
+
 
   // L2 v1 files unchanged
   const o1 = makePage(); await tick(); await o1.open(mkOld());
   o1.App.data.settings.flexFloor = 999; o1.App.scheduleSave(); await o1.fire(); await tick();
   check('v1: a save still writes the whole old-format file (typed balances, no v2 keys)', o1.api.saved.length === 1 && !!o1.last().transactions[0].balance && !Array.isArray(o1.last().accounts) && o1.last().schemaVersion === undefined && o1.last().settings.flexFloor === 999);
-  check('no page errors anywhere', [p, pm, q, o, o2, o3, e, fl, s, ub, o1, r].every(x => x.errors.length === 0), [p, pm, q, o, o2, o3, e, fl, s, ub, o1, r].map(x => x.errors.join('|')).join(' / '));
+  check('no page errors anywhere', [p, pm, q, o, o2, o3, e, fl, s, o1, r].every(x => x.errors.length === 0), [p, pm, q, o, o2, o3, e, fl, s, o1, r].map(x => x.errors.join('|')).join(' / '));
   clearTimeout(watchdog);
   console.log(passed + '/' + (passed + failed) + ' passed');
   process.exit(failed ? 1 : 0);

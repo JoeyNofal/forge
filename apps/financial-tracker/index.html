@@ -1454,8 +1454,25 @@ Views.dashboard = {
     if (soonBills.length) alerts.push({type:'warn', icon:'◷', msg:`${soonBills.length} bill${soonBills.length>1?'s':''} due within 5 days`});
     return alerts;
   },
+  async saveBalancesV2() {
+    const targets = [];
+    for (const id of ['vault','flex','funds','cc','cc2','car_loan','brex']) {
+      const el = document.getElementById('bal-' + id);
+      const acct = FTLedger.findAccount(App.v2Raw, id);
+      if (!el || !acct) continue;
+      if (el.validity && el.validity.badInput) { App.showToast('Nothing saved: the ' + (acct.name || id) + ' box does not hold a valid number', 'error'); return; }
+      if (String(el.value).trim() === '') continue;
+      const cents = FTLedger.toCents(el.value);
+      if (cents === null) { App.showToast('Nothing saved: "' + el.value + '" is not a valid amount for ' + (acct.name || id), 'error'); return; }
+      targets.push({ accountId: id, balanceCents: cents });
+    }
+    const r = FTLedger.correctBalances(App.v2Raw, targets, FTDates.todayStr());
+    if (!r.ok) { App.showToast('Nothing saved: ' + r.error, 'error'); return; }
+    if (r.changed === 0) { App.showToast('No balances were changed', 'info'); return; }
+    await App.commitV2(r.data, r.changed + (r.changed === 1 ? ' balance corrected and saved' : ' balances corrected and saved'));
+  },
   saveBalances() {
-    if (App.v2Raw) { App.showToast('Update Balances is not available on v2 files yet: add an entry instead.', 'error'); return; }
+    if (App.v2Raw) { Views.dashboard.saveBalancesV2(); return; }
     const today = App.fmtDateInput(new Date());
     ['vault','flex','funds','cc','cc2','car_loan','brex'].forEach(id => {
       const el = document.getElementById('bal-'+id);
