@@ -849,6 +849,8 @@ const App = {
     return (App.v2Raw.accounts || []).filter(a => a && typeof a.id === 'string').map(a => ({ id: a.id, name: String(a.name || a.id), kind: a.kind, role: a.role || 'none', closed: !!a.closed })).filter(a => includeClosed || !a.closed);
   },
   esc(s) { return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); },
+  // The current name of an account on a v2 file (or the old fixed name when there is none).
+  acctName(id, fallback) { const a = App.v2Raw ? FTLedger.findAccount(App.v2Raw, id) : null; return a && a.name ? a.name : fallback; },
   async commitV2(raw, okMessage) {
     if (App.v2Busy) { App.showToast('Still saving the last change - try again in a moment', 'error'); return false; }
     App.v2Busy = true;
@@ -1225,6 +1227,18 @@ Views.dashboard = {
     const bufferPct = Math.min(100, (accts.vault / App.calc.vaultBufferTarget())*100);
     const carLoanPct = App.data.settings.carLoanInitial > 0 ? Math.min(100,(1-accts.car_loan/App.data.settings.carLoanInitial)*100) : 0;
     const carFundPct = Math.min(100,(funds.carFund/App.data.settings.carFundTarget)*100);
+    const dashRows = App.v2Raw ? App.accountRows() : null;   // v2 files: the real accounts (renamed, added, closed ones left out)
+    const dashRow = (id) => dashRows ? dashRows.find(r => r.id === id) : { id };
+    const dashTitle = (id, fallback) => { const r = dashRows && dashRows.find(x => x.id === id); return r ? App.esc(r.name) : fallback; };
+    const extraCards = dashRows ? dashRows.filter(r => !['vault','flex','funds','cc','cc2','car_loan','brex'].includes(r.id)).map(r => {
+      const bal = Number(App.data.accounts[r.id]) || 0, debt = r.kind === 'credit_card' || r.kind === 'loan';
+      return `<div class="balance-card">
+          <div class="label">${App.esc(r.name)}</div>
+          <div class="amount ${debt ? (bal>0?'neg':'pos') : (bal>=0?'pos':'neg')}">${App.fmt(bal)}</div>
+          <div class="sub-label">${r.kind === 'loan' ? 'Remaining balance' : r.kind === 'credit_card' ? 'Credit card' : 'Balance'}</div>
+          ${debt ? `<div class="badge badge-${bal===0?'green':'yellow'}" style="margin-top:6px">${bal===0?'Paid off':'Balance owing'}</div>` : ''}
+        </div>`;
+    }).join('') : '';
 
     return `
     <div class="section-header">
@@ -1264,20 +1278,20 @@ Views.dashboard = {
           <div class="badge badge-${accts.flex>=App.data.settings.flexFloor?'green':'red'}" style="margin-top:6px">${accts.flex>=App.data.settings.flexFloor?'Above floor':'Below floor'}</div>
           <div style="font-size:0.65rem;color:var(--text3);font-family:var(--font-mono);margin-top:4px">Floor: ${App.fmt(App.data.settings.flexFloor)}</div>
         </div>
-        <div class="balance-card">
-          <div class="label">FREEDOM <span style="font-size:0.65rem;color:var(--text3)">(Chase)</span></div>
+        ${dashRow('cc') ? `<div class="balance-card">
+          <div class="label">${dashTitle('cc', 'FREEDOM <span style="font-size:0.65rem;color:var(--text3)">(Chase)</span>')}</div>
           <div class="amount ${accts.cc>0?'neg':'pos'}">${App.fmt(accts.cc)}</div>
           <div class="sub-label">Limit: ${App.fmt(App.data.settings.ccLimit)}</div>
           <div class="badge badge-${accts.cc===0?'green':'yellow'}" style="margin-top:6px">${accts.cc===0?'Paid off':'Balance owing'}</div>
           <div style="font-size:0.65rem;color:var(--text3);font-family:var(--font-mono);margin-top:4px">Goal: $0 balance</div>
-        </div>
-        <div class="balance-card">
-          <div class="label">SAVOR <span style="font-size:0.65rem;color:var(--text3)">(Capital One)</span></div>
+        </div>` : ''}
+        ${dashRow('cc2') ? `<div class="balance-card">
+          <div class="label">${dashTitle('cc2', 'SAVOR <span style="font-size:0.65rem;color:var(--text3)">(Capital One)</span>')}</div>
           <div class="amount ${accts.cc2>0?'neg':'pos'}">${App.fmt(accts.cc2)}</div>
           <div class="sub-label">Limit: ${App.fmt(App.data.settings.cc2Limit)}</div>
           <div class="badge badge-${accts.cc2===0?'green':'yellow'}" style="margin-top:6px">${accts.cc2===0?'Paid off':'Balance owing'}</div>
           <div style="font-size:0.65rem;color:var(--text3);font-family:var(--font-mono);margin-top:4px">Goal: $0 balance</div>
-        </div>
+        </div>` : ''}
       </div>
 
       <!-- FUNDS expanded -->
@@ -1305,8 +1319,8 @@ Views.dashboard = {
       </div>
 
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
-        <div class="balance-card" style="border-left:3px solid #a78bfa">
-          <div class="label" style="color:#a78bfa">BREX <span style="font-size:0.65rem;color:var(--text3)">Loan to friend</span></div>
+        ${dashRow('brex') ? `<div class="balance-card" style="border-left:3px solid #a78bfa">
+          <div class="label" style="color:#a78bfa">${dashTitle('brex', 'BREX')} <span style="font-size:0.65rem;color:var(--text3)">Loan to friend</span></div>
           <div class="amount" style="color:#a78bfa">${App.fmt(accts.brex)}</div>
           <div class="sub-label">Outstanding balance</div>
           ${(()=>{
@@ -1317,15 +1331,16 @@ Views.dashboard = {
               <div style="font-size:0.65rem;color:var(--text3);font-family:var(--font-mono);margin-top:4px">${pct.toFixed(0)}% paid back · Started at ${App.fmt(start)}</div>
             ` : `<div style="font-size:0.65rem;color:var(--text3);font-family:var(--font-mono);margin-top:6px">Set starting balance in Settings</div>`;
           })()}
-        </div>
-        <div class="balance-card">
-          <div class="label">Car Loan</div>
+        </div>` : ''}
+        ${dashRow('car_loan') ? `<div class="balance-card">
+          <div class="label">${dashTitle('car_loan', 'Car Loan')}</div>
           <div class="amount neg">${App.fmt(accts.car_loan)}</div>
           <div class="sub-label">Remaining balance</div>
           <div class="progress-bar" style="margin-top:8px"><div class="progress-fill green" style="width:${carLoanPct.toFixed(1)}%"></div></div>
           <div style="font-size:0.65rem;color:var(--text3);font-family:var(--font-mono);margin-top:4px">${carLoanPct.toFixed(0)}% paid off · Target: ${App.fmt(App.data.settings.carLoanMonthlyTarget)}/mo</div>
-        </div>
-        <div class="balance-card" style="grid-column:span 2">
+        </div>` : ''}
+        ${extraCards}
+                <div class="balance-card" style="grid-column:span 2">
           <div class="label">Credit Scores</div>
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:8px">
             <div>
@@ -1452,9 +1467,14 @@ Views.dashboard = {
     if (accts.flex < App.data.settings.flexFloor)
       alerts.push({type:'crit', icon:'⚠', msg:`FLEX below floor — ${App.fmt(accts.flex)} (floor: ${App.fmt(App.data.settings.flexFloor)})`});
     if (accts.cc > 0)
-      alerts.push({type:'warn', icon:'◎', msg:`FREEDOM has a balance — ${App.fmt(accts.cc)}`});
+      alerts.push({type:'warn', icon:'◎', msg:`${App.esc(App.acctName('cc','FREEDOM'))} has a balance — ${App.fmt(accts.cc)}`});
     if (accts.cc2 > 0)
-      alerts.push({type:'warn', icon:'◎', msg:`SAVOR has a balance — ${App.fmt(accts.cc2)}`});
+      alerts.push({type:'warn', icon:'◎', msg:`${App.esc(App.acctName('cc2','SAVOR'))} has a balance — ${App.fmt(accts.cc2)}`});
+    if (App.v2Raw) App.accountRows().forEach(r => {
+      if (['vault','flex','funds','cc','cc2','car_loan','brex'].includes(r.id) || r.kind !== 'credit_card') return;
+      const b = Number(accts[r.id]) || 0;
+      if (b > 0) alerts.push({type:'warn', icon:'◎', msg:`${App.esc(r.name)} has a balance — ${App.fmt(b)}`});
+    });
     const daysToPaycheck = FTDates.daysBetween(FTDates.todayStr(), FTDates.fmtDateInput(nextPay));
     alerts.push({type:'info', icon:'◎', msg:`Next paycheck in ${daysToPaycheck} day${daysToPaycheck!==1?'s':''} — ${App.fmtDate(nextPay)}`});
     const soonBills = bills.filter(b => FTDates.daysBetween(FTDates.todayStr(), FTDates.fmtDateInput(b.date)) <= 5);
