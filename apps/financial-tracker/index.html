@@ -1340,7 +1340,7 @@ Views.dashboard = {
           <div style="font-size:0.65rem;color:var(--text3);font-family:var(--font-mono);margin-top:4px">${carLoanPct.toFixed(0)}% paid off · Target: ${App.fmt(App.data.settings.carLoanMonthlyTarget)}/mo</div>
         </div>` : ''}
         ${extraCards}
-                <div class="balance-card" style="grid-column:span 2">
+        <div class="balance-card" style="grid-column:span 2">
           <div class="label">Credit Scores</div>
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:8px">
             <div>
@@ -2803,6 +2803,8 @@ Views.settings = {
       <button class="btn btn-primary" onclick="Views.settings.save()">Save All Settings</button>
     </div>
 
+    ${Views.settings.accountsCard()}
+
     <div class="card">
       <div class="section-header" style="margin-bottom:16px">
         <div class="setting-group-title" style="margin-bottom:0">Fixed Expenses</div>
@@ -2907,6 +2909,79 @@ Views.settings = {
     App.scheduleSave(); App.renderCurrentView();
   },
   
+  accountsCard() {
+    if (!App.v2Raw) return '';
+    const today = FTDates.todayStr();
+    const kindName = { bank: 'Bank', savings: 'Savings', credit_card: 'Credit card', loan: 'Loan', receivable: 'Money owed to you' };
+    const rows = App.accountRows(true).map(a => {
+      const bal = FTLedger.balanceCents(App.v2Raw, a.id, today) || 0, idq = App.esc(a.id);
+      const meta = (kindName[a.kind] || 'Account') + (a.role !== 'none' ? ' · ' + a.role.toUpperCase() + ' (cannot be closed)' : '') + (a.closed ? ' · closed' : '');
+      let action = '';
+      if (a.closed) action = `<button class="btn btn-secondary btn-sm" onclick="Views.settings.reopenAccount('${idq}')">Reopen</button>`;
+      else if (a.role === 'none') action = bal === 0
+        ? `<button class="btn btn-secondary btn-sm" onclick="Views.settings.closeAccount('${idq}')">Close</button>`
+        : `<button class="btn btn-secondary btn-sm" disabled title="An account can be closed only when its balance is exactly $0.00">Close</button>`;
+      return `<div class="expense-item">
+        <div style="flex:1">
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+            <input type="text" id="acct-name-${idq}" value="${App.esc(a.name)}" maxlength="40" style="max-width:260px" ${a.closed ? 'disabled' : ''}>
+            ${a.closed ? '' : `<button class="btn btn-secondary btn-sm" onclick="Views.settings.renameAccount('${idq}')">Rename</button>`}
+          </div>
+          <div class="expense-meta">${App.esc(meta)}</div>
+        </div>
+        <div style="display:flex;align-items:center;gap:10px">
+          <div class="expense-amount">${App.fmt(bal / 100)}</div>
+          ${action}
+        </div>
+      </div>`;
+    }).join('');
+    return `<div class="card" id="accounts-card">
+      <div class="setting-group-title">Accounts</div>
+      <div class="card-subtitle">Rename any account. Close a card or loan when it is at exactly $0.00 (you can reopen it later). These buttons redraw the page, so click Save All Settings first if you changed the boxes above.</div>
+      ${rows}
+      <div class="setting-group-title" style="margin:18px 0 8px">Add an account</div>
+      <div class="form-row">
+        <div class="form-group"><label>Name</label><input type="text" id="na-name" maxlength="40" placeholder="e.g. Discover"></div>
+        <div class="form-group"><label>Kind</label><select id="na-kind"><option value="credit_card">Credit card</option><option value="loan">Loan</option></select></div>
+        <div class="form-group"><label>Owed on that date ($)</label><input type="number" id="na-owed" step="0.01" min="0" placeholder="0.00"></div>
+        <div class="form-group"><label>Balance as of</label><input type="date" id="na-date" value="${today}"></div>
+      </div>
+      <div class="card-subtitle">Entries dated before the "as of" date are not allowed on the new account, so pick an earlier date if you want to enter history.</div>
+      <button class="btn btn-primary btn-sm" onclick="Views.settings.addAccount()">+ Add Account</button>
+    </div>`;
+  },
+  async renameAccount(id) {
+    const el = document.getElementById('acct-name-' + id);
+    if (!App.v2Raw || !el) return;
+    const r = FTLedger.renameAccount(App.v2Raw, id, el.value);
+    if (!r.ok) { App.showToast('Not renamed: ' + r.error, 'error'); return; }
+    if (!r.changed) { App.showToast('That is already its name', 'info'); return; }
+    await App.commitV2(r.data, 'Account renamed and saved');
+  },
+  async closeAccount(id) {
+    if (!App.v2Raw) return;
+    const r = FTLedger.closeAccount(App.v2Raw, id, FTDates.todayStr());
+    if (!r.ok) { App.showToast('Not closed: ' + r.error, 'error'); return; }
+    await App.commitV2(r.data, 'Account closed and saved');
+  },
+  async reopenAccount(id) {
+    if (!App.v2Raw) return;
+    const r = FTLedger.reopenAccount(App.v2Raw, id);
+    if (!r.ok) { App.showToast('Not reopened: ' + r.error, 'error'); return; }
+    await App.commitV2(r.data, 'Account reopened and saved');
+  },
+  async addAccount() {
+    if (!App.v2Raw) return;
+    const owedEl = document.getElementById('na-owed');
+    if (!owedEl) return;
+    if (owedEl.validity && owedEl.validity.badInput) { App.showToast('Not added: the amount owed is not a valid number', 'error'); return; }
+    if (String(owedEl.value).trim() === '') { App.showToast('Not added: enter what is owed on that date (0 if nothing)', 'error'); return; }
+    const cents = FTLedger.toCents(owedEl.value);
+    if (cents === null) { App.showToast('Not added: the amount owed is not a valid number', 'error'); return; }
+    const r = FTLedger.addAccount(App.v2Raw, { name: document.getElementById('na-name').value, kind: document.getElementById('na-kind').value, owedCents: cents, date: document.getElementById('na-date').value });
+    if (!r.ok) { App.showToast('Not added: ' + r.error, 'error'); return; }
+    await App.commitV2(r.data, 'Account added and saved');
+  },
   resetData() {
     if(!confirm('This will permanently delete ALL your data. Are you sure?')) return;
     if(!confirm('Last chance — this cannot be undone.')) return;
