@@ -104,6 +104,8 @@ function addTransfer(data, opts) {
   if (!Number.isSafeInteger(o.amountCents) || o.amountCents <= 0 || o.amountCents > MAX_CENTS) return { ok: false, error: 'amount must be a positive number of cents' };
   if (!validDate(o.date)) return { ok: false, error: 'bad date' };
   const mk = typeof o.makeId === 'function' ? o.makeId : defaultId;
+  const early = [from, to].find(x => validDate(x.openingDate) && o.date < x.openingDate);
+  if (early) return { ok: false, error: early.name + ' started on ' + early.openingDate + ': that date is earlier, so the entry would not count' };
   const id1 = mk(), id2 = mk();
   if (!id1 || !id2 || id1 === id2) return { ok: false, error: 'could not make ids' };
   const desc = typeof o.description === 'string' ? o.description.slice(0, 200) : '';
@@ -124,6 +126,7 @@ function addTransaction(data, opts) {
   if (a.closed) return { ok: false, error: 'account is closed' };
   if (!Number.isSafeInteger(o.amountCents) || o.amountCents === 0 || Math.abs(o.amountCents) > MAX_CENTS) return { ok: false, error: 'amount must be a non-zero number of cents' };
   if (!validDate(o.date)) return { ok: false, error: 'bad date' };
+  if (validDate(a.openingDate) && o.date < a.openingDate) return { ok: false, error: a.name + ' started on ' + a.openingDate + ': that date is earlier, so the entry would not count' };
   const desc = typeof o.description === 'string' ? o.description.trim().slice(0, 200) : '';
   if (!desc) return { ok: false, error: 'description is empty' };
   const txns = Array.isArray(data.transactions) ? data.transactions : [];
@@ -212,7 +215,59 @@ function closeAccount(data, id, asOf) {
   const b = balanceCents(data, id, asOf);
   if (b === null) return { ok: false, error: 'bad date' };
   if (b !== 0) return { ok: false, error: 'balance is not zero' };
+  const txns0 = Array.isArray(data.transactions) ? data.transactions : [];
+  if (txns0.some(t => t && t.accountId === id && typeof t.date === 'string' && t.date > asOf)) return { ok: false, error: 'it has entries dated after that day' };
   return { ok: true, data: Object.assign({}, data, { accounts: data.accounts.map(x => x === a ? Object.assign({}, x, { closed: true }) : x) }) };
+}
+
+// Account names: one tidy line of 1 to 40 characters; no two accounts share a name (ignoring case).
+function tidyName(s) {
+  if (typeof s !== 'string') return null;
+  const t = s.replace(/[\u0000-\u001f\u007f]/g, ' ').replace(/\s+/g, ' ').trim();
+  return t && t.length <= 40 ? t : null;
+}
+function nameTaken(data, name, exceptId) {
+  const list = data && Array.isArray(data.accounts) ? data.accounts : [];
+  return list.some(a => a && a.id !== exceptId && typeof a.name === 'string' && a.name.toLowerCase() === name.toLowerCase());
+}
+
+// Rename any account (VAULT, FLEX and FUNDS too: their roles and ids stay).
+function renameAccount(data, id, newName) {
+  const a = findAccount(data, id);
+  if (!a) return { ok: false, error: 'unknown account' };
+  const name = tidyName(newName);
+  if (!name) return { ok: false, error: 'the name must be 1 to 40 characters' };
+  if (nameTaken(data, name, id)) return { ok: false, error: 'another account already has that name' };
+  if (a.name === name) return { ok: true, data, changed: false };
+  return { ok: true, changed: true, data: Object.assign({}, data, { accounts: data.accounts.map(x => x === a ? Object.assign({}, x, { name }) : x) }) };
+}
+
+// Add a credit card or a loan. owedCents = what is owed on `date` (that day is the start of its history:
+// entries dated before it do not count). Returns { ok:true, id, data } or { ok:false, error }.
+function addAccount(data, opts) {
+  const o = opts || {};
+  if (!data || !Array.isArray(data.accounts)) return { ok: false, error: 'no accounts list' };
+  if (o.kind !== 'credit_card' && o.kind !== 'loan') return { ok: false, error: 'only a credit card or a loan can be added' };
+  const name = tidyName(o.name);
+  if (!name) return { ok: false, error: 'the name must be 1 to 40 characters' };
+  if (nameTaken(data, name, null)) return { ok: false, error: 'another account already has that name' };
+  if (!Number.isSafeInteger(o.owedCents) || o.owedCents < 0 || o.owedCents > MAX_CENTS) return { ok: false, error: 'what is owed must be 0 or more' };
+  if (!validDate(o.date)) return { ok: false, error: 'bad date' };
+  const mk = typeof o.makeId === 'function' ? o.makeId : () => 'acct' + defaultId();
+  const id = mk();
+  if (typeof id !== 'string' || !id || data.accounts.some(x => x && x.id === id)) return { ok: false, error: 'could not make a unique id' };
+  const acct = { id, name, kind: o.kind, role: 'none', openingCents: o.owedCents, openingDate: o.date, closed: false };
+  const out = Object.assign({}, data, { accounts: data.accounts.concat([acct]) });
+  if (validate(out).length) return { ok: false, error: 'the result would not be a valid file' };
+  return { ok: true, id, data: out };
+}
+
+// Open a closed account again (its history was never touched).
+function reopenAccount(data, id) {
+  const a = findAccount(data, id);
+  if (!a) return { ok: false, error: 'unknown account' };
+  if (!a.closed) return { ok: false, error: 'the account is not closed' };
+  return { ok: true, data: Object.assign({}, data, { accounts: data.accounts.map(x => x === a ? Object.assign({}, x, { closed: false }) : x) }) };
 }
 
 // Problems with the file's shape (empty list = fine).
@@ -250,5 +305,5 @@ function validate(data) {
   return p;
 }
 
-return { KINDS, ROLES, MAX_CENTS, isDebt, toCents, fromCents, effectCents, findAccount, balanceCents, allBalances, netWorthCents, addTransfer, addTransaction, correctBalances, deleteTransaction, deleteTransactions, closeAccount, validate };
+return { KINDS, ROLES, MAX_CENTS, isDebt, toCents, fromCents, effectCents, findAccount, balanceCents, allBalances, netWorthCents, addTransfer, addTransaction, correctBalances, renameAccount, addAccount, reopenAccount, deleteTransaction, deleteTransactions, closeAccount, validate };
 });
