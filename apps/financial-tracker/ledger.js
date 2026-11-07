@@ -134,6 +134,45 @@ function addTransaction(data, opts) {
   return { ok: true, id, data: Object.assign({}, data, { transactions: txns.concat([t]) }) };
 }
 
+// Manual balance correction: set one or several accounts to the balance the user typed (as of one day).
+// targets = [{ accountId, balanceCents }] where balanceCents is the account's balance in the ledger's own
+// meaning (AMOUNT OWED for a card or loan). An account already on its number gets no entry. All or nothing:
+// one bad target means nothing is added. Each correction is an ordinary visible entry (type "correction").
+function correctBalances(data, targets, date, opts) {
+  const o = opts || {};
+  if (!validDate(date)) return { ok: false, error: 'bad date' };
+  if (!Array.isArray(targets) || !targets.length) return { ok: false, error: 'nothing to correct' };
+  const txns = Array.isArray(data && data.transactions) ? data.transactions : [];
+  const mk = typeof o.makeId === 'function' ? o.makeId : defaultId;
+  const seen = new Set(), used = new Set(txns.map(x => x && x.id)), added = [];
+  for (const tg of targets) {
+    if (!tg || typeof tg !== 'object') return { ok: false, error: 'bad target' };
+    const a = findAccount(data, tg.accountId);
+    if (!a) return { ok: false, error: 'unknown account' };
+    if (seen.has(a.id)) return { ok: false, error: 'account listed twice: ' + a.id };
+    seen.add(a.id);
+    if (!Number.isSafeInteger(tg.balanceCents) || Math.abs(tg.balanceCents) > MAX_CENTS) return { ok: false, error: a.id + ': balance must be a number of cents' };
+    const now = balanceCents(data, a.id, date);
+    if (now === null) return { ok: false, error: 'bad date' };
+    const diff = tg.balanceCents - now;
+    if (diff === 0) continue;
+    if (a.closed) return { ok: false, error: a.id + ': account is closed' };
+    const amountCents = isDebt(a.kind) ? -diff : diff;
+    if (Math.abs(amountCents) > MAX_CENTS) return { ok: false, error: a.id + ': change is too large' };
+    const id = mk();
+    if (typeof id !== 'string' || !id || used.has(id)) return { ok: false, error: 'could not make a unique id' };
+    used.add(id);
+    added.push({ id, accountId: a.id, date, description: 'Manual Balance Correction', amountCents, type: 'correction' });
+  }
+  if (!added.length) return { ok: true, data, changed: 0 };
+  const out = Object.assign({}, data, { transactions: txns.concat(added) });
+  for (const tg of targets) {
+    if (balanceCents(out, tg.accountId, date) !== tg.balanceCents) return { ok: false, error: tg.accountId + ': the entry would not reach that balance (is the date before the account opened?)' };
+  }
+  if (validate(out).length) return { ok: false, error: 'the result would not be a valid file' };
+  return { ok: true, data: out, changed: added.length };
+}
+
 // Delete one entry. If it is half of a transfer, bothHalves:true removes the partner too.
 function deleteTransaction(data, id, bothHalves) {
   const txns = Array.isArray(data.transactions) ? data.transactions : [];
@@ -211,5 +250,5 @@ function validate(data) {
   return p;
 }
 
-return { KINDS, ROLES, MAX_CENTS, isDebt, toCents, fromCents, effectCents, findAccount, balanceCents, allBalances, netWorthCents, addTransfer, addTransaction, deleteTransaction, deleteTransactions, closeAccount, validate };
+return { KINDS, ROLES, MAX_CENTS, isDebt, toCents, fromCents, effectCents, findAccount, balanceCents, allBalances, netWorthCents, addTransfer, addTransaction, correctBalances, deleteTransaction, deleteTransactions, closeAccount, validate };
 });

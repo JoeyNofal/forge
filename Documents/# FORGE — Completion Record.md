@@ -1517,3 +1517,119 @@ Commits this session: 58759e5 (ledger), e298f0d (report), d016217 (receivable ki
 1. Read this record and the project files. Clone the repo (HEAD should be a3af103 or later) and run the sandbox routine in section 1 before touching anything.
 2. Ask nothing new: start B3a (load a v2 file read-only and show the same balances) in the sandbox. First look at how `index.html` loads data, builds balances and renders the 8 pages, then hand him ONE small step with exact steps, and wait for his `npm test` output.
 3. Keep every reply short with the plan position on top, and remind him to commit and push after each green step.
+
+FORGE — Completion Record, Session 20
+
+(Financial Tracker: B3a to B3d, the paycheck recommendation rebuild (B4d), everything saves on v2 files (B4a), Groceries “add to month”. Gemini 2.5 Flash deprecation notice and billing question. Last commit pushed: 5657e09 on main. Paste this into the Completion Record file.)
+
+0. Where things stand
+This session continued the Financial Tracker (Electron app “Vault”) in apps/financial-tracker/, the side project from Sessions 18 and 19. ATLAS and everything else are unchanged since Session 17.
+Done, pushed and hands-on verified: B3a (v2 files open, balances shown), B3b (add an entry by amount only), B3c (transfers and deletes), B3d (FUNDS is plain savings), B4d (new paycheck recommendation), B4a (everything saves on v2 files), and the Groceries “add to month” feature.
+Next: B4a-2 (the Update Balances button through the ledger), then B4b (accounts), B4c (editable targets), B4e (forecast hours control). Then B5 and B6 (section 9).
+The new app still only runs on throwaway copies in D:\Projects\Forge\data\ft-handson\. The old tracker (D:\Projects\Financial Tracker\FinancialTracker\financial-tracker-data.json) stays Joey’s live app until the switch-over (B6). His numbers are “not real yet” by his own rule.
+A new item outside the tracker: the Gemini 2.5 Flash model is retired on December 1, 2026, and FORGE needs a small dedicated step before then (section 7).
+1. Standing rules (new or reconfirmed this session)
+Claude never edits his files. Code arrives as FIND/REPLACE blocks (Ctrl+H, each must show “1 of 1”) or whole new files, with exact PowerShell steps. Multi-line FINDs worked. One step used a line-range replace (88 lines), with a check that the diff size matched.
+One small step per reply, with the plan position stated at the top. Questions come in one numbered list. Joey answers with a matching list.
+Claude builds and tests every step in its own sandbox first, on a clean copy of exactly what he has pushed. Joey runs npm test, reads all result lines, then commits, pushes, and does a hands-on check on a throwaway copy.
+Mutation checking is now routine: Claude deliberately breaks the new code in several ways to confirm the tests can fail. This session it found real gaps (section 6).
+Sandbox routine: cd /home/claude/forge && git checkout -q . && git clean -fdq -e node_modules apps && git pull -q. jsdom lives outside the repo (/home/claude/jsd) and is symlinked as node_modules.
+After every green step: git status, git add -A, git commit, git push. Don’t commit if any line says FAIL.
+Page tests that load index.html must inline every script the page now needs (dates.js, bills.js, ledger.js, v2view.js, paycheckrec.js).
+Whole test command: cd "D:\Projects\Forge\apps\financial-tracker" then npm test.
+2. Commits this session (all on main)
+Commit	What
+68e1d63, ff6bf5a	ledger.js made loadable in the page; v2view.js bridge + tests (ff6bf5a fixed my unclear export-line instruction)
+9cd3231	B3a: page opens v2 files read-only, collapsed migration row
+ac84fd4	B3b: ledger.addTransaction
+b055afa	B3b: add-entry form saves to v2
+8d93b24	B3c: ledger.deleteTransactions
+1820662	B3c: transfers and deletes on v2
+53dab19	B3c fix: three-button delete bar replaces the pop-up
+7c7acd1	B3d: FUNDS plain savings
+1d7a53b	B4d: paycheckrec.js
+c2d4d10	B4d: new recommendation on the page
+ff2c38e	B4a: everything saves on v2 files
+5657e09	Groceries “add to month” (the first push got a GitHub 500, the retry worked)
+3. How the app works now (v2 architecture)
+A v2 file has schemaVersion: 2. accounts is a list, money is whole cents, and entries have no typed balance. Old v1 files still open and save exactly as before until B6.
+Two copies of the data in the page: App.v2Raw is the ledger truth (accounts + transactions). App.data is the page-shaped bridge made by v2view.js (dollars, running balances, migration adjustments kept out of the normal list in migrationEntries).
+Writing rules: ledger changes go through ledger.js and then App.commitV2(raw, message), which saves first and updates the screen only after a good save. A failed save changes nothing on screen.
+Everything else (settings, paychecks, fixed expenses, groceries, credit scores, hidden items) is overlaid onto the file by App.v2WithExtras(raw) at every save. App.adoptSavedV2(saved) keeps edits typed during a save.
+App.editSeq counts edits, so an edit made while a save runs stays marked as unsaved. App.v2Busy stops an autosave and a ledger save from overlapping (the second one waits or says “Still saving”).
+Money math lives in pure modules: ledger.js, v2view.js, paycheckrec.js.
+4. What was built, step by step
+
+B3a, v2 opens and shows the same balances (v2view.js, pagev2.test.js). The converter turns a v2 file into the shape the existing pages read. A Ledgers row “Migration adjustment · N entries” is collapsed by default and click-to-open, which was his choice. A card or loan’s page amount follows the old convention. Wrong-way kept entries carry a note.
+
+B3b, add an entry by amount only (ledger.addTransaction, pagev2add.test.js). The Inputs form on a v2 file shows a read-only “Balance After (calculated)”, hides the Type box, and shows a “Future date: it counts in balances from …” note. Amounts are cash flow: + money in, − money out, on every account (spending on a card is negative). The result is checked in the ledger. Adding saves first, and a double click saves one entry.
+
+B3c, transfers and deletes (ledger.deleteTransactions, pagev2xfer.test.js).
+
+Quick Transfer lists every open account in both From and To (cards, loans and BREX too), default VAULT → FLEX, and creates two linked halves. Paying a card lowers what is owed (the old direction bug is fixed). Moving money out of a card is allowed with no special handling.
+Delete Selected asks “Delete N?” as before. If a selected entry is half of a transfer, a bar above the table offers Delete both sides / Delete only the selected / Keep everything.
+Deleting only one half turns the other into an ordinary entry (its link is cleared) so the file stays valid.
+Migration adjustments cannot be deleted from the page.
+
+B3d, FUNDS as plain savings (pagev2funds.test.js). On v2 the dashboard shows one FUNDS balance with no Car Fund / Savings Fund split cards (hidden), and the Settings page has no Car Fund boxes. v1 keeps the old split.
+
+B4d, the paycheck recommendation (paycheckrec.js, pagerec.test.js). Pure whole-cents math, in this order:
+
+FLEX gets its allowance (capped at the pay).
+FUNDS is topped up so it ends $100 higher than it was at the previous approved paycheck. If there is no earlier approved paycheck, it is compared with FUNDS now.
+VAULT is filled up to its target.
+Anything left goes to FUNDS.
+FLEX + FUNDS + VAULT always equal the net pay. The Car Fund line is gone from the cards. The old 88-line function was removed.
+New helpers: App.calc.fundsAsOf(date) (FUNDS at the end of a day, using the ledger on v2) and App.calc.previousApprovedPaycheck(paycheck) (strictly earlier date).
+VAULT target fixed: months × monthly expenses + $1,500. The old code used months + 1 (8 instead of 7), so the target drops by about one month of expenses. The $1,500 is fixed, not a setting.
+
+B4a, everything saves on v2 (pagev2extras.test.js). Settings, paycheck approvals, fixed expenses, groceries, credit scores and hidden items now save on v2 files. The ledger part of the file is never touched by those saves (tested byte for byte, including files with migration adjustments). The _v2ReadOnly flag is gone. Dashboard → Update Balances is switched off on v2 with the message “Update Balances is not available on v2 files yet: add an entry instead.”
+
+Groceries “add to month” (pagegroceries.test.js). Each month row has an “Add to month” box and a + Add button (Enter works too). The amount is added to the month’s total in whole cents (0.14 + 0.01 = 0.15 exactly). A negative amount takes money off (a refund). It is refused if it would go below 0, or if the amount is blank, zero, text or absurd. The Total box still replaces the total, as before. It works on v1 and v2 and redraws the Average card.
+
+5. Decisions log (Joey’s answers)
+B3a: converter approach (not a rewrite of every screen). The new app opens both v1 and v2 files. The migration adjustment is hidden in a collapsed row now, not later.
+B3b: v2 files were read-only except adding an entry (this later changed with B4a). Amounts typed as cash flow. A future-date note is shown. Old v1 files keep the typed-balance form until B6. Nothing extra wanted for save behavior.
+B3c: keep the existing Quick Transfer box. Positive amounts, direction from From/To. Moving money out of a card is allowed. Deleting asks yes/no about the other half first (later turned into three buttons). Deletes are saved.
+B3d: FUNDS shows just its balance, with no target or progress bar. The money that went to the Car Fund after the loan ends is simply deleted, not redirected. The Car Fund settings boxes are hidden on v2. The car loan account stays at its balance for now.
+B4: the paycheck recommendation comes first, the rest is fine. New accounts will be cards and loans, with dashboard cards. Savings means (c) FUNDS ends $100 higher than at the last approved paycheck. Extra goes to FUNDS when VAULT is full. The $1,500 stays fixed. The forecast-hours control is two things: an hours-per-week box (default 40) and a switch for the old alternating 48/36 pattern.
+Carried over: FUNDS has no sub-accounts, targets and accounts should be editable in the app (B4), the Electron upgrade happens once at B6, and FINANCIAL_DATA_PATH goes into shared\.env only at switch-over.
+6. Real bugs and lessons
+ledger.js export line: my “replace from here to the end of the file” instruction left part of the old export list on line 175, so all tests failed. Fixed in ff6bf5a. Lesson: give explicit, bounded edits.
+Dangling transfer link: deleting one half of a transfer left the other pointing at a missing partner, which the file’s own shape check flags as invalid. The new deleteTransactions clears the link.
+“Saved ✓” never showed: the page redrew after setting the indicator. Fixed by redrawing first.
+Reported “delete selected only not working”: I couldn’t reproduce it (the file evidence was inconclusive, and Joey said both pop-up answers worked). Because an OK/Cancel pop-up is easy to misread, it was replaced by the three-button bar.
+Lost-edit bug found before delivery (B4a): a setting changed while an entry was saving was lost, and the “unsaved” flag was wrongly cleared. Fixed with editSeq and adoptSavedV2. A second watchdog was added to the test, since a hang used to exit silently.
+Mutation checking found real test gaps: the real Add Transaction and Transfer buttons were never exercised (my tests called the v2 functions directly), same-day paychecks, the “dirty during autosave” case, and a decimal-math trap (0.14 + 0.01). Each got its own test.
+Test lessons: several of my own assertions were wrong (arithmetic slips, an impossible UI scenario, test data that didn’t create the migration adjustment). Compute expected numbers first. A “both halves selected” check was removed from the page test because the Ledgers page shows one account at a time. The ledger test covers it.
+A multi-line replacement diff came out as 37/88 instead of my 36/87. It was harmless (tests were green).
+GitHub returned an “Internal Server Error” on a push. The retry later worked. The commit was never lost.
+Not changed: after typing a new number in the Groceries Total box, the Average card refreshes only when you leave the page (it always worked that way, and Joey hasn’t asked for the change).
+7. Gemini 2.5 Flash deprecation (email dated Nov 2, 2026) and billing
+The email: gemini-2.5-flash stops being a separate model on Dec 1, 2026 and is redirected to gemini-3.5-flash-lite. Plain text and multimodal requests keep working. Function calling, hand-built multi-turn history, and custom thinking or sampling settings must be reviewed.
+From Google’s migration guide (via search): the new models drop the sampling settings (temperature, top_p, top_k) and prefilled model turns. A request whose last turn is a “model” turn returns 400. Flash-Lite defaults to “minimal” thinking. The guide recommends medium for some tasks.
+FORGE’s exposure is one place: shared/model_client.py. It hardcodes GEMINI_MODEL = "gemini-2.5-flash", stream_gemini sends temperature=0.7, and it builds the chat history by hand (user/model roles).
+Main risk is quality, not breakage: Flash-Lite is a smaller model. Personalities, ATLAS’s plan builder and JSON, exercise drafts and note reading may behave differently, so the real-model L3 tests must be re-run and read.
+Not affected: the Financial Tracker (no Gemini), ASSET (local-only), anything on local Ollama, the paid Claude tier. The old NEXUS SYSTEM also uses Gemini 2.5 Flash and may use function calling, so it is probably more exposed (low urgency, since he mostly uses its companion apps).
+Planned step (before Dec 1, after the tracker work): change the model name, remove temperature, add a guard so history can never end on a model turn, choose a thinking level, re-run and read the real-model tests for CIPHER, NEXUS and ATLAS, and check in AI Studio which models his free key can use.
+Billing (answer given): it should stay on the free tier. Billing only starts if he turns it on in his Google project. Third-party sources say Flash-Lite is free, with about 10 requests per minute and 500 per day, while the bigger Flash models allow only about 20 per day. One catalog lists 30 per minute and 1,500 per day, so the sources disagree. He should read his real limits in AI Studio. Extra keys in one project don’t multiply the quota. Free-tier content may be used to improve Google’s products (already accepted for ATLAS plan requests, and the reason ASSET and HEAL stay local). If he ever paid, Flash-Lite costs $0.30 per million input tokens and $2.50 per million output tokens. A “429” error means he hit a rate limit and is not a bug. Claude did not read Google’s official pricing page directly, only summaries.
+8. Test baseline at commit 5657e09 (Joey’s machine, all green)
+
+datastore 58, session 75, dates 603 (9 time zones), bills 61, ledger 51, v2view 20, paycheckrec 33, ledger-add 34, ledger-delete 19, migrate-report 22, migrate 56, main 101, renderer 54, pagev2 14, pagev2add 33, pagev2xfer 35, pagev2funds 14, pagev2extras 34, pagegroceries 43, pagerec 48, pagedates 175 (5 time zones). The datastore suite also prints two info lines (hostile reader: “failed” 1 or 2 is expected and means a clean failure).
+
+Files new this session (apps/financial-tracker/): v2view.js, paycheckrec.js, and tests v2view, ledger-add, ledger-delete, paycheckrec, pagev2, pagev2add, pagev2xfer, pagev2funds, pagev2extras, pagerec, pagegroceries. Changed: ledger.js (UMD wrapper, addTransaction, deleteTransactions), index.html, package.json, and the older page tests that said “everything else is read-only.”
+
+9. Open items / next
+B4a-2, Update Balances through the ledger. Claude proposed recording a correction as an ordinary entry named “Manual Balance Correction”, dated today, which shows in the account’s ledger and can be deleted like any other. Joey has not answered yet. Cards and loans store the amount owed, so the correction sign flips there.
+B4b, accounts: rename (VAULT, FLEX and FUNDS can be renamed but never deleted or closed), add a card or loan, close an account at $0, with dashboard cards for new accounts.
+B4c, editable targets (VAULT months, FLEX floor and so on). The $1,500 stays fixed.
+B4e, forecast hours control: an hours-per-week box (default 40) and a switch for the alternating 48/36 pattern.
+B5: update FORGE’s ASSET reader (net worth math, settings keys, the car/funds keys) together with the tracker, and tests.
+B6: recopy the live file, reconcile against the real bank (VAULT shows $3,102.43 on the old page vs $2,882.67 in the math, from Session 19), Electron upgrade, set FINANCIAL_DATA_PATH in shared\.env, switch over, and remove the legacy v1 code (the hidden funds-split grid, the old form paths).
+Gemini step before Dec 1 (section 7), and check his real free-tier limits in AI Studio.
+Unchanged from Sessions 15 to 17, not started: ATLAS 1.3a decision (pause / small steps / patch route), the pending “leave biceps out” rule (id bb167142), 1.3b, 1.4, 1.5, the phone page, history analysis, and Phases B to D of the roadmap.
+Small optional item: make the Groceries Average card refresh right after typing in the Total box.
+10. How the next chat should start
+Read this record and the project files. Clone the repo (HEAD should be 5657e09 or later) and run the sandbox routine in section 1.
+Ask Joey nothing new except whether the “Manual Balance Correction” idea is fine, then build B4a-2 in the sandbox. Hand him one small step with exact steps, and wait for his npm test output.
+Remind him of the Gemini step before December 1, and keep every reply short with the plan position on top.
