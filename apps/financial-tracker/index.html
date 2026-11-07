@@ -842,6 +842,13 @@ const App = {
     } catch (e) { return { ok: false, error: e.message }; }
   },
 
+  // The accounts the screens list. On a v2 file they come straight from the file (names as renamed, closed
+  // accounts left out unless asked for). Old files keep the fixed seven, so nothing changes there.
+  accountRows(includeClosed) {
+    if (!App.v2Raw) return [['vault','VAULT'],['flex','FLEX'],['funds','FUNDS'],['cc','FREEDOM'],['cc2','SAVOR'],['car_loan','Car Loan'],['brex','BREX']].map(([id, name]) => ({ id, name, closed: false }));
+    return (App.v2Raw.accounts || []).filter(a => a && typeof a.id === 'string').map(a => ({ id: a.id, name: String(a.name || a.id), kind: a.kind, role: a.role || 'none', closed: !!a.closed })).filter(a => includeClosed || !a.closed);
+  },
+  esc(s) { return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); },
   async commitV2(raw, okMessage) {
     if (App.v2Busy) { App.showToast('Still saving the last change - try again in a moment', 'error'); return false; }
     App.v2Busy = true;
@@ -1415,11 +1422,11 @@ Views.dashboard = {
       <div class="card-title">Manual Balance Correction</div>
       <div class="card-subtitle">Set any account balance directly — use this if dashboard shows wrong numbers</div>
       <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:10px">
-        ${['vault','flex','funds','cc','cc2','car_loan','brex'].map(id => {
-          const labels = {vault:'VAULT',flex:'FLEX',funds:'FUNDS',cc:'FREEDOM',cc2:'SAVOR',car_loan:'Car Loan',brex:'BREX'};
+        ${App.accountRows().map(a => {
+          const id = a.id;
           return `<div class="form-group">
-            <label>${labels[id]}</label>
-            <input type="number" step="0.01" id="bal-${id}" value="${(App.data.accounts[id]||0).toFixed(2)}" style="font-family:var(--font-mono)">
+            <label>${App.esc(a.name)}</label>
+            <input type="number" step="0.01" id="bal-${App.esc(id)}" value="${(App.data.accounts[id]||0).toFixed(2)}" style="font-family:var(--font-mono)">
           </div>`;
         }).join('')}
       </div>
@@ -1456,7 +1463,7 @@ Views.dashboard = {
   },
   async saveBalancesV2() {
     const targets = [];
-    for (const id of ['vault','flex','funds','cc','cc2','car_loan','brex']) {
+    for (const id of App.accountRows().map(a => a.id)) {
       const el = document.getElementById('bal-' + id);
       const acct = FTLedger.findAccount(App.v2Raw, id);
       if (!el || !acct) continue;
@@ -1561,13 +1568,13 @@ Views.inputs = {
         <div class="form-group">
           <label>Account</label>
           <select id="txn-account">
-            <option value="vault">VAULT</option>
+            ${App.v2Raw ? App.accountRows().map(a => `<option value="${App.esc(a.id)}">${App.esc(a.name)}</option>`).join('') : `<option value="vault">VAULT</option>
             <option value="flex">FLEX</option>
             <option value="funds">FUNDS</option>
             <option value="cc">FREEDOM (Chase)</option>
             <option value="cc2">SAVOR (Capital One)</option>
             <option value="car_loan">Car Loan</option>
-            <option value="brex">BREX</option>
+            <option value="brex">BREX</option>`}
           </select>
         </div>
       </div>
@@ -2282,7 +2289,8 @@ Views.paychecks = {
 Views.ledgers = {
   currentAccount: 'vault',
   render() {
-    const acct = Views.ledgers.currentAccount;
+    let acct = Views.ledgers.currentAccount;
+    if (App.v2Raw) { const open = App.accountRows(); if (open.length && !open.some(a => a.id === acct)) { acct = open[0].id; Views.ledgers.currentAccount = acct; } }
     const txns = App.data.transactions.filter(t=>t.accountId===acct).sort((a,b)=>new Date(b.date)-new Date(a.date));
     const mig = (App.data.migrationEntries || []).filter(t=>t.accountId===acct);
     const migTotal = mig.reduce((s,t)=>s+t.amount,0);
@@ -2294,18 +2302,18 @@ Views.ledgers = {
                 <td></td><td>${App.fmtDate(t.date)}</td><td class="desc">${t.description}</td>
                 <td class="${t.amount>=0?'pos':'neg'}">${t.amount>=0?'+':''}${App.fmt(t.amount)}</td><td>${App.fmt(t.balance)}</td><td><span class="badge badge-accent">migration</span></td>
               </tr>`).join('') : '');
-    const accountNames = {vault:'VAULT',flex:'FLEX',funds:'FUNDS',cc:'FREEDOM',cc2:'SAVOR',car_loan:'Car Loan',brex:'BREX'};
+    const accountNames = Object.fromEntries(App.accountRows().map(a => [a.id, a.name]));
     return `
     <div class="section-header"><div class="section-title">Ledgers</div></div>
     <div class="ledger-tabs">
       ${Object.entries(accountNames).map(([id,name])=>`
-        <div class="ledger-tab ${id===acct?'active':''}" onclick="Views.ledgers.switchAccount('${id}')">${name}</div>
+        <div class="ledger-tab ${id===acct?'active':''}" onclick="Views.ledgers.switchAccount('${App.esc(id)}')">${App.esc(name)}</div>
       `).join('')}
     </div>
     <div class="card">
       <div class="section-header" style="margin-bottom:12px">
         <div>
-          <div class="card-title">${accountNames[acct]}</div>
+          <div class="card-title">${App.esc(accountNames[acct] || acct)}</div>
           <div class="card-subtitle">${txns.length} transactions · Current: ${App.fmt(App.data.accounts[acct])}</div>
         </div>
         <button class="btn btn-danger btn-sm" onclick="Views.ledgers.deleteSelected()" id="del-selected-btn" style="display:none">Delete Selected</button>
