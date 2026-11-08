@@ -2813,11 +2813,12 @@ Views.settings = {
       ${expenses.length ? expenses.map(e=>`
         <div class="expense-item">
           <div>
-            <div class="expense-name">${e.name}</div>
+            <div class="expense-name">${App.esc(e.name)}</div>
             <div class="expense-meta">${e.frequency} · ${e.dueDay?'Due day '+e.dueDay:e.startDate||''}</div>
           </div>
           <div style="display:flex;align-items:center;gap:10px">
             <div class="expense-amount">${App.fmt(e.amount)}</div>
+            <button class="btn btn-secondary btn-sm" onclick="Views.settings.openExpenseModal('${e.id}')">Edit</button>
             <button class="btn btn-danger btn-sm" onclick="Views.settings.deleteExpense('${e.id}')">×</button>
           </div>
         </div>
@@ -2860,11 +2861,11 @@ Views.settings = {
     App.showToast('Settings saved','success');
   },
   openExpenseModal(id) {
-    const e = id ? App.data.fixedExpenses.find(x=>x.id===id) : null;
+    const e = id ? App.data.fixedExpenses.find(x=>String(x.id)===String(id)) : null;
     App.openModal(`
       <div class="modal-title">${e?'Edit':'Add'} Fixed Expense</div>
       <div class="form-row">
-        <div class="form-group" style="flex:2"><label>Name</label><input type="text" id="ex-name" value="${e?.name||''}" placeholder="e.g. Rent, Car Insurance..."></div>
+        <div class="form-group" style="flex:2"><label>Name</label><input type="text" id="ex-name" value="${App.esc(e?.name||'')}" placeholder="e.g. Rent, Car Insurance..."></div>
         <div class="form-group"><label>Amount ($)</label><input type="number" id="ex-amount" value="${e?.amount||''}" step="0.01" min="0"></div>
       </div>
       <div class="form-row">
@@ -2895,9 +2896,12 @@ Views.settings = {
     const startDate = document.getElementById('ex-start').value||null;
     const endDate = document.getElementById('ex-end').value||null;
     if (!name||isNaN(amount)||amount<=0) { App.showToast('Fill name and amount','error'); return; }
+    if (dueDay!==null && (dueDay<1||dueDay>31)) { App.showToast('Due day must be between 1 and 31','error'); return; }
+    if (startDate && endDate && endDate<startDate) { App.showToast('The end date is before the start date','error'); return; }
     if (id) {
-      const idx = App.data.fixedExpenses.findIndex(e=>e.id===id);
-      if(idx>=0) App.data.fixedExpenses[idx]={...App.data.fixedExpenses[idx],name,amount,frequency,dueDay,startDate,endDate};
+      const idx = App.data.fixedExpenses.findIndex(e=>String(e.id)===String(id));
+      if(idx<0) { App.closeModal(); App.showToast('That expense no longer exists','error'); return; }
+      App.data.fixedExpenses[idx]={...App.data.fixedExpenses[idx],name,amount,frequency,dueDay,startDate,endDate};
     } else {
       App.data.fixedExpenses.push({id:App.uid(),name,amount,frequency,dueDay,startDate,endDate});
     }
