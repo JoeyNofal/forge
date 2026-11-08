@@ -154,6 +154,13 @@ def strip_memory_markers(text: str) -> str:
     return MEMORY_SAVE_PATTERN.sub("", text).rstrip()
 
 
+SEARCH_DONE_NOTE = (
+    "[SYSTEM NOTE: FORGE has already searched the web for this message and the results are in the background "
+    "block above. Do NOT write a SEARCH_WEB line. Answer Joey from those results where they are relevant, "
+    "and say plainly if he asked for something they do not contain.]"
+)
+
+
 def _build_search_query(message: str, location: str) -> str:
     """
     Mirrors the old system's location-aware query building (Decision:
@@ -218,6 +225,11 @@ def stream_nexus(message: str, history: Optional[list] = None, location: str = "
             "attempt to answer the technical question yourself, and do NOT write an "
             "ASK_CIPHER line, the system is handling that for you.]"
         )
+    elif not search_result.startswith(WEB_SEARCH_FAILED_PREFIX):
+        # NEXUS's prompt says "YOU MUST" write a SEARCH_WEB line whenever Joey asks for a search. FORGE already
+        # searched (above), and the newer Gemini models follow that rule literally: they wrote SEARCH_WEB
+        # instead of answering. So say it plainly, the same way the CIPHER note does.
+        instruction_lines.append(SEARCH_DONE_NOTE)
     full_message = "\n\n".join(context_blocks + instruction_lines)
 
     messages = list(history) if history else []
