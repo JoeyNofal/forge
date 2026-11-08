@@ -13,18 +13,36 @@ anything. A silent fallback is exactly what hid the Lesson #11 bug for
 an unknown period of time last time; better to fail loud here until a
 real fallback tier is actually built and tested.
 """
+import logging
 import os
+import threading
+import time
 from datetime import datetime
 from dotenv import load_dotenv
 from google import genai
 from google.genai import types
+from google.genai import errors as genai_errors
 import ollama
 import anthropic
 from shared.api_budget import get_balance, record_usage, check_and_notify_hard_stop, get_agent_default_tiers
 
 load_dotenv(override=True)  # Lesson #12: .env must win over a stale system env var
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-GEMINI_MODEL = "gemini-2.5-flash"
+# Gemini model names and the thinking effort are plain settings (override them in .env, no code change needed):
+#   GEMINI_MODEL           the model tried first            (default gemini-3.6-flash)
+#   GEMINI_FALLBACK_MODEL  used when the first one is out of free requests or overloaded
+#                          (default gemini-3.5-flash-lite; an EMPTY value turns the fallback off)
+#   GEMINI_THINKING_LEVEL  minimal | low | medium | high    (default low)
+GEMINI_MODEL = os.getenv("GEMINI_MODEL") or "gemini-3.6-flash"
+GEMINI_FALLBACK_MODEL = os.getenv("GEMINI_FALLBACK_MODEL", "gemini-3.5-flash-lite").strip()
+GEMINI_THINKING_LEVEL = (os.getenv("GEMINI_THINKING_LEVEL") or "low").strip().lower()
+GEMINI_COOLDOWN_SECONDS = 300      # after a model says "out of requests", skip it for 5 minutes
+THINKING_LEVELS = ("minimal", "low", "medium", "high")
+LAST_GEMINI_MODEL = None           # which model answered the most recent call (so a fallback is never invisible)
+_log = logging.getLogger("forge.model_client")
+_now = time.monotonic
+_cooldown_until = {}               # model name -> time (by _now) before which we do not try it
+_cooldown_lock = threading.Lock()
 
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
 ANTHROPIC_MODEL = "claude-sonnet-5"
@@ -83,11 +101,37 @@ def get_gemini_client():
     return _client
 
 
+def _check_gemini_history(messages) -> None:
+    """The new Gemini models reject a conversation whose LAST turn is the assistant's, with a confusing 400.
+    Fail early and clearly instead (nothing is sent)."""
+    if not isinstance(messages, list) or not messages:
+        raise ValueError("Gemini needs at least one message")
+    for m in messages:
+        if not isinstance(m, dict) or m.get("role") not in ("user", "assistant"):
+            raise ValueError("every message needs a role of 'user' or 'assistant'")
+    if messages[-1]["role"] != "user":
+        raise ValueError("the conversation must END with a user message (Gemini rejects a last assistant turn)")
+
+
+def _is_model_unavailable(exc) -> bool:
+    """True for 'this model has no free requests left right now' (429) or 'overloaded' (503)."""
+    return isinstance(exc, genai_errors.APIError) and getattr(exc, "code", None) in (429, 503)
+
+
 def stream_gemini(system_prompt: str, messages: list, location: str = ""):
     """
     messages: list of {"role": "user"|"assistant", "content": str}
-    Yields text chunks.
+    Yields text chunks. Tries GEMINI_MODEL first; if that model is out of requests (429) or overloaded (503)
+    BEFORE it has said anything, the same request goes to GEMINI_FALLBACK_MODEL. The model that answered is
+    in LAST_GEMINI_MODEL, and a fallback is logged as a warning. An error after text has started, or any
+    other kind of error, is raised as it is (never mixed with a second model's answer, never swallowed).
     """
+    global LAST_GEMINI_MODEL
+    _check_gemini_history(messages)
+    level = GEMINI_THINKING_LEVEL
+    if level not in THINKING_LEVELS:
+        raise ValueError(f"GEMINI_THINKING_LEVEL must be one of {', '.join(THINKING_LEVELS)} (got {level!r})")
+
     now = datetime.now().strftime("%A, %B %d, %Y — %I:%M:%S %p")
     location_line = f"\nUser's current location: {location}" if location else ""
     full_system = system_prompt + f"\n\nCurrent date and time: {now}{location_line}"
@@ -97,19 +141,45 @@ def stream_gemini(system_prompt: str, messages: list, location: str = ""):
         role = "model" if msg["role"] == "assistant" else "user"  # conversion happens HERE only
         gemini_contents.append(types.Content(role=role, parts=[types.Part(text=msg["content"])]))
 
-    client = get_gemini_client()
-    response = client.models.generate_content_stream(  # type: ignore[call-overload]
-        model=GEMINI_MODEL,
-        contents=gemini_contents,
-        config=types.GenerateContentConfig(
-            system_instruction=full_system,
-            temperature=0.7,
-            max_output_tokens=8192,
-        )
+    config = types.GenerateContentConfig(
+        system_instruction=full_system,
+        max_output_tokens=8192,
+        # No temperature: Gemini 3.x ignores it (Google recommends leaving sampling alone).
+        thinking_config=types.ThinkingConfig(thinking_level=types.ThinkingLevel[level.upper()]),
     )
-    for chunk in response:
-        if chunk.text:
-            yield chunk.text
+
+    models = [GEMINI_MODEL]
+    if GEMINI_FALLBACK_MODEL and GEMINI_FALLBACK_MODEL != GEMINI_MODEL:
+        models.append(GEMINI_FALLBACK_MODEL)
+    with _cooldown_lock:
+        t = _now()
+        ready = [m for m in models if _cooldown_until.get(m, 0) <= t]
+    candidates = ready or models      # if every model is resting, still try them (in order) rather than give up
+
+    client = get_gemini_client()
+    last_error = None
+    for model in candidates:
+        started = False
+        try:
+            response = client.models.generate_content_stream(  # type: ignore[call-overload]
+                model=model, contents=gemini_contents, config=config)
+            for chunk in response:
+                if chunk.text:
+                    started = True
+                    yield chunk.text
+        except Exception as e:
+            if started or not _is_model_unavailable(e):
+                raise
+            with _cooldown_lock:
+                _cooldown_until[model] = _now() + GEMINI_COOLDOWN_SECONDS
+            _log.warning("Gemini model %s is unavailable right now (%s); trying the next one", model, getattr(e, "code", "?"))
+            last_error = e
+            continue
+        if model != models[0]:
+            _log.warning("Answered by the fallback model %s (%s was unavailable)", model, models[0])
+        LAST_GEMINI_MODEL = model
+        return
+    raise last_error  # every model refused: fail loudly
 
 
 def stream_ollama(system_prompt: str, messages: list, location: str = ""):
