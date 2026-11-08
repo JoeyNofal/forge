@@ -60,7 +60,7 @@ def setup(script, primary="P-model", fallback="F-model", level="low"):
     return fc
 _DEFAULT = object()
 def run(msgs=_DEFAULT, **kw):
-    return "".join(mc.stream_gemini("SYSTEM", [{"role": "user", "content": "hi"}] if msgs is _DEFAULT else msgs, **kw))
+    return "".join(mc.stream_gemini("SYSTEM", [{"role": "user", "content": "hi"}] if msgs is _DEFAULT else msgs, **kw))  # pyright: ignore[reportArgumentType]
 U = lambda t="hi": {"role": "user", "content": t}
 A = lambda t="yo": {"role": "assistant", "content": t}
 
@@ -101,7 +101,7 @@ check("L2 503 (overloaded) also falls back", run() == "ok from F-model")
 import logging
 class Cap(logging.Handler):
     def __init__(self): super().__init__(); self.records = []
-    def emit(self, r): self.records.append(r.getMessage())
+    def emit(self, record): self.records.append(record.getMessage())
 cap = Cap(); logging.getLogger("forge.model_client").addHandler(cap)
 fc = setup({"P-model": [api_err(429)]}); run()
 check("L2 a fallback is never silent: a warning is logged naming both models", any("fallback" in m and "F-model" in m and "P-model" in m for m in cap.records), str(cap.records))

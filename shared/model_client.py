@@ -179,6 +179,8 @@ def stream_gemini(system_prompt: str, messages: list, location: str = ""):
             _log.warning("Answered by the fallback model %s (%s was unavailable)", model, models[0])
         LAST_GEMINI_MODEL = model
         return
+    if last_error is None:  # cannot happen (there is always at least one model), but never raise None
+        raise RuntimeError("no Gemini model was tried")
     raise last_error  # every model refused: fail loudly
 
 
