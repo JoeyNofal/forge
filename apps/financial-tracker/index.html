@@ -1018,10 +1018,10 @@ const App = {
     vaultBufferStatus() {
       const vault = App.data.accounts.vault;
       const m = App.calc.monthlyExpenses();
+      if (vault >= App.calc.vaultBufferTarget()) return {status:'Safe', color:'green'};   // at or above YOUR target is always Safe
       if (vault < m*2) return {status:'Critical', color:'red'};
       if (vault < m*6) return {status:'Low', color:'yellow'};
-      if (vault < App.calc.vaultBufferTarget()) return {status:'In Progress', color:'blue'};
-      return {status:'Safe', color:'green'};
+      return {status:'In Progress', color:'blue'};
     },
     flexAllowance() {
       const weeklyGroceries = App.calc.avgGroceries() / 4.33;
