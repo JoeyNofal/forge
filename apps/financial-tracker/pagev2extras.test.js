@@ -9,7 +9,7 @@ let passed = 0, failed = 0;
 function check(name, cond, extra) { if (cond) passed++; else { failed++; console.log('FAIL: ' + name + (extra ? '  -> ' + extra : '')); } }
 const rd = (f) => fs.readFileSync(path.join(__dirname, f), 'utf8');
 let html = rd('index.html');
-for (const f of ['dates.js', 'bills.js', 'ledger.js', 'v2view.js', 'paycheckrec.js']) html = html.replace('<script src="' + f + '"></script>', () => '<script>' + rd(f) + '</script>');
+for (const f of ['dates.js', 'bills.js', 'ledger.js', 'v2view.js', 'settingscheck.js', 'paycheckrec.js']) html = html.replace('<script src="' + f + '"></script>', () => '<script>' + rd(f) + '</script>');
 html = html.replace(/<script[^>]*\bsrc=[^>]*><\/script>/g, '');
 const tick = () => new Promise(r => setImmediate(r));
 const tx = (accountId, date, amount, balance) => ({ id: accountId + '-' + date, accountId, date, description: 'd ' + date, amount, balance, type: 'transaction' });

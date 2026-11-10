@@ -11,7 +11,7 @@
 <script src="bills.js"></script>
 <script src="ledger.js"></script>
 <script src="v2view.js"></script>
-<script src="paycheckrec.js"></script>
+<script src="paycheckrec.js"></script><script src="settingscheck.js"></script>
 <style>
 /* fonts saved locally (SIL Open Font License, see vendor/fonts) so the app works with no internet */
 @font-face { font-family: 'DM Serif Display'; font-style: normal; font-weight: 400; font-display: swap; src: url("vendor/fonts/dm-serif-display-latin-400-normal.woff2") format('woff2'); }
@@ -2743,8 +2743,8 @@ Views.settings = {
       <div class="setting-group-title">Paycheck Parameters</div>
       <div class="form-row">
         <div class="form-group"><label>Hourly Rate ($)</label><input type="number" id="s-rate" value="${s.regularRate}" step="0.01"></div>
-        <div class="form-group"><label>OT Multiplier</label><input type="number" id="s-ot" value="${s.overtimeMultiplier}" step="0.01"></div>
-        <div class="form-group"><label>Nightshift Multiplier</label><input type="number" id="s-ns" value="${s.nightshiftMultiplier}" step="0.01"></div>
+        <div class="form-group"><label>OT Multiplier (%)</label><input type="number" id="s-ot" value="${FTSettingsCheck.toPercentText(s.overtimeMultiplier)}" step="0.01" min="0"></div>
+        <div class="form-group"><label>Nightshift Multiplier (%)</label><input type="number" id="s-ns" value="${FTSettingsCheck.toPercentText(s.nightshiftMultiplier)}" step="0.01" min="0"></div>
       </div>
       <div class="form-row">
         <div class="form-group"><label>Benefits Deduction ($)</label><input type="number" id="s-benefits" value="${s.benefitsDeduction}" step="0.01"></div>
@@ -2757,7 +2757,7 @@ Views.settings = {
       <div class="setting-group-title">Account Targets</div>
       <div class="form-row">
         <div class="form-group"><label>FLEX Floor ($)</label><input type="number" id="s-flexfloor" value="${s.flexFloor}" step="10"></div>
-        <div class="form-group"><label>VAULT Buffer Months</label><input type="number" id="s-vaultmonths" value="${s.vaultBufferMonths}" step="1" min="1"></div>
+        <div class="form-group"><label>VAULT Buffer Months</label><input type="number" id="s-vaultmonths" value="${s.vaultBufferMonths}" step="1" min="0"></div>
         <div class="form-group"><label>Car Loan Monthly Target ($)</label><input type="number" id="s-carloan" value="${s.carLoanMonthlyTarget}" step="50"></div>
       </div>
       <div class="form-row">
@@ -2836,27 +2836,20 @@ Views.settings = {
     </div>`;
   },
   save() {
-    const s = App.data.settings;
-    s.regularRate = parseFloat(document.getElementById('s-rate').value)||s.regularRate;
-    s.overtimeMultiplier = parseFloat(document.getElementById('s-ot').value)||s.overtimeMultiplier;
-    s.nightshiftMultiplier = parseFloat(document.getElementById('s-ns').value)||s.nightshiftMultiplier;
-    s.benefitsDeduction = parseFloat(document.getElementById('s-benefits').value)||s.benefitsDeduction;
-    s.otherDeductions = parseFloat(document.getElementById('s-other').value)||s.otherDeductions;
-    s.retirementPercent = parseFloat(document.getElementById('s-ret').value)||s.retirementPercent;
-    s.flexFloor = parseFloat(document.getElementById('s-flexfloor').value)||s.flexFloor;
-    s.vaultBufferMonths = parseInt(document.getElementById('s-vaultmonths').value)||s.vaultBufferMonths;
-    s.carLoanMonthlyTarget = parseFloat(document.getElementById('s-carloan').value)||s.carLoanMonthlyTarget;
-    if (document.getElementById('s-carmin')) s.carFundMinimum = parseFloat(document.getElementById('s-carmin').value)||s.carFundMinimum;
-    if (document.getElementById('s-cartarget')) s.carFundTarget = parseFloat(document.getElementById('s-cartarget').value)||s.carFundTarget;
-    s.carLoanInitial = parseFloat(document.getElementById('s-carloaninitial').value)||s.carLoanInitial;
-    s.ccLimit = parseFloat(document.getElementById('s-cclimit').value)||s.ccLimit;
-    s.ccPaymentDueDay = parseInt(document.getElementById('s-ccdue').value)||s.ccPaymentDueDay;
-    s.ccStatementDay = parseInt(document.getElementById('s-ccstmt').value)||s.ccStatementDay;
-    s.cc2Limit = parseFloat(document.getElementById('s-cc2limit').value)||s.cc2Limit;
-    s.cc2PaymentDueDay = parseInt(document.getElementById('s-cc2due').value)||s.cc2PaymentDueDay;
-    s.cc2StatementDay = parseInt(document.getElementById('s-cc2stmt').value)||s.cc2StatementDay;
-    s.alternatingSundayStart = document.getElementById('s-sundaystart').value||s.alternatingSundayStart;
-    s.brexStartingBalance = parseFloat(document.getElementById('s-brexstart').value)||0;
+    // Read every box as typed, check them ALL first, and save all or nothing.
+    const box = (id) => {
+      const el = document.getElementById(id);
+      if (!el) return undefined;                                   // box not on this page (e.g. Car Fund boxes on v2)
+      return (el.validity && el.validity.badInput) ? 'not a number' : el.value;
+    };
+    const raw = {};
+    for (const [key, id] of [['rate','s-rate'],['ot','s-ot'],['ns','s-ns'],['benefits','s-benefits'],['other','s-other'],['ret','s-ret'],
+      ['flexfloor','s-flexfloor'],['vaultmonths','s-vaultmonths'],['carloan','s-carloan'],['carmin','s-carmin'],['cartarget','s-cartarget'],
+      ['carloaninitial','s-carloaninitial'],['cclimit','s-cclimit'],['ccdue','s-ccdue'],['ccstmt','s-ccstmt'],['cc2limit','s-cc2limit'],
+      ['cc2due','s-cc2due'],['cc2stmt','s-cc2stmt'],['brexstart','s-brexstart'],['sundaystart','s-sundaystart']]) raw[key] = box(id);
+    const r = FTSettingsCheck.validate(raw, App.data.settings);
+    if (!r.ok) { App.showToast('Not saved. ' + r.message, 'error'); return; }
+    Object.assign(App.data.settings, r.values);
     App.scheduleSave();
     App.showToast('Settings saved','success');
   },

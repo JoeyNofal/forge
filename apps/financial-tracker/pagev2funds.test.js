@@ -8,7 +8,7 @@ let passed = 0, failed = 0;
 function check(name, cond, extra) { if (cond) passed++; else { failed++; console.log('FAIL: ' + name + (extra ? '  -> ' + extra : '')); } }
 const rd = (f) => fs.readFileSync(path.join(__dirname, f), 'utf8');
 let html = rd('index.html');
-for (const f of ['dates.js', 'bills.js', 'ledger.js', 'v2view.js']) html = html.replace('<script src="' + f + '"></script>', () => '<script>' + rd(f) + '</script>');
+for (const f of ['dates.js', 'bills.js', 'ledger.js', 'v2view.js', 'settingscheck.js']) html = html.replace('<script src="' + f + '"></script>', () => '<script>' + rd(f) + '</script>');
 html = html.replace(/<script[^>]*\bsrc=[^>]*><\/script>/g, '');
 const tick = () => new Promise(r => setImmediate(r));
 const tx = (accountId, date, amount, balance, extra) => Object.assign({ id: accountId + '-' + date + '-' + amount, accountId, date, description: 'd ' + date + ' ' + amount, amount, balance, type: 'transaction' }, extra || {});
@@ -34,7 +34,7 @@ function makePage() {
 const shown = (p, id) => p.w.getComputedStyle(p.$(id)).display !== 'none';
 
 (async () => {
-  check('L1 the page hides the split only through App.v2Raw, and the settings save tolerates missing boxes', /funds-split[^>]*\$\{App\.v2Raw \? 'display:none'/.test(rd('index.html')) && /if \(document\.getElementById\('s-carmin'\)\)/.test(rd('index.html')) && /if \(document\.getElementById\('s-cartarget'\)\)/.test(rd('index.html')));
+  check('L1 the page hides the split only through App.v2Raw, and the settings save tolerates missing boxes', /funds-split[^>]*\$\{App\.v2Raw \? 'display:none'/.test(rd('index.html')) && /\['carmin','s-carmin'\]/.test(rd('index.html')) && /\['cartarget','s-cartarget'\]/.test(rd('index.html')) && /key: 'carmin'[^}]*optionalBox/.test(rd('settingscheck.js')) && /key: 'cartarget'[^}]*optionalBox/.test(rd('settingscheck.js')));
 
   // L2/L3 v2: one FUNDS balance
   const p = makePage(); await tick(); await p.open(mkV2(1234.56));
