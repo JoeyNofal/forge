@@ -430,6 +430,7 @@ body {
 /* ── FORECAST ── */
 .forecast-row { display: grid; grid-template-columns: 40px 100px 80px 90px 110px 110px; gap: 8px; padding: 8px 0; border-bottom: 1px solid rgba(46,46,56,0.5); font-family: var(--font-mono); font-size: 0.75rem; align-items: center; }
 .forecast-row.header { color: var(--text3); font-size: 0.65rem; text-transform: uppercase; letter-spacing: 0.06em; border-bottom-color: var(--border); padding-bottom: 10px; }
+.forecast-row.five { grid-template-columns: 40px 100px 80px 90px 110px; }
 .forecast-row:hover { background: rgba(255,255,255,0.01); }
 
 /* ── MODAL ── */
@@ -1336,8 +1337,8 @@ Views.dashboard = {
           <div class="label">${dashTitle('car_loan', 'Car Loan')}</div>
           <div class="amount neg">${App.fmt(accts.car_loan)}</div>
           <div class="sub-label">Remaining balance</div>
-          <div class="progress-bar" style="margin-top:8px"><div class="progress-fill green" style="width:${carLoanPct.toFixed(1)}%"></div></div>
-          <div style="font-size:0.65rem;color:var(--text3);font-family:var(--font-mono);margin-top:4px">${carLoanPct.toFixed(0)}% paid off · Target: ${App.fmt(App.data.settings.carLoanMonthlyTarget)}/mo</div>
+          ${App.v2Raw ? '' : `<div class="progress-bar" style="margin-top:8px"><div class="progress-fill green" style="width:${carLoanPct.toFixed(1)}%"></div></div>`}
+          ${App.v2Raw ? `<div style="font-size:0.65rem;color:var(--text3);font-family:var(--font-mono);margin-top:6px">${Math.abs(accts.car_loan) < 0.005 ? 'Paid off' : ''}</div>` : `<div style="font-size:0.65rem;color:var(--text3);font-family:var(--font-mono);margin-top:4px">${carLoanPct.toFixed(0)}% paid off · Target: ${App.fmt(App.data.settings.carLoanMonthlyTarget)}/mo</div>`}
         </div>` : ''}
         ${extraCards}
         <div class="balance-card" style="grid-column:span 2">
@@ -2455,17 +2456,17 @@ Views.forecast = {
       <div class="card-title">52-Week Projection</div>
       <div class="card-subtitle">Weekly paycheck and balance forecast</div>
       <div style="overflow-x:auto">
-        <div class="forecast-row header">
-          <div>Wk</div><div>Pay Date</div><div>Hrs</div><div>Net Pay</div><div>VAULT Est.</div><div>Car Loan Est.</div>
+        <div class="forecast-row header${App.v2Raw ? ' five' : ''}">
+          <div>Wk</div><div>Pay Date</div><div>Hrs</div><div>Net Pay</div><div>VAULT Est.</div>${App.v2Raw ? '' : '<div>Car Loan Est.</div>'}
         </div>
         ${rows.map(r=>`
-          <div class="forecast-row">
+          <div class="forecast-row${App.v2Raw ? ' five' : ''}">
             <div style="color:var(--text3)">${r.week}</div>
             <div>${App.fmtDate(r.payDate)}</div>
             <div style="color:var(--text2)">${r.hours}</div>
             <div style="color:var(--green)">${App.fmt(r.netPay)}</div>
             <div style="color:${r.vault<0?'var(--red)':'var(--text2)'}">${App.fmt(r.vault)}</div>
-            <div style="color:var(--text2)">${App.fmt(Math.max(0,r.carLoan))}</div>
+            ${App.v2Raw ? '' : `<div style="color:var(--text2)">${App.fmt(Math.max(0,r.carLoan))}</div>`}
           </div>
         `).join('')}
       </div>
@@ -2475,7 +2476,7 @@ Views.forecast = {
     const rows = [];
     let vault = App.data.accounts.vault;
     let carLoan = App.data.accounts.car_loan;
-    const monthlyTarget = App.data.settings.carLoanMonthlyTarget;
+    const monthlyTarget = App.v2Raw ? 0 : App.data.settings.carLoanMonthlyTarget;   // v2 files: the car loan is an ordinary account, no payoff projection
     const weeklyCarPayment = monthlyTarget / 4.33;
     const weeklyFixed = App.calc.weeklyFixedExpenses();
     const weeklyGroceries = App.calc.avgGroceries() / 4;
