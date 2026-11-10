@@ -18,6 +18,23 @@
     return out;
   }
 
+  // Occurrences of a bill due every N months (N = everyMonths) (12 = yearly, 3 = quarterly) on the START date's day,
+  // counted from the start date's month, that fall in [from, to]. A day the month lacks becomes its last day.
+  function periodicDates(start, everyMonths, from, to) {
+    const sy = +start.slice(0, 4), sm = +start.slice(5, 7), sd = +start.slice(8, 10);
+    const fy = +from.slice(0, 4), fm = +from.slice(5, 7);
+    const months = Math.ceil(D.daysBetween(from, to) / 28) + 2;
+    const out = [];
+    for (let k = 0; k <= months; k++) {
+      const m = fm + k - 1, y = fy + Math.floor(m / 12), mm = (m % 12) + 1;
+      const sinceStart = (y - sy) * 12 + (mm - sm);
+      if (sinceStart < 0 || sinceStart % everyMonths !== 0) continue;
+      const due = D.dueDateInMonth(y, mm, sd);
+      if (due && D.compare(due, from) >= 0 && D.compare(due, to) <= 0) out.push(due);
+    }
+    return out;
+  }
+
   function dueDayOf(e) {
     const n = typeof e.dueDay === 'string' && /^\s*\d+\s*$/.test(e.dueDay) ? parseInt(e.dueDay, 10) : e.dueDay;
     return Number.isInteger(n) && n >= 1 ? n : 1;   // missing or odd -> the 1st, like before
@@ -44,6 +61,8 @@
         }
       } else if (e.frequency === 'biweekly') {
         if (start) dates = everyNDays(start, 14, from, to);          // needs a start date to count from
+      } else if ((e.frequency === 'yearly' || e.frequency === 'quarterly') && start) {
+        dates = periodicDates(start, e.frequency === 'yearly' ? 12 : 3, from, to);   // needs a start date: it sets the month and day
       } else if (e.frequency === 'weekly') {
         dates = everyNDays(start || D.addDays(from, 1), 7, from, to); // no weekday known: counted from tomorrow, as before
       }
