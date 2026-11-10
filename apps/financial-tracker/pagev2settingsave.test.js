@@ -51,13 +51,15 @@ function makePage() {
   let p = makePage(); await tick(); await p.open(v2);
   check('percent boxes: OT shows 150 and night shift shows 113 (stored 1.5 and 1.13)', p.$('s-ot').value === '150' && p.$('s-ns').value === '113', p.$('s-ot').value + ' / ' + p.$('s-ns').value);
   check('labels say percent; VAULT months can go down to 0', /OT Multiplier \(%\)/.test(p.w.document.body.textContent) && /Nightshift Multiplier \(%\)/.test(p.w.document.body.textContent) && p.$('s-vaultmonths').getAttribute('min') === '0');
-  check('v2: no Car Fund boxes', !p.$('s-carmin') && !p.$('s-cartarget'));
+  check('v2: no Car Fund or Car Loan boxes', !p.$('s-carmin') && !p.$('s-cartarget') && !p.$('s-carloan') && !p.$('s-carloaninitial'));
 
   // L2 saving untouched settings changes nothing
   const before = snap(p);
   SAVE(p); await p.fire(); await tick();
   check('save with nothing changed: "Settings saved", every value identical', p.toasts.length === 1 && p.toasts[0].m === 'Settings saved' && snap(p) === before, JSON.stringify(p.toasts) + (snap(p) === before ? '' : ' CHANGED'));
   check('...and the v2 file was written with the same settings', p.api.saved.length >= 1 && JSON.stringify(p.last().settings.overtimeMultiplier) === '1.5' && p.last().settings.nightshiftMultiplier === 1.13);
+
+  check('v2 save keeps the hidden Car Loan settings exactly as stored (not reset to 0)', p.App.data.settings.carLoanMonthlyTarget === 1500 && p.App.data.settings.carLoanInitial === 18500 && p.last().settings.carLoanMonthlyTarget === 1500 && p.last().settings.carLoanInitial === 18500, JSON.stringify([p.App.data.settings.carLoanMonthlyTarget, p.App.data.settings.carLoanInitial]));
 
   // L3 real edits
   p = makePage(); await tick(); await p.open(v2);
@@ -98,7 +100,7 @@ function makePage() {
 
   // v1 (old) file: same checks, Car Fund boxes present and checked
   p = makePage(); await tick(); await p.open(v1);
-  check('v1 file: Car Fund boxes are on the page', !!p.$('s-carmin') && !!p.$('s-cartarget'));
+  check('v1 file: Car Fund and Car Loan boxes are on the page', !!p.$('s-carmin') && !!p.$('s-cartarget') && !!p.$('s-carloan') && !!p.$('s-carloaninitial'));
   p.$('s-carmin').value = '-5'; const s2 = snap(p); SAVE(p); await p.fire();
   check('v1 file: a bad Car Fund Minimum is refused and nothing changes', /Car Fund Minimum/.test(p.toasts[0].m) && snap(p) === s2);
   p.toasts.length = 0; p.$('s-carmin').value = '1200'; p.$('s-ot').value = '150'; SAVE(p); await p.fire(); await tick();

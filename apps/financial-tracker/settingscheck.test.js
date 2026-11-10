@@ -61,9 +61,9 @@ check('two bad boxes: reports the first in page order, no values', !r.ok && r.bo
 check('a bad result never carries partial values', !('values' in S.validate({ ...good(), cc2due: '0' }, cur)));
 
 // optional boxes (car fund boxes missing on v2)
-const v2 = good(); delete v2.carmin; delete v2.cartarget;
+const v2 = good(); delete v2.carmin; delete v2.cartarget; delete v2.carloan; delete v2.carloaninitial;
 r = S.validate(v2, cur);
-check('missing optional boxes are skipped, not set to 0', r.ok && !('carFundMinimum' in r.values) && !('carFundTarget' in r.values));
+check('missing optional boxes are skipped, not set to 0', r.ok && !('carFundMinimum' in r.values) && !('carFundTarget' in r.values) && !('carLoanMonthlyTarget' in r.values) && !('carLoanInitial' in r.values));
 check('present optional boxes are checked', !S.validate({ ...good(), carmin: 'x' }, cur).ok);
 check('a missing REQUIRED box (undefined) counts as blank and is refused', !S.validate({ ...good(), rate: undefined }, cur).ok);
 

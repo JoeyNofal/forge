@@ -50,7 +50,7 @@ const shown = (p, id) => p.w.getComputedStyle(p.$(id)).display !== 'none';
 
   // L2 v2 settings
   c = p.view('settings');
-  check('v2 settings: no Car Fund Minimum / Target boxes, the other boxes are still there', !p.$('s-carmin') && !p.$('s-cartarget') && !/Car Fund/.test(c.textContent) && !!p.$('s-flexfloor') && !!p.$('s-carloan') && !!p.$('s-carloaninitial'));
+  check('v2 settings: no Car Fund or Car Loan boxes, the other boxes are still there', !p.$('s-carmin') && !p.$('s-cartarget') && !/Car Fund/.test(c.textContent) && !!p.$('s-flexfloor') && !!p.$('s-vaultmonths') && !p.$('s-carloan') && !p.$('s-carloaninitial'));
   let threw = false; try { p.Views.settings.save(); } catch (e) { threw = e.message; }
   await tick(); for (const t of [...p.timers.values()]) await t.fn();
   check('v2 settings: Save does not crash and the settings are written to the file', threw === false && p.api.saved.length >= 1 && JSON.parse(p.api.saved[p.api.saved.length - 1]).schemaVersion === 2, String(threw) + ' saves: ' + p.api.saved.length);
