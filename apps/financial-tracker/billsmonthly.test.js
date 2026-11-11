@@ -1,5 +1,5 @@
 // Run:  node billsmonthly.test.js     (from apps/financial-tracker)
-// What the fixed expenses cost per month (this feeds the VAULT target). Weekly = 4 weeks a month, biweekly = 26 a year,
+// What the fixed expenses cost per month (this feeds the VAULT target). Weekly x 4.33 a month, biweekly = 26 a year,
 // quarterly = amount / 3, yearly = amount / 12. Finished expenses (end date before today) do not count; expenses that
 // have not started yet DO count. Junk never throws.
 const fs = require('fs'), path = require('path');
@@ -15,7 +15,7 @@ check('L1 bills.js still never reads the clock or builds Dates', !/new Date|Date
 
 // per-expense monthly amounts
 check('monthly counts as is', B.monthlyAmount(E('monthly', 1000)) === 1000);
-check('weekly counts 4 weeks a month (not 4.33)', B.monthlyAmount(E('weekly', 60)) === 240 && B.monthlyAmount(E('weekly', 100)) === 400);
+check('weekly counts 4.33 weeks a month when multiplying (not 4)', near(B.monthlyAmount(E('weekly', 60)), 259.8) && near(B.monthlyAmount(E('weekly', 100)), 433));
 check('biweekly counts 26 payments a year / 12', near(B.monthlyAmount(E('biweekly', 120)), 260));
 check('quarterly: amount / 3 ($300 every 3 months = $100 a month)', B.monthlyAmount(E('quarterly', 300)) === 100);
 check('yearly: amount / 12 ($1,200 a year = $100 a month)', B.monthlyAmount(E('yearly', 1200)) === 100);
@@ -25,7 +25,7 @@ for (const bad of [undefined, null, 'abc', NaN, Infinity, {}, []]) check('junk a
 check('unknown frequency counts 0', B.monthlyAmount(E('fortnightly', 50)) === 0 && B.monthlyAmount(E(undefined, 50)) === 0 && B.monthlyAmount(null) === 0 && B.monthlyAmount('x') === 0);
 
 // totals and dates
-check('a mixed list adds up', near(tot([E('monthly', 1000), E('weekly', 60), E('quarterly', 300), E('yearly', 1200)]), 1000 + 240 + 100 + 100));
+check('a mixed list adds up', near(tot([E('monthly', 1000), E('weekly', 60), E('quarterly', 300), E('yearly', 1200)]), 1000 + 259.8 + 100 + 100));
 check('empty or not a list: 0', tot([]) === 0 && tot(null) === 0 && tot(undefined) === 0 && tot('x') === 0 && tot({}) === 0);
 check('an expense that ended yesterday does not count', tot([E('monthly', 500, { endDate: '2026-11-09' }), E('monthly', 100)]) === 100);
 check('an expense that ends TODAY still counts (last day is included)', tot([E('monthly', 500, { endDate: '2026-11-10' })]) === 500);
