@@ -996,17 +996,14 @@ const App = {
         if (e.frequency === 'monthly') return t + e.amount / 4.33;
         if (e.frequency === 'biweekly') return t + e.amount / 2;
         if (e.frequency === 'weekly') return t + e.amount;
+        if (e.frequency === 'quarterly') return t + e.amount / 13;
+        if (e.frequency === 'yearly') return t + e.amount / 52;
         return t;
       }, 0);
     },
     monthlyExpenses() {
       const avgGroceries = App.calc.avgGroceries();
-      return App.data.fixedExpenses.reduce((t, e) => {
-        if (e.frequency === 'monthly') return t + e.amount;
-        if (e.frequency === 'biweekly') return t + e.amount * (26/12);
-        if (e.frequency === 'weekly') return t + e.amount * 4.33;
-        return t;
-      }, 0) + avgGroceries;
+      return FTBills.monthlyTotal(App.data.fixedExpenses, FTDates.todayStr()) + avgGroceries;
     },
     avgGroceries() {
       const vals = Object.values(App.data.groceries);

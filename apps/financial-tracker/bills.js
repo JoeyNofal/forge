@@ -75,5 +75,34 @@
     return bills.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : String(a.name).localeCompare(String(b.name))));
   }
 
-  return { upcomingBills };
+  // What one fixed expense costs per month. Weekly = 4 weeks a month (the owner's rule), biweekly = 26 payments a
+  // year, quarterly = one payment every 3 months, yearly = one a year. Unknown frequencies and junk amounts count 0.
+  function monthlyAmount(e) {
+    if (!e || typeof e !== 'object') return 0;
+    const a = Number(e.amount);
+    if (!Number.isFinite(a)) return 0;
+    if (e.frequency === 'monthly') return a;
+    if (e.frequency === 'biweekly') return a * 26 / 12;
+    if (e.frequency === 'weekly') return a * 4;
+    if (e.frequency === 'quarterly') return a / 3;
+    if (e.frequency === 'yearly') return a / 12;
+    return 0;
+  }
+
+  // All fixed expenses per month as of `today`. An expense whose end date is before today is finished and does not
+  // count; one that has not started yet still counts (the owner wants to plan for it).
+  function monthlyTotal(expenses, today) {
+    if (!Array.isArray(expenses)) return 0;
+    const t = D.toDateStr(today);
+    let sum = 0;
+    for (const e of expenses.slice(0, MAX_ITEMS)) {
+      if (!e || typeof e !== 'object') continue;
+      const end = D.toDateStr(e.endDate);
+      if (t && end && D.compare(end, t) < 0) continue;
+      sum += monthlyAmount(e);
+    }
+    return sum;
+  }
+
+  return { upcomingBills, monthlyAmount, monthlyTotal };
 });
