@@ -996,8 +996,8 @@ const App = {
         if (e.frequency === 'monthly') return t + e.amount / 4.33;
         if (e.frequency === 'biweekly') return t + e.amount / 2;
         if (e.frequency === 'weekly') return t + e.amount;
-        if (e.frequency === 'quarterly') return t + e.amount / 13;
-        if (e.frequency === 'yearly') return t + e.amount / 52;
+        if (e.frequency === 'quarterly') return t + e.amount / 12;   // a month counts as 4 weeks when dividing: 3 months = 12 weeks
+        if (e.frequency === 'yearly') return t + e.amount / 48;      // 12 months = 48 weeks
         return t;
       }, 0);
     },
@@ -2813,7 +2813,7 @@ Views.settings = {
         <div class="expense-item">
           <div>
             <div class="expense-name">${App.esc(e.name)}</div>
-            <div class="expense-meta">${e.frequency} · ${e.dueDay?'Due day '+e.dueDay:e.startDate||''}</div>
+            <div class="expense-meta">${e.frequency} · ${(e.frequency==='yearly'||e.frequency==='quarterly')?'from '+(e.startDate||'no start date'):(e.dueDay?'Due day '+e.dueDay:e.startDate||'')}</div>
           </div>
           <div style="display:flex;align-items:center;gap:10px">
             <div class="expense-amount">${App.fmt(e.amount)}</div>
@@ -2866,6 +2866,8 @@ Views.settings = {
             <option value="monthly" ${e?.frequency==='monthly'?'selected':''}>Monthly</option>
             <option value="biweekly" ${e?.frequency==='biweekly'?'selected':''}>Biweekly</option>
             <option value="weekly" ${e?.frequency==='weekly'?'selected':''}>Weekly</option>
+            <option value="quarterly" ${e?.frequency==='quarterly'?'selected':''}>Quarterly</option>
+            <option value="yearly" ${e?.frequency==='yearly'?'selected':''}>Yearly</option>
           </select>
         </div>
         <div class="form-group"><label>Due Day (monthly)</label><input type="number" id="ex-dueday" value="${e?.dueDay||''}" min="1" max="31" placeholder="e.g. 15"></div>
@@ -2874,6 +2876,7 @@ Views.settings = {
         <div class="form-group"><label>Start Date</label><input type="date" id="ex-start" value="${e?.startDate||''}"></div>
         <div class="form-group"><label>End Date (optional)</label><input type="date" id="ex-end" value="${e?.endDate||''}"></div>
       </div>
+      <div style="font-size:0.7rem;color:var(--text3);margin:-4px 0 10px">Yearly and quarterly bills are due on the Start Date's month and day, so they need a Start Date.</div>
       <div class="modal-actions">
         <button class="btn btn-secondary" onclick="App.closeModal()">Cancel</button>
         <button class="btn btn-primary" onclick="Views.settings.saveExpense('${id||''}')">Save</button>
@@ -2889,6 +2892,7 @@ Views.settings = {
     const endDate = document.getElementById('ex-end').value||null;
     if (!name||isNaN(amount)||amount<=0) { App.showToast('Fill name and amount','error'); return; }
     if (dueDay!==null && (dueDay<1||dueDay>31)) { App.showToast('Due day must be between 1 and 31','error'); return; }
+    if ((frequency==='yearly'||frequency==='quarterly') && !startDate) { App.showToast('Yearly and quarterly bills need a Start Date (it sets the month and day they are due)','error'); return; }
     if (startDate && endDate && endDate<startDate) { App.showToast('The end date is before the start date','error'); return; }
     if (id) {
       const idx = App.data.fixedExpenses.findIndex(e=>String(e.id)===String(id));
