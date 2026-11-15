@@ -1,7 +1,7 @@
 // Run:  node pagevaultstatus.test.js     (needs jsdom, like renderer.test.js)
 // The dashboard VAULT card status. At or above YOUR target (months x monthly expenses + $1,500) it is always
 // Safe, whatever the months setting is. Below the target the old ladder applies: under 2 months of expenses
-// Critical, under 6 months Low, otherwise In Progress.
+// Critical, under 6 months Low, otherwise In Progress. The target itself is rounded UP to the next $1,000.
 const fs = require('fs'), path = require('path');
 const { JSDOM, VirtualConsole } = require('jsdom');
 let passed = 0, failed = 0;
@@ -12,8 +12,8 @@ for (const f of ['dates.js', 'bills.js', 'ledger.js', 'v2view.js', 'settingschec
 html = html.replace(/<script[^>]*\bsrc=[^>]*><\/script>/g, '');
 const tick = () => new Promise(r => setImmediate(r));
 // expenses: rent 1000/month only, no groceries, so one month of expenses is exactly 1000
-const file = (months) => ({ accounts: { vault: 5000, flex: 300, funds: 0, cc: 0, cc2: 0, car_loan: 0, brex: 0 }, settings: { vaultBufferMonths: months },
-  fixedExpenses: [{ id: 'f1', name: 'Rent', amount: 1000, frequency: 'monthly' }], groceries: {}, creditScores: [], paychecks: [],
+const file = (months, rent) => ({ accounts: { vault: 5000, flex: 300, funds: 0, cc: 0, cc2: 0, car_loan: 0, brex: 0 }, settings: { vaultBufferMonths: months },
+  fixedExpenses: [{ id: 'f1', name: 'Rent', amount: rent === undefined ? 1000 : rent, frequency: 'monthly' }], groceries: {}, creditScores: [], paychecks: [],
   transactions: [{ id: 't1', accountId: 'vault', date: '2026-01-01', description: 'x', amount: 5000, balance: 5000, type: 'transaction' }] });
 
 function makePage() {
@@ -38,18 +38,28 @@ function makePage() {
 
   await p.open(file(7));
   const st = (vault, months) => { p.App.data.settings.vaultBufferMonths = months; p.App.data.accounts.vault = vault; return p.App.calc.vaultBufferStatus().status; };
-  check('test setup: one month of expenses is exactly 1000, 7 months -> target 8500', p.App.calc.monthlyExpenses() === 1000 && (p.App.data.settings.vaultBufferMonths = 7, p.App.calc.vaultBufferTarget()) === 8500);
+  check('test setup: one month of expenses is exactly 1000, 7 months -> 8,500 rounded UP to a target of 9,000', p.App.calc.monthlyExpenses() === 1000 && (p.App.data.settings.vaultBufferMonths = 7, p.App.calc.vaultBufferTarget()) === 9000);
 
-  // L2 default 7 months: behaviour unchanged (target 8500)
-  const seven = [[0, 'Critical'], [500, 'Critical'], [1999.99, 'Critical'], [2000, 'Low'], [5999.99, 'Low'], [6000, 'In Progress'], [8499.99, 'In Progress'], [8500, 'Safe'], [20000, 'Safe']];
+  // L2 default 7 months (8,500 rounds up to a target of 9,000)
+  const seven = [[0, 'Critical'], [500, 'Critical'], [1999.99, 'Critical'], [2000, 'Low'], [5999.99, 'Low'], [6000, 'In Progress'], [8500, 'In Progress'], [8999.99, 'In Progress'], [9000, 'Safe'], [20000, 'Safe']];
   for (const [v, want] of seven) check('7 months: VAULT ' + v + ' -> ' + want, st(v, 7) === want, st(v, 7));
-  // L2 months 0 (target 1500): reaching it is Safe even though it is under 2 months of expenses
-  for (const [v, want] of [[500, 'Critical'], [1499.99, 'Critical'], [1500, 'Safe'], [1999, 'Safe'], [3102.43, 'Safe']]) check('0 months: VAULT ' + v + ' -> ' + want, st(v, 0) === want, st(v, 0));
-  // 1 month (target 2500)
-  for (const [v, want] of [[1500, 'Critical'], [2000, 'Low'], [2499.99, 'Low'], [2500, 'Safe']]) check('1 month: VAULT ' + v + ' -> ' + want, st(v, 1) === want, st(v, 1));
-  // a bigger target is respected too (12 months -> 13500)
-  for (const [v, want] of [[8500, 'In Progress'], [13499.99, 'In Progress'], [13500, 'Safe']]) check('12 months: VAULT ' + v + ' -> ' + want, st(v, 12) === want, st(v, 12));
+  // L2 months 0 (1,500 rounds up to a target of 2,000): reaching it is Safe
+  for (const [v, want] of [[500, 'Critical'], [1500, 'Critical'], [1999.99, 'Critical'], [2000, 'Safe'], [3102.43, 'Safe']]) check('0 months: VAULT ' + v + ' -> ' + want, st(v, 0) === want, st(v, 0));
+  // 1 month (2,500 rounds up to a target of 3,000)
+  for (const [v, want] of [[1500, 'Critical'], [2000, 'Low'], [2500, 'Low'], [2999.99, 'Low'], [3000, 'Safe']]) check('1 month: VAULT ' + v + ' -> ' + want, st(v, 1) === want, st(v, 1));
+  // a bigger target is respected too (12 months: 13,500 rounds up to 14,000)
+  for (const [v, want] of [[8500, 'In Progress'], [13500, 'In Progress'], [13999.99, 'In Progress'], [14000, 'Safe']]) check('12 months: VAULT ' + v + ' -> ' + want, st(v, 12) === want, st(v, 12));
   check('negative VAULT is Critical', st(-50, 7) === 'Critical' && st(-50, 0) === 'Critical');
+
+  // the target is always rounded UP to the next 1,000; an exact multiple of 1,000 stays as it is
+  const tgt = (rent, months) => { p.App.data.settings.vaultBufferMonths = months; p.App.data.fixedExpenses[0].amount = rent; return p.App.calc.vaultBufferTarget(); };
+  check('rounding: exactly 2,000 stays 2,000 (rent 500, 1 month + 1,500)', tgt(500, 1) === 2000);
+  check('rounding: 2,000.01 goes up to 3,000', tgt(500.01, 1) === 3000);
+  check('rounding: 1,999.98 goes up to 2,000 (rent 166.66 x 3 + 1,500)', tgt(166.66, 3) === 2000 && tgt(166.67, 3) === 3000);
+  check('rounding: 1,500 with no expenses and 0 months goes up to 2,000', tgt(0, 0) === 2000);
+  check('rounding: exactly 10,000 stays 10,000, 9,999.99 goes to 10,000, 10,000.01 to 11,000', tgt(8500, 1) === 10000 && tgt(8499.99, 1) === 10000 && tgt(8500.01, 1) === 11000);
+  check('rounding: floating-point noise in the monthly cost cannot push an exact 2,000 up to 3,000', (() => { const keep = p.App.calc.monthlyExpenses; p.App.data.settings.vaultBufferMonths = 1; p.App.calc.monthlyExpenses = () => 500.0000000000005; const t = p.App.calc.vaultBufferTarget(); p.App.calc.monthlyExpenses = keep; return t === 2000; })());
+  check('rounding: the target is always a whole multiple of 1,000 and never below the unrounded amount', (() => { for (const [r, m] of [[123.45, 7], [999.99, 3], [1, 0], [50000, 12], [0.01, 36]]) { p.App.data.fixedExpenses = [{ id: 'a', name: 'a', amount: r, frequency: 'monthly' }]; p.App.data.settings.vaultBufferMonths = m; const t = p.App.calc.vaultBufferTarget(), raw = r * m + 1500; if (t % 1000 !== 0 || t < raw - 1e-9 || t - raw >= 1000) return false; } return true; })());
 
   // L3 the real dashboard card
   const card = async (months, vault) => { const q = makePage(); await tick(); const f = file(months); f.accounts.vault = vault; f.transactions[0].amount = vault; f.transactions[0].balance = vault; await q.open(f); return { q, text: [...q.w.document.querySelectorAll('.badge')].map(b => b.textContent.trim()) }; };

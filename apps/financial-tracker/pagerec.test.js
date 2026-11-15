@@ -48,7 +48,7 @@ const both = async (old, fn) => { for (const kind of ['v1', 'v2']) { const p = m
     check(kind + ' predicted card explains the FUNDS target', /so FUNDS reaches \$2,750\.00/.test(cs[1].textContent), cs[1].textContent.replace(/\s+/g, ' ').slice(0, 300));
     check(kind + ': no Car Fund anywhere in the recommendation cards', cs.every(c => !/Car Fund/i.test(c.textContent)));
     check(kind + ': FLEX + FUNDS + VAULT = net pay on both cards', ap.flex + ap.funds + ap.vault === 1200 && pr.flex + pr.funds + pr.vault === 1000);
-    check(kind + ': the VAULT target is 7 months of expenses + 1,500 (10,318.60), not 8 months', Math.abs(p.App.calc.vaultBufferTarget() - 10318.6) < 0.005, String(p.App.calc.vaultBufferTarget()));
+    check(kind + ': the VAULT target is 7 months of expenses + 1,500 (10,318.60), rounded UP to 11,000, not 8 months', Math.abs(p.App.calc.vaultBufferTarget() - 11000) < 0.005, String(p.App.calc.vaultBufferTarget()));
     check(kind + ': no NaN / undefined on the page, no errors', !/NaN|undefined/.test(p.w.document.getElementById('view-container').textContent) && p.errors.length === 0, p.errors.join(' | '));
   });
 
@@ -83,7 +83,7 @@ const both = async (old, fn) => { for (const kind of ['v1', 'v2']) { const p = m
 
   // the months setting is honoured (6 months here)
   await both(mkOld({ settings: { vaultBufferMonths: 6 } }), async (p, kind) => {
-    check(kind + ': 6 months -> target 9,058.80', Math.abs(p.App.calc.vaultBufferTarget() - 9058.8) < 0.005, String(p.App.calc.vaultBufferTarget()));
+    check(kind + ': 6 months -> target 9,058.80 rounded UP to 10,000', Math.abs(p.App.calc.vaultBufferTarget() - 10000) < 0.005, String(p.App.calc.vaultBufferTarget()));
   });
 
   // awkward paychecks

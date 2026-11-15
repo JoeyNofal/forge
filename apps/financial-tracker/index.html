@@ -1011,7 +1011,8 @@ const App = {
     },
     vaultBufferTarget() {
       const m = App.calc.monthlyExpenses();
-      return m * App.data.settings.vaultBufferMonths + 1500;
+      const raw = m * App.data.settings.vaultBufferMonths + 1500;
+      return Number.isFinite(raw) ? Math.ceil(Math.round(raw * 100) / 100 / 1000) * 1000 : raw;   // always rounded UP to the next $1,000 (an exact $1,000 multiple stays)
     },
     vaultBufferStatus() {
       const vault = App.data.accounts.vault;
