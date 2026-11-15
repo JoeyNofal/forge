@@ -95,6 +95,16 @@ const FIX = [{ id: 'f1', name: 'Rent', amount: 1000, frequency: 'monthly' }, { i
   r = await target([{ id: 'y', name: 'Car insurance', amount: 600, frequency: 'yearly', startDate: startYearAgo }, { id: 'q', name: 'Water', amount: 90, frequency: 'quarterly', startDate: startYearAgo }, { id: 'm', name: 'Far', amount: 5, frequency: 'yearly', startDate: p.addDays(startYearAgo, 100) }], 7);
   const ub = r.q.App.calc.upcoming30DayBills();
   check('Upcoming Bills lists the yearly and the quarterly bill due in 10 days, not the one 100 days away', ub.length === 2 && ub.every(b => r.q.w.eval('FTDates.toDateStr')(b.date) === due) && ub.some(b => b.name === 'Car insurance') && ub.some(b => b.name === 'Water'), JSON.stringify(ub));
+  // the table lives on the Forecast page (card "Upcoming Bills", next 30 days); the Dashboard only shows an alert for bills due within 5 days
+  const visibleOf = (q) => { const c = q.w.document.body.cloneNode(true); c.querySelectorAll('script').forEach(x => x.remove()); return c.textContent.replace(/\s+/g, ' '); };
+  r.q.App.currentView = 'forecast'; r.q.App.renderCurrentView();
+  const rows = [...r.q.w.document.querySelectorAll('.card')].filter(c => c.querySelector('.card-title') && /Upcoming Bills/.test(c.querySelector('.card-title').textContent)).flatMap(c => [...c.querySelectorAll('tbody tr')]).map(tr => tr.textContent.replace(/\s+/g, ' ').trim());
+  check('the Forecast page "Upcoming Bills" table shows both rows with name, amount and the frequency word', rows.length === 2 && rows.some(t => /Car insurance/.test(t) && /\$600\.00/.test(t) && /yearly/.test(t)) && rows.some(t => /Water/.test(t) && /\$90\.00/.test(t) && /quarterly/.test(t)), JSON.stringify(rows));
+  const soon = (n) => { const dd = D(n); return target([{ id: 'y', name: 'Soon yearly', amount: 70, frequency: 'yearly', startDate: (+dd.slice(0, 4) - 1) + dd.slice(4) }], 7); };
+  let sn = await soon(3);
+  check('Dashboard: a yearly bill due in 3 days gives the "1 bill due within 5 days" alert', /1 bill due within 5 days/.test(visibleOf(sn.q)), visibleOf(sn.q).slice(0, 200));
+  sn = await soon(10);
+  check('Dashboard: a yearly bill due in 10 days gives no "due within 5 days" alert (it is on the Forecast page instead)', !/due within 5 days/.test(visibleOf(sn.q)));
   check('no script errors in the calculation tests', r.q.errors.length === 0, r.q.errors.join('|'));
 
   console.log(passed + '/' + (passed + failed) + ' passed');
