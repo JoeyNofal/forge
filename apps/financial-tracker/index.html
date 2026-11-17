@@ -993,7 +993,7 @@ const App = {
       return App.data.fixedExpenses.reduce((t, e) => {
         if (e.endDate && new Date(e.endDate) < now) return t;
         if (e.startDate && new Date(e.startDate) > now) return t;
-        if (e.frequency === 'monthly') return t + e.amount / 4.33;
+        if (e.frequency === 'monthly') return t + e.amount / 4;       // dividing a month into weeks: a month = 4 weeks (the owner's rule)
         if (e.frequency === 'biweekly') return t + e.amount / 2;
         if (e.frequency === 'weekly') return t + e.amount;
         if (e.frequency === 'quarterly') return t + e.amount / 12;   // a month counts as 4 weeks when dividing: 3 months = 12 weeks
@@ -1023,7 +1023,7 @@ const App = {
       return {status:'In Progress', color:'blue'};
     },
     flexAllowance() {
-      const weeklyGroceries = App.calc.avgGroceries() / 4.33;
+      const weeklyGroceries = App.calc.avgGroceries() / 4;
       const fuel = App.data.fixedExpenses.find(e => e.name === 'Fuel');
       const fun = App.data.fixedExpenses.find(e => e.name === 'Fun');
       const weeklyFuel = fuel ? fuel.amount : 0;
@@ -2475,7 +2475,7 @@ Views.forecast = {
     let vault = App.data.accounts.vault;
     let carLoan = App.data.accounts.car_loan;
     const monthlyTarget = App.v2Raw ? 0 : App.data.settings.carLoanMonthlyTarget;   // v2 files: the car loan is an ordinary account, no payoff projection
-    const weeklyCarPayment = monthlyTarget / 4.33;
+    const weeklyCarPayment = monthlyTarget / 4;
     const weeklyFixed = App.calc.weeklyFixedExpenses();
     const weeklyGroceries = App.calc.avgGroceries() / 4;
 

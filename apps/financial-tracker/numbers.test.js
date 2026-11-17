@@ -19,6 +19,8 @@ check('prints the file type', /File type: v1/.test(r.stdout));
 check('groceries average per month = 430', grab(r.stdout, 'Groceries average per month') === 430, r.stdout);
 check('monthly costs incl. groceries = 1,000 + 60 x 4.33 + 430 = 1,689.80', Math.abs(grab(r.stdout, 'Monthly costs incl. groceries') - 1689.8) < 0.005);
 check('VAULT target = (1,689.80 x 7 + 1,500) rounded up = 14,000', grab(r.stdout, 'VAULT target') === 14000);
+check('weekly fixed costs = rent 1,000 / 4 + 60 = 310 (a month is 4 weeks when dividing)', grab(r.stdout, 'Weekly fixed costs \\(Forecast\\)') === 310, r.stdout);
+check('FLEX weekly allowance = 430 / 4 + 60 = 167.50 rounded up = 170', grab(r.stdout, 'FLEX weekly allowance') === 170, r.stdout);
 check('weekly fixed costs, FLEX allowance and both forecast figures are real numbers', ['Weekly fixed costs \\(Forecast\\)', 'FLEX weekly allowance', 'Forecast VAULT after week 1', 'Forecast VAULT after week 52'].every(l => Number.isFinite(grab(r.stdout, l))), r.stdout);
 check('the file is byte-for-byte unchanged after the run', Buffer.compare(before, fs.readFileSync(f1)) === 0);
 check('nothing else was created next to the file', fs.readdirSync(tmp).length === 1);
