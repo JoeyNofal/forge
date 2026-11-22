@@ -53,5 +53,13 @@
   }
   function compare(a, b) { const x = toDateStr(a), y = toDateStr(b); return x && y ? (x < y ? -1 : x > y ? 1 : 0) : null; }
 
-  return { toDateStr, todayStr, parseDate, fmtDate, fmtDateInput, addDays, daysBetween, dayOfWeek, dueDateInMonth, compare };
+  // Weeks run Sunday to Saturday. weekStart gives the Sunday that begins the week containing v.
+  function weekStart(v) { const dow = dayOfWeek(v); return dow === null ? null : addDays(v, -dow); }
+  // Whole weeks from the week containing a to the week containing b (negative when b is the earlier week).
+  function weeksBetween(a, b) { const wa = weekStart(a), wb = weekStart(b); return wa && wb ? daysBetween(wa, wb) / 7 : null; }
+  // Alternating pattern: the week containing startDate is a LONG week, then short, long, short...
+  // Weeks before the start keep the same pattern going backwards. Returns null for a bad date.
+  function isLongWeek(startDate, v) { const n = weeksBetween(startDate, v); return n === null ? null : Math.abs(n) % 2 === 0; }
+
+  return { toDateStr, todayStr, parseDate, fmtDate, fmtDateInput, addDays, daysBetween, dayOfWeek, dueDateInMonth, compare, weekStart, weeksBetween, isLongWeek };
 });
