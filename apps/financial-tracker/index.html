@@ -572,6 +572,10 @@ const DEFAULT_DATA = {
     carFundMinimum: 1000,
     vaultBufferMonths: 7,
     alternatingSundayStart: '2026-03-13',
+    forecastFixedHours: 40,
+    forecastHoursMode: 'fixed',
+    forecastLongWeekHours: 48,
+    forecastShortWeekHours: 36,
     groceryStartYear: 2024,
     groceryStartMonth: 9,
     brexStartingBalance: 0
@@ -1056,20 +1060,30 @@ const App = {
       }
       const taxes = gross * (rates.federal+rates.socialSecurity+rates.medicare+rates.indiana+rates.stJoseph);
       const retirement = gross * (s.retirementPercent/100);
-      const net = gross - taxes - retirement - s.benefitsDeduction - s.otherDeductions;
+      const net = Math.max(0, gross - taxes - retirement - s.benefitsDeduction - s.otherDeductions);   // a paycheck is never negative (0 hours = no pay)
       return { gross, taxes, retirement, net, rates };
     },
-    isAlternatingSunday(mondayDate) {
-      const startStr = App.data.settings.alternatingSundayStart;
-      const start = new Date(startStr);
-      const startDay = start.getDay();
-      const daysToMon = startDay === 1 ? 0 : startDay === 0 ? 1 : startDay-1;
-      const firstMon = new Date(start);
-      firstMon.setDate(start.getDate()-daysToMon);
-      if (mondayDate < firstMon) return false;
-      const ms = 7*24*60*60*1000;
-      const weeks = Math.floor((mondayDate-firstMon)/ms);
-      return weeks % 4 < 2;
+    // The hours the Forecast assumes, read from the settings. A missing or bad value falls back to 40 / 48 / 36.
+    forecastSettings() {
+      const s = App.data.settings;
+      const hrs = (v, dflt) => {
+        const n = (typeof v === 'number' || (typeof v === 'string' && v.trim() !== '')) ? Number(v) : NaN;
+        return Number.isFinite(n) && n >= 0 && n <= 168 ? n : dflt;
+      };
+      return { mode: s.forecastHoursMode === 'alternating' ? 'alternating' : 'fixed',
+        fixed: hrs(s.forecastFixedHours, 40), long: hrs(s.forecastLongWeekHours, 48), short: hrs(s.forecastShortWeekHours, 36),
+        start: s.alternatingSundayStart };
+    },
+    // Hours for the paycheck paid on payDate. Alternating mode: long week, short week, long week...
+    // The week (Sunday to Saturday) that contains the start date is a long week, and a Friday pay
+    // covers the week containing the Friday one week earlier.
+    forecastHoursFor(payDate) {
+      const f = App.calc.forecastSettings();
+      if (f.mode === 'alternating') {
+        const long = FTDates.isLongWeek(f.start, FTDates.addDays(FTDates.toDateStr(payDate), -7));
+        if (long !== null) return long ? f.long : f.short;
+      }
+      return f.fixed;
     },
     nextFriday(from) {
       const d = new Date(from); const day = d.getDay();
@@ -2483,11 +2497,7 @@ Views.forecast = {
     let payDate = App.calc.nextPaycheckDate();
 
     for (let w=1; w<=52; w++) {
-      // Work week Monday = payDate - 7 days (work week ends previous Friday)
-      const fh = Number(App.data.settings.forecastFixedHours);
-      const hours = App.data.settings.forecastHoursMode === 'alternating'
-        ? (App.calc.isAlternatingSunday(new Date(new Date(payDate).setDate(payDate.getDate()-7))) ? 48 : 36)
-        : (fh > 0 && fh <= 168 ? fh : 40);   // 40 hours every week, unless the settings say 'alternating' (old 48/36 pattern)
+      const hours = App.calc.forecastHoursFor(payDate);   // Settings > Work Schedule: fixed hours every week, or the long/short pattern
       const pred = App.calc.predictNetPay({regular:hours, overtime:0, holiday:0, pto:0, nightshift:0, bonus:0});
       vault += pred.net - weeklyFixed - weeklyGroceries;
       carLoan = Math.max(0, carLoan - weeklyCarPayment);
