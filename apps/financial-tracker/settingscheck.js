@@ -32,6 +32,10 @@ const BOXES = [
   { key: 'cc2due',       to: 'cc2PaymentDueDay',      label: 'SAVOR Payment Due Day',       kind: 'whole', required: true, min: 1, max: 31 },
   { key: 'cc2stmt',      to: 'cc2StatementDay',       label: 'SAVOR Statement Day',         kind: 'whole', required: true, min: 1, max: 31 },
   { key: 'brexstart',    to: 'brexStartingBalance',   label: 'BREX Starting Balance',       kind: 'money', min: 0, max: MAX },
+  { key: 'fixedhours',  to: 'forecastFixedHours',    label: 'Forecast Hours per Week',     kind: 'money', required: true, optionalBox: true, min: 0, max: 168 },
+  { key: 'alternating', to: 'forecastHoursMode',     label: 'Use the alternating pattern', kind: 'mode', optionalBox: true },
+  { key: 'longhours',   to: 'forecastLongWeekHours', label: 'Long Week Hours',             kind: 'money', required: true, optionalBox: true, min: 0, max: 168 },
+  { key: 'shorthours',  to: 'forecastShortWeekHours', label: 'Short Week Hours',           kind: 'money', required: true, optionalBox: true, min: 0, max: 168 },
   { key: 'sundaystart',  to: 'alternatingSundayStart', label: 'Alternating Sunday Start Date', kind: 'date' }
 ];
 
@@ -65,6 +69,11 @@ function validate(raw, current) {
       if (b.optionalBox) continue;
       t = '';
     }
+    if (b.kind === 'mode') {   // the on/off switch: must be a real true or false, stored as 'alternating' or 'fixed'
+      if (typeof t !== 'boolean') return { ok: false, box: b.label, message: b.label + ': must be on or off.' };
+      values[b.to] = t ? 'alternating' : 'fixed'; continue;
+    }
+    if (typeof t !== 'string' && typeof t !== 'number') return { ok: false, box: b.label, message: b.label + ': must be typed text or a number.' };  // arrays, objects etc. are never accepted
     t = String(t).trim();
     if (b.kind === 'date') {
       if (t === '') { if (current[b.to] !== undefined) values[b.to] = current[b.to]; continue; }
@@ -86,6 +95,9 @@ function validate(raw, current) {
     const high = b.max !== undefined && n > b.max;
     if (low || high) return { ok: false, box: b.label, message: b.label + ': must be ' + rangeText(b) + '.' };
     values[b.to] = b.kind === 'percentMult' ? clean(n / 100) : n;
+  }
+  if (values.forecastHoursMode === 'alternating' && !values.alternatingSundayStart) {
+    return { ok: false, box: 'Alternating Sunday Start Date', message: 'Alternating Sunday Start Date: needed when the alternating pattern is on.' };
   }
   return { ok: true, values };
 }
