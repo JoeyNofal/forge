@@ -1037,8 +1037,15 @@ const App = {
       const base = weeklyGroceries + weeklyFuel + weeklyFun + cc + cc2;
       return Math.ceil(base / 10) * 10;
     },
-    predictNetPay(hours) {
+    // over (optional) = deductions typed on a screen: {benefits, other, retirementPercent}. They are used for THIS
+    // calculation only; the saved settings are never touched. A missing, negative or silly value is ignored.
+    predictNetPay(hours, over) {
       const s = App.data.settings;
+      const o = over || {};
+      const pick = (v, dflt, max) => (typeof v === 'number' && Number.isFinite(v) && v >= 0 && v <= max) ? v : dflt;
+      const benefits = pick(o.benefits, s.benefitsDeduction, 1e9);
+      const other = pick(o.other, s.otherDeductions, 1e9);
+      const retPct = pick(o.retirementPercent, s.retirementPercent, 100);
       const gross = (hours.regular||0)*s.regularRate
         + (hours.overtime||0)*s.regularRate*s.overtimeMultiplier
         + (hours.holiday||0)*s.regularRate
@@ -1059,9 +1066,9 @@ const App = {
         }
       }
       const taxes = gross * (rates.federal+rates.socialSecurity+rates.medicare+rates.indiana+rates.stJoseph);
-      const retirement = gross * (s.retirementPercent/100);
-      const net = Math.max(0, gross - taxes - retirement - s.benefitsDeduction - s.otherDeductions);   // a paycheck is never negative (0 hours = no pay)
-      return { gross, taxes, retirement, net, rates };
+      const retirement = gross * (retPct/100);
+      const net = Math.max(0, gross - taxes - retirement - benefits - other);   // a paycheck is never negative (0 hours = no pay)
+      return { gross, taxes, retirement, net, rates, used: { benefits, other, retirementPercent: retPct } };
     },
     // The hours the Forecast assumes, read from the settings. A missing or bad value falls back to 40 / 48 / 36.
     forecastSettings() {
@@ -2035,31 +2042,18 @@ Views.paychecks = {
     const customRetPct   = parseFloat(document.getElementById('pred-ret-pct').value);
     const customOther    = parseFloat(document.getElementById('pred-other').value);
 
-    // Temporarily override settings for this prediction
-    const origBenefits = App.data.settings.benefitsDeduction;
-    const origRetPct   = App.data.settings.retirementPercent;
-    const origOther    = App.data.settings.otherDeductions;
-    if (!isNaN(customBenefits)) App.data.settings.benefitsDeduction = customBenefits;
-    if (!isNaN(customRetPct))   App.data.settings.retirementPercent = customRetPct;
-    if (!isNaN(customOther))    App.data.settings.otherDeductions   = customOther;
-
-    const r = App.calc.predictNetPay(hours);
-
-    // Restore
-    App.data.settings.benefitsDeduction = origBenefits;
-    App.data.settings.retirementPercent = origRetPct;
-    App.data.settings.otherDeductions   = origOther;
-
-    const retirementAmt = r.gross * ((isNaN(customRetPct)?App.data.settings.retirementPercent:customRetPct)/100);
-    const benefitsAmt   = isNaN(customBenefits) ? App.data.settings.benefitsDeduction : customBenefits;
-    const otherAmt      = isNaN(customOther)    ? App.data.settings.otherDeductions    : customOther;
+    // The typed deductions are used for this prediction only; the saved settings are never touched.
+    const r = App.calc.predictNetPay(hours, { benefits: customBenefits, retirementPercent: customRetPct, other: customOther });
+    const retirementAmt = r.retirement;
+    const benefitsAmt   = r.used.benefits;
+    const otherAmt      = r.used.other;
 
     document.getElementById('pred-result').innerHTML = `
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
         <div class="balance-card"><div class="label">Gross Pay</div><div class="amount neutral" style="font-size:1.1rem">${App.fmt(r.gross)}</div></div>
         <div class="balance-card"><div class="label">Net Pay</div><div class="amount pos" style="font-size:1.1rem">${App.fmt(r.net)}</div></div>
         <div class="balance-card"><div class="label">Total Taxes</div><div class="amount neg" style="font-size:1rem">${App.fmt(r.taxes)}</div></div>
-        <div class="balance-card"><div class="label">Retirement (${isNaN(customRetPct)?App.data.settings.retirementPercent:customRetPct}%)</div><div class="amount neutral" style="font-size:1rem">${App.fmt(retirementAmt)}</div></div>
+        <div class="balance-card"><div class="label">Retirement (${r.used.retirementPercent}%)</div><div class="amount neutral" style="font-size:1rem">${App.fmt(retirementAmt)}</div></div>
         <div class="balance-card"><div class="label">Benefits</div><div class="amount neutral" style="font-size:1rem">${App.fmt(benefitsAmt)}</div></div>
         <div class="balance-card"><div class="label">Other Deductions</div><div class="amount neutral" style="font-size:1rem">${App.fmt(otherAmt)}</div></div>
       </div>`;
@@ -2176,7 +2170,7 @@ Views.paychecks = {
     const ind = gross * rates.indiana;
     const stj = gross * rates.stJoseph;
     const totalTax = fed + ss + med + ind + stj;
-    const net = gross - totalTax - retirement - benefits - other;
+    const net = Math.max(0, gross - totalTax - retirement - benefits - other);   // never negative, same as the Forecast
 
     document.getElementById('m-fed').value = fed.toFixed(2);
     document.getElementById('m-ss').value = ss.toFixed(2);
@@ -2217,28 +2211,16 @@ Views.paychecks = {
     const retPctVal    = document.getElementById('m-ret-pct')   ? parseFloat(document.getElementById('m-ret-pct').value)   : App.data.settings.retirementPercent;
     const otherVal     = document.getElementById('m-other')     ? parseFloat(document.getElementById('m-other').value)     : App.data.settings.otherDeductions;
 
-    // Temporarily use modal values for prediction
-    const origBenefits = App.data.settings.benefitsDeduction;
-    const origRetPct   = App.data.settings.retirementPercent;
-    const origOther    = App.data.settings.otherDeductions;
-    App.data.settings.benefitsDeduction = isNaN(benefitsVal) ? origBenefits : benefitsVal;
-    App.data.settings.retirementPercent = isNaN(retPctVal)   ? origRetPct   : retPctVal;
-    App.data.settings.otherDeductions   = isNaN(otherVal)    ? origOther    : otherVal;
-
-    const pred = App.calc.predictNetPay({...hours, bonus});
+    // The modal's own deduction boxes are used for this paycheck only; the saved settings are never touched.
+    const pred = App.calc.predictNetPay({...hours, bonus}, { benefits: benefitsVal, retirementPercent: retPctVal, other: otherVal });
     const grossPay = pred.gross;
     if (!netPay) netPay = pred.net;
 
     const deductions = {
-      benefits:   App.data.settings.benefitsDeduction,
-      retirement: grossPay * (App.data.settings.retirementPercent / 100),
-      other:      App.data.settings.otherDeductions
+      benefits:   pred.used.benefits,
+      retirement: pred.retirement,
+      other:      pred.used.other
     };
-
-    // Restore settings
-    App.data.settings.benefitsDeduction = origBenefits;
-    App.data.settings.retirementPercent = origRetPct;
-    App.data.settings.otherDeductions   = origOther;
 
     if (id) {
       const idx = App.data.paychecks.findIndex(p=>p.id===id);
