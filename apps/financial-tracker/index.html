@@ -2744,6 +2744,7 @@ Views.credit = {
 Views.settings = {
   render() {
     const s = App.data.settings;
+    const fc = App.calc.forecastSettings();   // the Work Schedule boxes show the hours the Forecast really uses
     const expenses = App.data.fixedExpenses;
     return `
     <div class="section-header"><div class="section-title">Settings</div></div>
@@ -2804,8 +2805,17 @@ Views.settings = {
     <div class="card">
       <div class="setting-group-title">Work Schedule</div>
       <div class="form-row">
+        <div class="form-group"><label>Forecast Hours per Week</label><input type="number" id="s-fixedhours" value="${fc.fixed}" step="0.25" min="0" max="168"></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label style="display:flex;gap:8px;align-items:center"><input type="checkbox" id="s-alternating" ${fc.mode==='alternating'?'checked':''}> Use the alternating long / short week pattern instead</label></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>Long Week Hours</label><input type="number" id="s-longhours" value="${fc.long}" step="0.25" min="0" max="168"></div>
+        <div class="form-group"><label>Short Week Hours</label><input type="number" id="s-shorthours" value="${fc.short}" step="0.25" min="0" max="168"></div>
         <div class="form-group"><label>Alternating Sunday Start Date</label><input type="date" id="s-sundaystart" value="${s.alternatingSundayStart}"></div>
       </div>
+      <div style="font-size:0.7rem;color:var(--text3);margin:-4px 0 10px">Weeks run Sunday to Saturday. The week that contains the start date is a long week, then short, long, short. Long and short hours are only used when the box above is ticked.</div>
     </div>
 
     <div class="card">
@@ -2855,7 +2865,10 @@ Views.settings = {
     for (const [key, id] of [['rate','s-rate'],['ot','s-ot'],['ns','s-ns'],['benefits','s-benefits'],['other','s-other'],['ret','s-ret'],
       ['flexfloor','s-flexfloor'],['vaultmonths','s-vaultmonths'],['carloan','s-carloan'],['carmin','s-carmin'],['cartarget','s-cartarget'],
       ['carloaninitial','s-carloaninitial'],['cclimit','s-cclimit'],['ccdue','s-ccdue'],['ccstmt','s-ccstmt'],['cc2limit','s-cc2limit'],
-      ['cc2due','s-cc2due'],['cc2stmt','s-cc2stmt'],['brexstart','s-brexstart'],['sundaystart','s-sundaystart']]) raw[key] = box(id);
+      ['cc2due','s-cc2due'],['cc2stmt','s-cc2stmt'],['brexstart','s-brexstart'],['sundaystart','s-sundaystart'],
+      ['fixedhours','s-fixedhours'],['longhours','s-longhours'],['shorthours','s-shorthours']]) raw[key] = box(id);
+    const altBox = document.getElementById('s-alternating');
+    if (altBox) raw.alternating = !!altBox.checked;                // the on/off switch (a real true or false)
     const r = FTSettingsCheck.validate(raw, App.data.settings);
     if (!r.ok) { App.showToast('Not saved. ' + r.message, 'error'); return; }
     Object.assign(App.data.settings, r.values);
