@@ -38,6 +38,8 @@ import os
 from datetime import datetime, date, timedelta
 from collections import defaultdict
 
+from shared import financial_v2
+
 # D:\Projects\Financial Tracker\FinancialTracker\financial-tracker-data.json
 # on Youssef's machine — the real file the actual Financial Tracker app
 # writes to. FORGE only ever reads it.
@@ -59,12 +61,27 @@ ACCOUNT_NAMES = {
 CREDIT_CARD_ACCOUNTS = {"cc", "cc2"}
 LOAN_ACCOUNTS = {"car_loan"}
 
+# Where each default account lives. Added in brackets after the name a Financial Tracker v2 file gives it
+# (the new tracker lets accounts be renamed, so names now come from the file, not from this list).
+BANK_DETAILS = {
+    "vault": "Chase Checking",
+    "flex":  "SoFi Checking",
+    "funds": "SoFi Savings",
+    "cc":    "Chase CC",
+    "cc2":   "Capital One CC",
+    "brex":  "loan to friend",
+}
+_KIND_LABEL = {
+    "bank": "bank account", "savings": "savings account", "credit_card": "credit card",
+    "loan": "loan", "receivable": "money owed to you",
+}
+
 
 # ============================================================
 # LOAD DATA
 # ============================================================
 
-def load_data() -> dict:
+def _read_raw() -> dict:
     """
     Loads the real financial data file. Raises a clear, specific error
     on a genuine problem (Lesson #12) rather than returning None the
@@ -97,6 +114,147 @@ def load_data() -> dict:
             )
 
 
+def _adapt(raw, as_of=None):
+    """
+    The Financial Tracker now writes a version 2 file (accounts as a list, money in cents).
+    shared/financial_v2.py reads it the way the tracker's own ledger does and returns the
+    shape every tool below already reads (dollars, "accounts" dict) plus "accounts_meta".
+    An old (v1) file is returned exactly as it is. A file that says it is version 2 but is
+    broken, or a version this code does not know, fails LOUDLY instead of being misread.
+    """
+    if financial_v2.is_v2(raw):
+        return financial_v2.normalize_for_asset(raw, as_of or date.today())
+    version = raw.get("schemaVersion") if isinstance(raw, dict) else None
+    if isinstance(version, int) and not isinstance(version, bool) and version >= 2:
+        if version == 2:
+            raise RuntimeError(
+                f"Financial data file says it is format version 2 but its accounts list is missing or broken "
+                f"({FINANCIAL_DATA_PATH}). Not guessing - open the Financial Tracker and check the file."
+            )
+        raise RuntimeError(
+            f"Financial data file is format version {version}, newer than ASSET understands "
+            f"({FINANCIAL_DATA_PATH}). ASSET needs to be updated before it can read it."
+        )
+    return raw
+
+
+def load_data() -> dict:
+    """Loads the real financial data file (old or version 2 format) in the shape the tools read."""
+    return _adapt(_read_raw())
+
+
+def _f(x) -> float:
+    """A setting as a plain number: a real number is kept, anything else (missing, text, junk) is 0."""
+    if isinstance(x, bool) or not isinstance(x, (int, float)):
+        return 0.0
+    return float(x) if x == x and x not in (float("inf"), float("-inf")) else 0.0
+
+
+def account_label(data: dict, account_id: object) -> str:
+    """
+    The name ASSET shows for an account. Version 2 files: the name from the file, with where the default
+    accounts live added in brackets ("VAULT (Chase Checking)") unless the name already has brackets.
+    Old files and unknown accounts: the fixed list as before.
+    """
+    if not isinstance(account_id, str):
+        return str(account_id)
+    for m in data.get("accounts_meta", []) or []:
+        if m.get("id") == account_id:
+            name = m.get("name") or str(account_id)
+            detail = BANK_DETAILS.get(account_id)
+            return f"{name} ({detail})" if detail and "(" not in name else name
+    return ACCOUNT_NAMES.get(account_id, account_id)
+
+
+def _notes(data: dict) -> list:
+    """Things the reader skipped in a version 2 file, said out loud instead of silently dropped."""
+    warnings = data.get("warnings") or []
+    if not warnings:
+        return []
+    return ["\n  DATA NOTES (the Financial Tracker file has entries that were skipped, so numbers may be incomplete):"] + [f"    - {w}" for w in warnings]
+
+
+def _net_worth_v2(data: dict) -> str:
+    assets = 0.0
+    liabilities = 0.0
+    asset_lines = []
+    liability_lines = []
+    for m in data["accounts_meta"]:
+        bal = m["balance"]
+        if m["closed"] and bal == 0:
+            continue   # a paid-off, closed account is history only
+        name = account_label(data, m["id"]) + (" (closed account)" if m["closed"] else "")
+        if m["kind"] in financial_v2.DEBT_KINDS:
+            if bal > 0:
+                liabilities += bal
+                liability_lines.append(f"    {name}: ${bal:,.2f} (owed)")
+            elif bal < 0:
+                assets += abs(bal)
+                asset_lines.append(f"    {name}: ${abs(bal):,.2f} (credit in your favor)")
+        else:
+            if bal > 0:
+                assets += bal
+                asset_lines.append(f"    {name}: ${bal:,.2f}")
+            elif bal < 0:
+                liabilities += abs(bal)
+                liability_lines.append(f"    {name}: ${abs(bal):,.2f} (overdraft)")
+    lines = ["NET WORTH SNAPSHOT:\n", "  ASSETS:"]
+    lines.extend(asset_lines)
+    lines.append(f"  Total assets: ${assets:,.2f}")
+    lines.append("\n  LIABILITIES:")
+    lines.extend(liability_lines)
+    lines.append(f"  Total liabilities: ${liabilities:,.2f}")
+    lines.append(f"\n  NET WORTH: ${round(assets - liabilities, 2):,.2f}")
+    lines.extend(_notes(data))
+    return "\n".join(lines)
+
+
+def _account_settings_v2(data: dict) -> str:
+    settings = data.get("settings", {})
+    meta = {m["id"]: m for m in data["accounts_meta"]}
+    lines = ["ACCOUNT SETTINGS & STATIC FACTS:\n", "  ACCOUNTS ON FILE:"]
+    for m in data["accounts_meta"]:
+        lines.append(f"    {account_label(data, m['id'])} - {_KIND_LABEL.get(m['kind'], m['kind'])}" + (" - CLOSED" if m["closed"] else ""))
+
+    for m in data["accounts_meta"]:
+        if m["kind"] != "loan":
+            continue
+        label = account_label(data, m["id"])
+        if m["closed"] and m["balance"] == 0:
+            lines.append(f"\n  {label.upper()}: PAID OFF (account closed)")
+            continue
+        lines.append(f"\n  {label.upper()}:")
+        lines.append(f"    Still owed: ${m['balance']:,.2f}")
+        if m["id"] == "car_loan":
+            lines.append("    Interest rate:   0% (no interest - confirmed fact)")
+
+    for acct_id, limit_key, lo_key, hi_key in (("cc", "ccLimit", "ccTargetMin", "ccTargetMax"), ("cc2", "cc2Limit", "cc2TargetMin", "cc2TargetMax")):
+        m = meta.get(acct_id)
+        if m is None or m["kind"] != "credit_card" or m["closed"]:
+            continue
+        lines.append(f"\n  {account_label(data, acct_id).upper()}:")
+        lines.append(f"    Balance owed: ${m['balance']:,.2f}")
+        lines.append(f"    Limit: ${_f(settings.get(limit_key)):,.2f}")
+        lines.append(f"    Target range: ${_f(settings.get(lo_key)):,.2f} - ${_f(settings.get(hi_key)):,.2f}")
+    for m in data["accounts_meta"]:
+        if m["kind"] == "credit_card" and m["id"] not in ("cc", "cc2") and not m["closed"]:
+            lines.append(f"\n  {account_label(data, m['id']).upper()}:")
+            lines.append(f"    Balance owed: ${m['balance']:,.2f}")
+
+    lines.append(f"\n  FLEX FLOOR: ${_f(settings.get('flexFloor')):,.2f} (minimum balance to maintain)")
+    lines.append(f"\n  CREDIT SCORE TARGETS: VantageScore {_f(settings.get('creditScoreTarget')):g}, FICO {_f(settings.get('creditScoreTarget2')):g}")
+
+    brex = meta.get("brex")
+    brex_starting = _f(settings.get("brexStartingBalance"))
+    if brex is not None and brex["kind"] == "receivable" and brex_starting > 0:
+        pct_paid = (brex_starting - brex["balance"]) / brex_starting * 100
+        lines.append("\n  BREX (money lent to friend, counted as a normal asset):")
+        lines.append(f"    Outstanding: ${brex['balance']:,.2f} of ${brex_starting:,.2f} starting")
+        lines.append(f"    Paid back so far: {pct_paid:.1f}%")
+    lines.extend(_notes(data))
+    return "\n".join(lines)
+
+
 # ============================================================
 # TOOL 0 — ACCOUNT SETTINGS & STATIC FACTS
 # ============================================================
@@ -108,6 +266,8 @@ def get_account_settings() -> str:
     context ASSET should already know, not something to ask Joey for.
     """
     data = load_data()
+    if "accounts_meta" in data:
+        return _account_settings_v2(data)
     settings = data.get("settings", {})
     accounts = data.get("accounts", {})
 
@@ -270,6 +430,8 @@ def get_net_worth() -> str:
     - BREX counts as a normal asset (Decision, confirmed with Youssef).
     """
     data = load_data()
+    if "accounts_meta" in data:
+        return _net_worth_v2(data)
     accounts = data.get("accounts", {})
 
     assets = 0.0
