@@ -332,10 +332,15 @@ def get_spending_summary(months_back: int = 1) -> str:
 
     spending_by_account = defaultdict(float)
     transaction_count = defaultdict(int)
+    is_v2 = "accounts_meta" in data
+    # A version 2 file also holds balance corrections and migration adjustments: they fix numbers, they are not spending.
+    skipped_types = financial_v2.NON_ACTIVITY_TYPES if is_v2 else ("transfer",)
 
     for t in transactions:
-        if t.get("type") == "transfer":
+        if t.get("type") in skipped_types:
             continue
+        if is_v2 and t.get("future"):
+            continue   # dated after today: not spent yet
 
         raw_date = t.get("date", "")
         try:
@@ -364,12 +369,14 @@ def get_spending_summary(months_back: int = 1) -> str:
 
     total = 0
     for account_id, amount in sorted(spending_by_account.items()):
-        name = ACCOUNT_NAMES.get(account_id, account_id)
+        name = account_label(data, account_id)
         count = transaction_count[account_id]
         lines.append(f"  {name}: ${amount:,.2f} ({count} transactions)")
         total += amount
 
     lines.append(f"\n  TOTAL SPENT: ${total:,.2f}")
+    if is_v2:
+        lines.append("  (Money spent from every account, credit cards included. Transfers between your own accounts, balance corrections and migration adjustments are not counted.)")
     return "\n".join(lines)
 
 
@@ -567,6 +574,9 @@ def get_recent_transactions(account_id: str | None = None, limit: int = 10) -> s
     """Returns the most recent transactions, optionally filtered by account."""
     data = load_data()
     transactions = data.get("transactions", [])
+    is_v2 = "accounts_meta" in data
+    if is_v2:
+        transactions = [t for t in transactions if not t.get("future")]   # entries dated after today are not "recent"
 
     if account_id:
         transactions = [t for t in transactions if t.get("accountId") == account_id]
@@ -583,8 +593,12 @@ def get_recent_transactions(account_id: str | None = None, limit: int = 10) -> s
 
     sorted_txns = sorted(transactions, key=parse_date, reverse=True)[:limit]
 
-    account_label = ACCOUNT_NAMES.get(account_id, "ALL ACCOUNTS") if account_id else "ALL ACCOUNTS"
-    lines = [f"RECENT TRANSACTIONS — {account_label}:\n"]
+    if is_v2:
+        known = account_id and any(m.get("id") == account_id for m in data["accounts_meta"])
+        heading = account_label(data, account_id) if known else (f"UNKNOWN ACCOUNT ({account_id})" if account_id else "ALL ACCOUNTS")
+    else:
+        heading = ACCOUNT_NAMES.get(account_id, "ALL ACCOUNTS") if account_id else "ALL ACCOUNTS"
+    lines = [f"RECENT TRANSACTIONS — {heading}:\n"]
 
     for t in sorted_txns:
         raw_date = t.get("date", "")
@@ -599,9 +613,13 @@ def get_recent_transactions(account_id: str | None = None, limit: int = 10) -> s
         amount = t.get("amount", 0)
         sign = "+" if amount >= 0 else ""
         desc = t.get("description", "No description")
-        acct = ACCOUNT_NAMES.get(t.get("accountId", ""), t.get("accountId", ""))
+        acct = account_label(data, t.get("accountId", ""))
         txn_type = t.get("type", "")
         label = " [transfer]" if txn_type == "transfer" else ""
+        if is_v2 and txn_type == "correction":
+            label = " [balance correction]"
+        elif is_v2 and txn_type == "migration_adjustment":
+            label = " [migration adjustment]"
 
         lines.append(f"  {d}  {sign}{amount:,.2f}  {desc}  ({acct}){label}")
 
