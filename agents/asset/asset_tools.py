@@ -38,7 +38,7 @@ import os
 from datetime import datetime, date, timedelta
 from collections import defaultdict
 
-from shared import financial_v2
+from shared import financial_v2, monthly_cost
 
 # D:\Projects\Financial Tracker\FinancialTracker\financial-tracker-data.json
 # on Youssef's machine — the real file the actual Financial Tracker app
@@ -172,6 +172,26 @@ def _notes(data: dict) -> list:
     if not warnings:
         return []
     return ["\n  DATA NOTES (the Financial Tracker file has entries that were skipped, so numbers may be incomplete):"] + [f"    - {w}" for w in warnings]
+
+
+def _avg_groceries(groceries) -> float:
+    """Average of the last 3 months of grocery spending. Months holding something that is not a number are ignored."""
+    if not isinstance(groceries, dict):
+        return 0
+    values = [groceries[m] for m in sorted(groceries.keys())[-3:] if isinstance(groceries[m], (int, float)) and not isinstance(groceries[m], bool)]
+    return sum(values) / len(values) if values else 0
+
+
+def _funds_account(data: dict):
+    """The open savings (FUNDS) account of a version 2 file: the one with the funds role, else the one called funds."""
+    meta = [m for m in data.get("accounts_meta", []) if not m.get("closed")]
+    for m in meta:
+        if m.get("role") == "funds":
+            return m
+    for m in meta:
+        if m.get("id") == "funds":
+            return m
+    return None
 
 
 def _net_worth_v2(data: dict) -> str:
@@ -501,15 +521,11 @@ def get_savings_rate(paychecks_back: int = 8) -> str:
     total_net = sum(p.get("netPay", 0) for p in recent)
     avg_monthly_net = (total_net / len(recent)) * 4.33
 
-    monthly_fixed = 0
-    for exp in fixed_expenses:
-        if exp.get("frequency") == "monthly":
-            monthly_fixed += exp.get("amount", 0)
-        elif exp.get("frequency") == "weekly":
-            monthly_fixed += exp.get("amount", 0) * 4.33
+    # The Financial Tracker's own rule for what bills cost per month (weekly x4.33, biweekly x26/12, quarterly /3,
+    # yearly /12, finished bills skipped): see shared/monthly_cost.py.
+    monthly_fixed = monthly_cost.monthly_total(fixed_expenses, date.today())
 
-    grocery_months = sorted(groceries.keys())[-3:]
-    avg_groceries = sum(groceries[m] for m in grocery_months) / len(grocery_months) if grocery_months else 0
+    avg_groceries = _avg_groceries(groceries)
 
     total_estimated_expenses = monthly_fixed + avg_groceries
     estimated_savings = avg_monthly_net - total_estimated_expenses
@@ -664,21 +680,23 @@ def get_emergency_fund_status() -> str:
     fixed_expenses = data.get("fixedExpenses", [])
     groceries = data.get("groceries", {})
 
-    monthly_fixed = 0
-    for exp in fixed_expenses:
-        if exp.get("frequency") == "monthly":
-            monthly_fixed += exp.get("amount", 0)
-        elif exp.get("frequency") == "weekly":
-            monthly_fixed += exp.get("amount", 0) * 4.33
-
-    grocery_months = sorted(groceries.keys())[-3:]
-    avg_groceries = sum(groceries[m] for m in grocery_months) / len(grocery_months) if grocery_months else 0
+    monthly_fixed = monthly_cost.monthly_total(fixed_expenses, date.today())   # the tracker's own rule, see shared/monthly_cost.py
+    avg_groceries = _avg_groceries(groceries)
 
     monthly_expenses = monthly_fixed + avg_groceries
     target_3mo = monthly_expenses * 3
     target_6mo = monthly_expenses * 6
 
-    savings_fund = data.get("fundsSubAccounts", {}).get("savingsFund", 0)
+    if "accounts_meta" in data:
+        # Version 2 file: FUNDS is one plain savings account (there is no savings/car split any more).
+        funds = _funds_account(data)
+        if funds is None:
+            return "EMERGENCY FUND STATUS:\n\n  No open FUNDS (savings) account was found in the Financial Tracker file, so the emergency fund cannot be measured."
+        savings_fund = funds["balance"]
+        fund_label = f"{account_label(data, funds['id'])} balance"
+    else:
+        savings_fund = data.get("fundsSubAccounts", {}).get("savingsFund", 0)
+        fund_label = "Savings Fund balance"
 
     pct_3mo = (savings_fund / target_3mo * 100) if target_3mo > 0 else 0
     shortfall_3mo = max(0, target_3mo - savings_fund)
@@ -688,7 +706,7 @@ def get_emergency_fund_status() -> str:
         f"  Estimated monthly expenses: ${monthly_expenses:,.2f}",
         f"  3-month target:             ${target_3mo:,.2f}",
         f"  6-month target:             ${target_6mo:,.2f}",
-        f"\n  Savings Fund balance:       ${savings_fund:,.2f}",
+        f"\n  {fund_label}:       ${savings_fund:,.2f}",
         f"  Progress to 3-month goal:   {pct_3mo:.1f}%",
     ]
 
