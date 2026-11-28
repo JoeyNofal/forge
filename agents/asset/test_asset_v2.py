@@ -146,6 +146,23 @@ check("junk setting values count as 0 and never crash", "Limit: $0.00" in st3 an
 no_settings = v2file(copy.deepcopy(BASE["accounts"])); del no_settings["settings"]
 check("a file with no settings section still works", "FLEX FLOOR: $0.00" in tools_on(no_settings)[1])
 
+print("\n=== L2 'WHAT YOU OWE RIGHT NOW' LINE (found by the real-model check) ===")
+owe_line = "WHAT YOU OWE RIGHT NOW (credit cards and loans only): FREEDOM (Chase) $70.00; SAVOR (Capital One) $0.00 (credit in your favor $12.50); Amex Gold $40.00 - total owed $110.00"
+check("net worth text has the one-line debt summary with every card, zero balances and credits stated, and the total", owe_line in nw, nw)
+check("account settings text has the same line", owe_line in st, st)
+check("the debt line sits between the liabilities total and the net worth line", nw.index("Total liabilities") < nw.index("WHAT YOU OWE RIGHT NOW") < nw.index("NET WORTH:"))
+zero_card = v2file([acct("cc", "credit_card", opening=0, name="FREEDOM (Chase)"), acct("cc2", "credit_card", opening=5000, name="SAVOR (Capital One)"), acct("car_loan", "loan", opening=250000, name="Car Loan")])
+nz, sz, _ = tools_on(zero_card)
+check("the exact case the real model got wrong: the $0.00 card is named with $0.00 right next to the card that owes $50.00", "FREEDOM (Chase) $0.00; SAVOR (Capital One) $50.00; Car Loan $2,500.00 - total owed $2,550.00" in nz and "FREEDOM (Chase) $0.00; SAVOR (Capital One) $50.00" in sz, nz)
+check("a paid-off closed loan is left out of the debt line", "Car Loan" not in tools_on(BASE)[0].split("WHAT YOU OWE RIGHT NOW")[1].split("\n")[0])
+check("a closed loan that still owes money IS in the debt line", "Car Loan (closed account) $2,500.00" in tools_on(bad_closed)[0])
+no_debt = tools_on(v2file([acct("v", opening=100)]))
+check("no credit cards or loans at all: no debt line", "WHAT YOU OWE RIGHT NOW" not in no_debt[0] and "WHAT YOU OWE RIGHT NOW" not in no_debt[1])
+only_zero = tools_on(v2file([acct("cc", "credit_card", opening=0, name="FREEDOM (Chase)")]))
+check("a lone card with nothing owed says so: total owed $0.00", "FREEDOM (Chase) $0.00 - total owed $0.00" in only_zero[0])
+no_targets = v2file([acct("cc", "credit_card", opening=0, name="FREEDOM (Chase)")], settings={"ccLimit": 3600})
+check("a card with no target set has no 'Target range' line at all, but still shows its limit", "Target range" not in tools_on(no_targets)[1] and "Limit: $3,600.00" in tools_on(no_targets)[1])
+
 print("\n=== L2 DATA NOTES (skipped entries are said out loud) ===")
 odd = v2file([acct("v", opening=100), {"name": "no id"}, acct("v", opening=5)], [tx("1", "v", "bad-date", 5)])
 nwn, stn, _ = tools_on(odd)

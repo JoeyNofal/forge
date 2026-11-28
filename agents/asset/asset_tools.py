@@ -194,6 +194,31 @@ def _funds_account(data: dict):
     return None
 
 
+def _debt_summary(data: dict) -> list:
+    """
+    ONE plain line saying what is owed right now on every open credit card and loan, zero balances included, with the
+    total already added up. Found by the real-model check: the local model once said a card owed $50 when the tool text
+    (correctly) showed $0.00 for it and $50.00 for another card. Saying every zero out loud, in one place, leaves less to blur.
+    """
+    parts = []
+    total = 0.0
+    for m in data["accounts_meta"]:
+        if m["kind"] not in financial_v2.DEBT_KINDS or (m["closed"] and m["balance"] == 0):
+            continue
+        label = account_label(data, m["id"]) + (" (closed account)" if m["closed"] else "")
+        bal = m["balance"]
+        if bal > 0:
+            total += bal
+            parts.append(f"{label} ${bal:,.2f}")
+        elif bal < 0:
+            parts.append(f"{label} $0.00 (credit in your favor ${abs(bal):,.2f})")
+        else:
+            parts.append(f"{label} $0.00")
+    if not parts:
+        return []
+    return ["  WHAT YOU OWE RIGHT NOW (credit cards and loans only): " + "; ".join(parts) + f" - total owed ${total:,.2f}"]
+
+
 def _net_worth_v2(data: dict) -> str:
     assets = 0.0
     liabilities = 0.0
@@ -224,6 +249,7 @@ def _net_worth_v2(data: dict) -> str:
     lines.append("\n  LIABILITIES:")
     lines.extend(liability_lines)
     lines.append(f"  Total liabilities: ${liabilities:,.2f}")
+    lines.extend(_debt_summary(data))
     lines.append(f"\n  NET WORTH: ${round(assets - liabilities, 2):,.2f}")
     lines.extend(_notes(data))
     return "\n".join(lines)
@@ -235,6 +261,7 @@ def _account_settings_v2(data: dict) -> str:
     lines = ["ACCOUNT SETTINGS & STATIC FACTS:\n", "  ACCOUNTS ON FILE:"]
     for m in data["accounts_meta"]:
         lines.append(f"    {account_label(data, m['id'])} - {_KIND_LABEL.get(m['kind'], m['kind'])}" + (" - CLOSED" if m["closed"] else ""))
+    lines.extend(_debt_summary(data))
 
     for m in data["accounts_meta"]:
         if m["kind"] != "loan":
@@ -255,7 +282,9 @@ def _account_settings_v2(data: dict) -> str:
         lines.append(f"\n  {account_label(data, acct_id).upper()}:")
         lines.append(f"    Balance owed: ${m['balance']:,.2f}")
         lines.append(f"    Limit: ${_f(settings.get(limit_key)):,.2f}")
-        lines.append(f"    Target range: ${_f(settings.get(lo_key)):,.2f} - ${_f(settings.get(hi_key)):,.2f}")
+        lo, hi = _f(settings.get(lo_key)), _f(settings.get(hi_key))
+        if lo or hi:   # no target set = no line (a row of $0.00 only invites the model to mix numbers up)
+            lines.append(f"    Target range: ${lo:,.2f} - ${hi:,.2f}")
     for m in data["accounts_meta"]:
         if m["kind"] == "credit_card" and m["id"] not in ("cc", "cc2") and not m["closed"]:
             lines.append(f"\n  {account_label(data, m['id']).upper()}:")
